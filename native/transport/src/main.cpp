@@ -1,12 +1,15 @@
 #include "telemetry.h"
+#include "screen_capture.h"
 
 #include "livekit/livekit.h"
+#include <winrt/base.h>
 
 #include <algorithm>
 #include <atomic>
 #include <charconv>
 #include <chrono>
 #include <csignal>
+#include <cstring>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
@@ -20,6 +23,7 @@
 namespace {
 using Clock = std::chrono::steady_clock;
 constexpr std::string_view kTrackName = "gcp-test-video";
+constexpr std::string_view kScreenTrackName = "gcp-screen-share";
 std::atomic<bool> g_running{true};
 
 void interrupt_handler(int) {
@@ -29,6 +33,9 @@ void interrupt_handler(int) {
 struct Options {
     std::string action;
     std::string sender;
+    std::string track = "test";
+    int monitor = -1;
+    bool confirm_screen_share = false;
     int seconds = 15;
     int fps = 30;
     int width = 640;
@@ -48,6 +55,7 @@ Options parse(int argc, char* argv[]) {
     }
     options.action = argv[1];
     if (options.action != "publish" && options.action != "watch" &&
+        options.action != "share-monitor" &&
         options.action != "--self-test" && options.action != "--help") {
         throw std::invalid_argument("Unknown action");
     }
@@ -59,9 +67,18 @@ Options parse(int argc, char* argv[]) {
 
     for (int i = 2; i < argc; ++i) {
         const std::string_view name = argv[i];
+        if (name == "--confirm-screen-share") {
+            options.confirm_screen_share = true;
+            continue;
+        }
         if (++i == argc) throw std::invalid_argument("Missing argument value");
         const std::string_view value = argv[i];
         if (name == "--sender") options.sender = std::string(value);
+        else if (name == "--track") options.track = std::string(value);
+        else if (name == "--monitor") {
+            if (!number(value, options.monitor) || options.monitor < 0)
+                throw std::invalid_argument("--monitor requires a nonnegative index");
+        }
         else if (name == "--seconds") {
             if (!number(value, options.seconds) ||
                 options.seconds < 1 || options.seconds > 300)
@@ -89,8 +106,23 @@ Options parse(int argc, char* argv[]) {
         (options.fps != 30 || options.width != 640 || options.height != 360)) {
         throw std::invalid_argument("Video settings only apply to publish");
     }
-    if (options.action == "publish" && !options.sender.empty())
-        throw std::invalid_argument("--sender only applies to watch");
+    if (options.action != "watch" &&
+        (!options.sender.empty() || options.track != "test"))
+        throw std::invalid_argument("--sender/--track only apply to watch");
+    if (options.action == "watch" &&
+        options.track != "test" && options.track != "screen")
+        throw std::invalid_argument("--track must be test or screen");
+    if (options.action != "share-monitor" &&
+        (options.confirm_screen_share || options.monitor != -1))
+        throw std::invalid_argument("--monitor/confirmation only apply to share-monitor");
+    if (options.action == "share-monitor") {
+        if (options.monitor < 0 || !options.confirm_screen_share)
+            throw std::invalid_argument(
+                "share-monitor requires --monitor N and --confirm-screen-share");
+        if (options.width != 640 || options.height != 360)
+            throw std::invalid_argument(
+                "share-monitor uses native size, not --width/--height");
+    }
     return options;
 }
 
@@ -100,9 +132,12 @@ void usage() {
         "  --help\n"
         "  --self-test\n"
         "  publish [--seconds 15] [--fps 30] [--width 640] [--height 360]\n"
-        "  watch --sender ID [--seconds 15]\n"
+        "  watch --sender ID [--track test|screen] [--seconds 15]\n"
+        "  share-monitor --monitor N --confirm-screen-share [--fps 30] [--seconds 15]\n"
         "Requires LIVEKIT_URL and LIVEKIT_TOKEN in the environment for both modes.\n"
-        "No screen or microphone is accessed. No credentials are printed.\n";
+        "share-monitor CAPTURES the selected display and transmits to the LiveKit room.\n"
+        "Explicit opt-in is mandatory. No microphone is captured. Tokens are never printed.\n"
+        "The test uses GPU-to-CPU readback; it is not a zero-copy encoder.\n";
 }
 
 int self_test() {
@@ -123,6 +158,23 @@ int self_test() {
     } catch (const std::invalid_argument&) {
         // A remote identity must be supplied for watch mode.
     }
+    try {
+        char action[] = "share-monitor";
+        char monitor_flag[] = "--monitor";
+        char monitor_index[] = "0";
+        char* invalid_share[] = {app, action, monitor_flag, monitor_index};
+        (void)parse(4, invalid_share);
+        return 1;
+    } catch (const std::invalid_argument&) {
+        // Consent cannot be inferred from the presence of a monitor index.
+    }
+    char action[] = "share-monitor";
+    char monitor_flag[] = "--monitor";
+    char monitor_index[] = "0";
+    char consent[] = "--confirm-screen-share";
+    char* valid_share[] = {app, action, monitor_flag, monitor_index, consent};
+    auto selected = parse(5, valid_share);
+    if (selected.monitor != 0 || !selected.confirm_screen_share) return 1;
     livekit::initialize(livekit::LogLevel::Warn);
     livekit::shutdown();
     std::cout << "LiveKit SDK linked and CLI self-test passed\n";
@@ -184,6 +236,64 @@ int publish(livekit::Room& room, const Options& options) {
     return frames > 0 ? 0 : 2;
 }
 
+int share_monitor(livekit::Room& room, const Options& options) {
+    // The capture constructor rejects invalid/oversized monitors before
+    // publishing a track. This path only runs after explicit CLI consent.
+    gcp::transport::ScreenCapture capture(options.monitor, options.fps);
+    auto participant = room.localParticipant().lock();
+    if (!participant) throw std::runtime_error("No local participant");
+    auto source = std::make_shared<livekit::VideoSource>(
+        capture.width(), capture.height());
+    auto track = participant->publishVideoTrack(
+        std::string(kScreenTrackName), source,
+        livekit::TrackSource::SOURCE_SCREENSHARE);
+    if (!track) throw std::runtime_error("Could not publish screen-share track");
+
+    std::cerr << "SCREEN SHARING ACTIVE: monitor " << options.monitor
+              << ". Press Ctrl+C or terminate the process to stop.\n";
+    const auto start = Clock::now();
+    const auto before = gcp::probe::take_snapshot();
+    capture.start();
+    std::uint64_t sequence = 0;
+    std::uint64_t published = 0;
+    gcp::transport::ScreenFrame sample;
+    while (g_running.load() &&
+           Clock::now() - start < std::chrono::seconds(options.seconds)) {
+        if (!capture.take_latest(sequence, sample)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+        if (sample.bgra.size() !=
+            static_cast<std::size_t>(capture.width()) *
+                static_cast<std::size_t>(capture.height()) * 4) {
+            throw std::runtime_error("Invalid captured BGRA buffer");
+        }
+        auto frame = livekit::VideoFrame::create(
+            capture.width(), capture.height(), livekit::VideoBufferType::BGRA);
+        std::memcpy(frame.data(), sample.bgra.data(), sample.bgra.size());
+        source->captureFrame(frame);
+        ++published;
+    }
+    const auto stats = capture.stats();
+    const auto after = gcp::probe::take_snapshot();
+    const auto elapsed = std::chrono::duration<double>(Clock::now() - start).count();
+    gcp::probe::print_metrics(
+        "livekit_monitor_publish", elapsed, published, stats.copied,
+        before, after, capture.width(), capture.height());
+    std::cout << "{\"capture_arrivals\":" << stats.arrivals
+              << ",\"readbacks\":" << stats.copied
+              << ",\"throttled\":" << stats.throttled
+              << ",\"rejected\":" << stats.rejected
+              << ",\"failures\":" << stats.failures
+              << ",\"mean_gpu_readback_ms\":"
+              << (stats.copied == 0 ? 0.0 :
+                  static_cast<double>(stats.readback_microseconds) /
+                  (1000.0 * static_cast<double>(stats.copied)))
+              << ",\"offered_frames\":" << published << "}\n";
+    if (stats.failures || stats.rejected) return 3;
+    return published > 0 ? 0 : 2;
+}
+
 int watch(livekit::Room& room, const Options& options) {
     struct Received {
         std::atomic<std::uint64_t> frames{0};
@@ -193,7 +303,9 @@ int watch(livekit::Room& room, const Options& options) {
     // Shared state remains valid even if the SDK finishes an in-flight
     // callback after the subscription is cleared during shutdown.
     auto received = std::make_shared<Received>();
-    room.setOnVideoFrameCallback(options.sender, std::string(kTrackName),
+    const auto track_name = options.track == "screen"
+        ? std::string(kScreenTrackName) : std::string(kTrackName);
+    room.setOnVideoFrameCallback(options.sender, track_name,
         [received](const livekit::VideoFrame& frame, std::int64_t) {
             received->width.store(frame.width());
             received->height.store(frame.height());
@@ -208,7 +320,7 @@ int watch(livekit::Room& room, const Options& options) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     // Stop callbacks before local metrics objects are destroyed.
-    room.clearOnVideoFrameCallback(options.sender, std::string(kTrackName));
+    room.clearOnVideoFrameCallback(options.sender, track_name);
     const auto after = gcp::probe::take_snapshot();
     const auto elapsed = std::chrono::duration<double>(Clock::now() - start).count();
     const auto count = received->frames.load();
@@ -235,24 +347,30 @@ int run(const Options& options) {
             "Use wss:// for remote hosts (ws:// allowed for local dev only)");
     }
 
+    if (options.action == "share-monitor") {
+        winrt::init_apartment(winrt::apartment_type::multi_threaded);
+    }
     livekit::initialize(livekit::LogLevel::Warn);
+    std::unique_ptr<livekit::Room> room;
     try {
         int result = 1;
         {
-            auto room = std::make_unique<livekit::Room>();
+            room = std::make_unique<livekit::Room>();
             livekit::RoomOptions room_options;
             room_options.auto_subscribe = true;
             room_options.connect_timeout = std::chrono::seconds(15);
             if (!room->connect(url, token, room_options))
                 throw std::runtime_error("LiveKit room connection failed");
-            result = options.action == "publish"
-                ? publish(*room, options)
-                : watch(*room, options);
+            if (options.action == "publish") result = publish(*room, options);
+            else if (options.action == "share-monitor") result = share_monitor(*room, options);
+            else result = watch(*room, options);
             room->disconnect();
+            room.reset();
         }
         livekit::shutdown();
         return result;
     } catch (...) {
+        room.reset();  // Dispose room before shutting down the SDK.
         livekit::shutdown();
         throw;
     }
