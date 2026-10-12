@@ -51,3 +51,7 @@ Windows hosted CI can verify compilation and the synthetic CPU copy benchmark, b
 The SDK test client can now publish a pre-encoded H.264 file (without re-encoding) and a separate Windows diagnostic attempts to activate hardware-class H.264 Media Foundation transforms. See [H.264 integration](h264-integration.md).
 
 **Do not conflate these features:** an installed MFT may not support the required formats, and pre-encoded file ingest does not connect the encoder to live screen capture.
+
+## Real synthetic-frame encoding benchmark
+
+The native media probe now includes `--benchmark-h264`, an actual H.264 encoder test over generated NV12 frames. Media Foundation may select software even when hardware transforms are requested; encoder acceleration remains unverified. See [native H.264 encoding](native-h264-encode.md).

@@ -1,6 +1,7 @@
 #include "audio_probe.h"
 #include "encoder_capabilities.h"
 #include "copy_benchmark.h"
+#include "h264_encode_benchmark.h"
 #include "capture_probe.h"
 #include "telemetry.h"
 
@@ -14,7 +15,7 @@
 #include <string_view>
 
 namespace {
-enum class Mode { help, monitors, audio, capture, microphone, gpus, encoders, hardware_h264, copy, test };
+enum class Mode { help, monitors, audio, capture, microphone, gpus, encoders, hardware_h264, copy, encode, test };
 
 struct Options {
     Mode mode = Mode::help;
@@ -23,6 +24,9 @@ struct Options {
     int width = 640;
     int height = 360;
     int iterations = 64;
+    int fps = 30;
+    int frames = 30;
+    int bitrate = 1'500'000;
 };
 
 bool parse_int(std::string_view value, int& result) {
@@ -43,6 +47,7 @@ Options parse(int argc, char* argv[]) {
     else if (command == "--list-encoders") options.mode = Mode::encoders;
     else if (command == "--probe-hardware-h264") options.mode = Mode::hardware_h264;
     else if (command == "--benchmark-copy") options.mode = Mode::copy;
+    else if (command == "--benchmark-h264") options.mode = Mode::encode;
     else if (command == "--self-test") options.mode = Mode::test;
     else if (command == "--help") options.mode = Mode::help;
     else throw std::invalid_argument("Unknown command");
@@ -59,11 +64,11 @@ Options parse(int argc, char* argv[]) {
             if (++i == argc || !parse_int(argv[i], options.seconds) ||
                 options.seconds < 1 || options.seconds > 60)
                 throw std::invalid_argument("--seconds must be 1..60");
-        } else if (options.mode == Mode::copy && option == "--width") {
+        } else if ((options.mode == Mode::copy || options.mode == Mode::encode) && option == "--width") {
             if (++i == argc || !parse_int(argv[i], options.width) ||
                 options.width < 160 || options.width > 3840)
                 throw std::invalid_argument("--width must be 160..3840");
-        } else if (options.mode == Mode::copy && option == "--height") {
+        } else if ((options.mode == Mode::copy || options.mode == Mode::encode) && option == "--height") {
             if (++i == argc || !parse_int(argv[i], options.height) ||
                 options.height < 90 || options.height > 2160)
                 throw std::invalid_argument("--height must be 90..2160");
@@ -71,6 +76,18 @@ Options parse(int argc, char* argv[]) {
             if (++i == argc || !parse_int(argv[i], options.iterations) ||
                 options.iterations < 1 || options.iterations > 1000)
                 throw std::invalid_argument("--iterations must be 1..1000");
+        } else if (options.mode == Mode::encode && option == "--fps") {
+            if (++i == argc || !parse_int(argv[i], options.fps) ||
+                options.fps < 1 || options.fps > 60)
+                throw std::invalid_argument("--fps must be 1..60");
+        } else if (options.mode == Mode::encode && option == "--frames") {
+            if (++i == argc || !parse_int(argv[i], options.frames) ||
+                options.frames < 1 || options.frames > 180)
+                throw std::invalid_argument("--frames must be 1..180");
+        } else if (options.mode == Mode::encode && option == "--bitrate") {
+            if (++i == argc || !parse_int(argv[i], options.bitrate) ||
+                options.bitrate < 100000 || options.bitrate > 16000000)
+                throw std::invalid_argument("--bitrate must be 100000..16000000");
         } else {
             throw std::invalid_argument("Unexpected command argument");
         }
@@ -91,6 +108,8 @@ void help() {
         "  --list-encoders                 Enumerate Media Foundation encoder candidates\n"
         "  --probe-hardware-h264          Activate hardware-class H.264 MFTs (no encode)\\n"
         "  --benchmark-copy [--width 640] [--height 360] [--iterations 64]\n"
+        "  --benchmark-h264 [--width 640] [--height 360] [--fps 30]\n"
+        "                   [--frames 30] [--bitrate 1500000] (synthetic NV12)\n"
         "  --capture-monitor N [--seconds S]  Count captured GPU frames (1-60 s)\n"
         "  --probe-mic [--seconds S]       Count microphone audio frames (1-60 s)\n"
         "  --self-test                     Validate argument/telemetry primitives\n"
@@ -130,6 +149,13 @@ int self_test() {
         return 1;
     } catch (const std::invalid_argument&) {
     }
+    char encode_mode[] = "--benchmark-h264";
+    char frame_option[] = "--frames";
+    char twelve[] = "12";
+    char* valid_encode[] = {name, encode_mode, frame_option, twelve};
+    const auto encoded = parse(4, valid_encode);
+    if (encoded.mode != Mode::encode || encoded.frames != 12 ||
+        encoded.fps != 30 || encoded.bitrate != 1'500'000) return 1;
     std::cout << "Native media probe self-test passed\n";
     return 0;
 }
@@ -140,6 +166,13 @@ int main(int argc, char* argv[]) {
         const auto options = parse(argc, argv);
         if (options.mode == Mode::help) { help(); return 0; }
         if (options.mode == Mode::test) return self_test();
+
+        if (options.mode == Mode::encode) {
+            winrt::init_apartment(winrt::apartment_type::multi_threaded);
+            return gcp::probe::benchmark_h264_encoding(
+                options.width, options.height, options.fps,
+                options.frames, options.bitrate);
+        }
 
         if (options.mode == Mode::copy)
             return gcp::probe::run_copy_benchmark(
