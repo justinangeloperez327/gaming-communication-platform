@@ -1,5 +1,6 @@
 add_executable(gcp-livekit-smoke
     src/main.cpp
+    src/screen_capture.cpp
     ../probe/src/telemetry.cpp
 )
 
@@ -10,7 +11,7 @@ if(MSVC)
     target_compile_options(gcp-livekit-smoke PRIVATE /W4 /permissive- /EHsc)
 endif()
 
-target_link_libraries(gcp-livekit-smoke PRIVATE LiveKit::livekit psapi)
+target_link_libraries(gcp-livekit-smoke PRIVATE LiveKit::livekit psapi d3d11 dxgi windowsapp ole32 uuid)
 
 # The LiveKit imported target references the bundled FFI library on Windows.
 target_link_directories(gcp-livekit-smoke PRIVATE

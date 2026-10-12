@@ -7,7 +7,7 @@ Gaming Communication Platform is a Windows-first communication application that 
 - **Qt 6 / C++20 desktop:** Qt Quick shell with local view navigation and preview controls.
 - **Rust / Axum server:** asynchronous HTTP listener and an unauthenticated `GET /health` endpoint.
 - **Windows diagnostics:** Windows Graphics Capture monitor probe, WASAPI microphone probe and basic local resource measurements.
-- **Optional native LiveKit diagnostic:** synthetic video publishing/subscription with an opt-in pinned SDK. This does not integrate actual screen/mic capture with WebRTC.
+- **Optional native LiveKit diagnostic:** synthetic video and explicit Windows monitor publishing with an opt-in pinned SDK. Monitor publishing requires CPU staging readback; microphone transmission is not yet implemented.
 - **Build pipelines:** CMake for the desktop, Cargo for the server. Pull-request CI compiles the Windows client and validates optional native transports.
 
 ## Intended boundaries
