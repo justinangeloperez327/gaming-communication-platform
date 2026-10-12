@@ -6,10 +6,11 @@ A Windows-first communication client for gaming communities and teams. The long-
 
 - **Desktop:** C++20, Qt 6 and Qt Quick native shell with local UI interactions.
 - **Backend:** Rust, Tokio and Axum with a health endpoint and tests.
-- **Windows media diagnostic:** Windows Graphics Capture monitor frame counting, WASAPI microphone packet counting, DXGI GPU inventory, Media Foundation encoder candidate inventory and CPU BGRA copy benchmark.
+- **Windows media diagnostic:** Windows Graphics Capture monitor frame counting, WASAPI microphone packet counting, DXGI GPU inventory, Media Foundation encoder candidate inventory, real synthetic-frame H.264 encode benchmark, and CPU BGRA copy benchmark.
 - **Optional LiveKit diagnostic:** v1.12.2 Windows C++ SDK with synthetic video and opt-in actual monitor capture publishing (requires LiveKit tokens and a Windows interactive desktop).
 - **Performance instrumentation:** bounded capture buffers, CPU/RAM metrics and p50/p95 staging-readback samples; one redundant full-frame CPU copy removed. No GPU hardware encoder selection is implemented.
 - **Hardware-video feasibility:** hardware-class H.264 Media Foundation MFT activation diagnostic, plus opt-in publishing of **externally encoded** Annex B H.264 video through LiveKit. Neither feature encodes frames inside the application.
+- **Actual offline H.264 encode:** Media Foundation synthetic NV12 test frames are encoded to a temporary MP4 using hardware transforms when the OS supports them; **actual hardware selection is not verified**.
 - **CI:** Rust verification and Windows native build/CTest checks.
 
 **Not implemented:** authenticated accounts, real messaging, production voice chat, screen-sharing UI, game window selection, hardware encoding control and persistent storage. A developer-only monitor publisher exists but uses CPU readback and is not optimized game streaming.
@@ -46,6 +47,6 @@ By default the backend binds to loopback. The only implemented HTTP route is `GE
 
 ## Architecture and performance
 
-See [architecture](docs/architecture.md), [performance acceptance criteria](docs/performance.md), and [Windows setup](docs/development.md).
+See [architecture](docs/architecture.md), [performance acceptance criteria](docs/performance.md), [native H.264 encoding benchmark](docs/native-h264-encode.md), and [Windows setup](docs/development.md).
 
 There is no project license yet. Third-party and Qt licensing must be reviewed before distributing binaries.
