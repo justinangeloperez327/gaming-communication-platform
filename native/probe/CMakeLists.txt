@@ -20,7 +20,7 @@ endif()
 
 target_link_libraries(gcp-media-probe PRIVATE
     d3d11 dxgi windowsapp ole32 uuid
-    avrt mmdevapi propsys psapi
+    avrt propsys psapi
 )
 
 if(BUILD_TESTING)

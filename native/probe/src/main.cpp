@@ -81,8 +81,13 @@ int self_test() {
     const auto cpu = gcp::probe::total_machine_cpu_percent(from, to, 1.0, 4);
     if (cpu < 24.9 || cpu > 25.1) return 1;
 
-    const char* good_args[] = {"probe", "--capture-monitor", "2", "--seconds", "10"};
-    const auto parsed = parse(5, const_cast<char**>(good_args));
+    char name[] = "probe";
+    char mode[] = "--capture-monitor";
+    char monitor[] = "2";
+    char flag[] = "--seconds";
+    char seconds[] = "10";
+    char* good_args[] = {name, mode, monitor, flag, seconds};
+    const auto parsed = parse(5, good_args);
     if (parsed.mode != Mode::capture || parsed.monitor != 2 || parsed.seconds != 10) {
         return 1;
     }
@@ -108,11 +113,11 @@ int main(int argc, char* argv[]) {
             default: break;
         }
         return 1;
-    } catch (const std::exception& e) {
-        std::cerr << "Media probe failed: " << e.what() << "\n";
-        return 1;
     } catch (const winrt::hresult_error& e) {
         std::wcerr << L"Windows media API failed: " << e.message().c_str() << L"\n";
+        return 1;
+    } catch (const std::exception& e) {
+        std::cerr << "Media probe failed: " << e.what() << "\n";
         return 1;
     }
 }

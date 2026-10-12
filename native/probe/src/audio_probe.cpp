@@ -8,6 +8,7 @@
 #include <propvarutil.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <iostream>

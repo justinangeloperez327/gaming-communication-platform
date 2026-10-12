@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
+#include <stdexcept>
 
 namespace gcp::probe {
 namespace {
