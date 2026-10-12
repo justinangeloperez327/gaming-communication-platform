@@ -6,39 +6,39 @@ This is a **developer-only** test of actual Windows display capture and publishi
 
 Use the pinned optional LiveKit C++ SDK v1.12.2 on Windows x64:
 
-\`\`\`powershell
-cmake -S . -B build/desktop -G "Visual Studio 17 2022" -A x64 \`
-  -DCMAKE_PREFIX_PATH="C:/Qt/6.8.3/msvc2022_64" \`
+```powershell
+cmake -S . -B build/desktop -G "Visual Studio 17 2022" -A x64 `
+  -DCMAKE_PREFIX_PATH="C:/Qt/6.8.3/msvc2022_64" `
   -DGCP_ENABLE_LIVEKIT=ON -DGCP_LIVEKIT_DOWNLOAD=ON
 cmake --build build/desktop --config Release --parallel
 ctest --test-dir build/desktop -C Release --output-on-failure
-\`\`\`
+```
 
 ## Start a session
 
 On an interactive Windows desktop, identify monitor indices:
 
-\`\`\`powershell
+```powershell
 .\build\desktop\Release\gcp-media-probe.exe --list-monitors
-\`\`\`
+```
 
 Start a local development LiveKit server, and create two different **short-lived** room tokens with publish/subscribe grants. Never commit tokens. In the sender's terminal:
 
-\`\`\`powershell
+```powershell
 $env:LIVEKIT_URL = "ws://127.0.0.1:7880"
 $env:LIVEKIT_TOKEN = "<sender-token>"
 .\build\desktop\Release\gcp-livekit-smoke.exe share-monitor --monitor 0 --confirm-screen-share --fps 30 --seconds 30
-\`\`\`
+```
 
 **This transmits everything visible on monitor 0 to authorized room participants**. Windows notifications and private content on that display can be exposed. A remote viewer could record the stream. Do not share an unintended monitor. Sharing is explicitly opted into and stops after the requested duration (maximum 300 seconds).
 
 In another terminal with a distinct viewer room token:
 
-\`\`\`powershell
+```powershell
 $env:LIVEKIT_URL = "ws://127.0.0.1:7880"
 $env:LIVEKIT_TOKEN = "<viewer-token>"
 .\build\desktop\Release\gcp-livekit-smoke.exe watch --sender "sender-identity" --track screen --seconds 30
-\`\`\`
+```
 
 ## Technical characteristics
 
