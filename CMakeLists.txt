@@ -12,3 +12,9 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Quick QuickControls2)
 qt_standard_project_setup(REQUIRES 6.5)
 
 add_subdirectory(apps/desktop)
+
+# Native media probes deliberately stay independent of Qt's UI and of any SFU.
+# Keep them Windows-only until actual platform ports have been implemented.
+if(WIN32)
+    add_subdirectory(native/probe)
+endif()
