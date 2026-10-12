@@ -1,0 +1,31 @@
+# Native and CMake
+/build/
+/out/
+/cmake-build-*/
+CMakeUserPresets.json
+CMakeFiles/
+CMakeCache.txt
+*.user
+*.suo
+*.vcxproj.user
+.vs/
+.vscode/
+
+# Rust
+/target/
+**/*.rs.bk
+
+# Local config and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+
+# Runtime
+*.log
