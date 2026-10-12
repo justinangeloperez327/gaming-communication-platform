@@ -185,14 +185,19 @@ int publish(livekit::Room& room, const Options& options) {
 }
 
 int watch(livekit::Room& room, const Options& options) {
-    std::atomic<std::uint64_t> frames{0};
-    std::atomic<int> width{0};
-    std::atomic<int> height{0};
+    struct Received {
+        std::atomic<std::uint64_t> frames{0};
+        std::atomic<int> width{0};
+        std::atomic<int> height{0};
+    };
+    // Shared state remains valid even if the SDK finishes an in-flight
+    // callback after the subscription is cleared during shutdown.
+    auto received = std::make_shared<Received>();
     room.setOnVideoFrameCallback(options.sender, std::string(kTrackName),
-        [&](const livekit::VideoFrame& frame, std::int64_t) {
-            width.store(frame.width());
-            height.store(frame.height());
-            frames.fetch_add(1);
+        [received](const livekit::VideoFrame& frame, std::int64_t) {
+            received->width.store(frame.width());
+            received->height.store(frame.height());
+            received->frames.fetch_add(1);
         });
 
     std::cout << "Receiving synthetic test track from selected participant\n";
@@ -206,9 +211,9 @@ int watch(livekit::Room& room, const Options& options) {
     room.clearOnVideoFrameCallback(options.sender, std::string(kTrackName));
     const auto after = gcp::probe::take_snapshot();
     const auto elapsed = std::chrono::duration<double>(Clock::now() - start).count();
-    const auto count = frames.load();
+    const auto count = received->frames.load();
     gcp::probe::print_metrics("livekit_synthetic_receive", elapsed, count, 0,
-                             before, after, width.load(), height.load());
+                             before, after, received->width.load(), received->height.load());
     if (count == 0) {
         std::cerr << "No synthetic video received: check identity, track, and room\n";
         return 2;
