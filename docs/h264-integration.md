@@ -62,3 +62,7 @@ Only share test footage you are authorized to distribute. A receiving participan
 - Separate hardware encoder activation does not mean the externally provided H.264 file was produced by that device.
 
 Next: create a GPU encoder integration with NV12 input, real encoded H.264 output, keyframe/rate control feedback, and on-device frame-time measurements. Validate actual sender/receiver delivery before claiming 1080p60 gaming performance.
+
+## GPU device and hardware transform qualification
+
+The `--qualify-gpu-h264` diagnostic tests D3D11 hardware device creation, NV12 GPU-surface wrapping and H.264 hardware-only Media Foundation transform negotiation. No frames are encoded. [See the qualification procedure](gpu-h264-qualification.md).

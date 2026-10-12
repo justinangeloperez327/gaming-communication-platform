@@ -50,3 +50,5 @@ During a real test run, pair this information with Windows Performance Monitor /
 Hardware-encoder integration and GPU-resident YUV conversion are **not included in this increment**.
 
 Hardware MFT activation and pre-encoded H.264 file publishing do not establish actual GPU encoder usage or game FPS impact. See [H.264 integration](h264-integration.md).
+
+The GPU encoder qualification probe only verifies D3D11/MFT configuration, not encoding or real-time performance. No hardware acceleration or gaming-FPS benefit has been measured. [See qualification notes](gpu-h264-qualification.md).
