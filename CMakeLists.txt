@@ -13,8 +13,12 @@ qt_standard_project_setup(REQUIRES 6.5)
 
 add_subdirectory(apps/desktop)
 
-# Native media probes deliberately stay independent of Qt's UI and of any SFU.
-# Keep them Windows-only until actual platform ports have been implemented.
 if(WIN32)
     add_subdirectory(native/probe)
+endif()
+
+option(GCP_ENABLE_LIVEKIT "Build the optional native LiveKit transport smoke test" OFF)
+if(GCP_ENABLE_LIVEKIT)
+    include(cmake/GcpLiveKit.cmake)
+    add_subdirectory(native/transport)
 endif()
