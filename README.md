@@ -8,7 +8,9 @@ A Windows-first communication client for gaming communities and teams. The long-
 - **Backend:** Rust, Tokio and Axum with a health endpoint and tests.
 - **Windows media diagnostic:** Windows Graphics Capture monitor frame counting, WASAPI microphone packet counting, DXGI GPU inventory, Media Foundation encoder candidate inventory and CPU BGRA copy benchmark.
 - **Optional LiveKit diagnostic:** v1.12.2 Windows C++ SDK with synthetic video and opt-in actual monitor capture publishing (requires LiveKit tokens and a Windows interactive desktop).
-- **Performance instrumentation:** bounded capture buffers, CPU/RAM metrics and p50/p95 staging-readback samples; one redundant full-frame CPU copy removed. No GPU hardware encoder selection is implemented.\n- **CI:** Rust verification and Windows native build/CTest checks.
+- **Performance instrumentation:** bounded capture buffers, CPU/RAM metrics and p50/p95 staging-readback samples; one redundant full-frame CPU copy removed. No GPU hardware encoder selection is implemented.
+- **Hardware-video feasibility:** hardware-class H.264 Media Foundation MFT activation diagnostic, plus opt-in publishing of **externally encoded** Annex B H.264 video through LiveKit. Neither feature encodes frames inside the application.
+- **CI:** Rust verification and Windows native build/CTest checks.
 
 **Not implemented:** authenticated accounts, real messaging, production voice chat, screen-sharing UI, game window selection, hardware encoding control and persistent storage. A developer-only monitor publisher exists but uses CPU readback and is not optimized game streaming.
 
@@ -29,7 +31,7 @@ ctest --test-dir build/desktop -C Release --output-on-failure
 
 Run `build/desktop/Release/gcp-desktop.exe` in a Qt-enabled environment. For capture tests and limits, see [Windows media probe](docs/media-probe.md) and [performance measurements](docs/performance.md).
 
-To **opt in** to the LiveKit SDK and synthetic room test, see [LiveKit smoke test](docs/livekit-smoke.md). Real monitor publishing is documented in [monitor sharing prototype](docs/monitor-share.md).
+To **opt in** to the LiveKit SDK, see [LiveKit smoke test](docs/livekit-smoke.md). For pre-encoded H.264 publishing and hardware-class MFT diagnostics, see [H.264 integration](docs/h264-integration.md). Real monitor publishing is documented in [monitor sharing prototype](docs/monitor-share.md).
 
 ## Rust backend
 

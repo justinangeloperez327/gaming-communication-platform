@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <iomanip>
+#include <string>
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
@@ -110,5 +111,59 @@ void list_video_encoder_candidates() {
     print_codec(L"HEVC", MFVideoFormat_HEVC);
     std::wcout << L"Enumeration only: does not establish GPU hardware selection,"
                << L" codec negotiation, resolution, rate, or LiveKit integration.\n";
+}
+} // namespace gcp::probe
+
+namespace gcp::probe {
+
+int probe_hardware_h264_activation() {
+    MediaFoundationSession mf;
+    MFT_REGISTER_TYPE_INFO output_type{MFMediaType_Video, MFVideoFormat_H264};
+    MftList candidates;
+    const UINT32 hardware_only =
+        MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER;
+    check(MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER, hardware_only,
+                    nullptr, &output_type,
+                    &candidates.entries, &candidates.count),
+          "Hardware-only H.264 enumeration failed");
+    std::wcout << L"H.264 hardware-class Media Foundation MFT candidates: "
+               << candidates.count << L"\n";
+    UINT32 activated = 0;
+    for (UINT32 i = 0; i < candidates.count; ++i) {
+        wchar_t* name = nullptr;
+        UINT32 name_length = 0;
+        const auto description_status = candidates.entries[i]->GetAllocatedString(
+            MFT_FRIENDLY_NAME_Attribute, &name, &name_length);
+        const std::wstring friendly =
+            SUCCEEDED(description_status) && name ? name : L"<unnamed>";
+        CoTaskMemFree(name);
+
+        ComPtr<IMFTransform> encoder;
+        const HRESULT result = candidates.entries[i]->ActivateObject(
+            IID_PPV_ARGS(encoder.GetAddressOf()));
+        if (FAILED(result)) {
+            std::wcout << L"  - " << friendly << L": activation failed HRESULT=0x"
+                       << std::hex << static_cast<unsigned long>(result)
+                       << std::dec << L"\n";
+            continue;
+        }
+        DWORD input_count = 0, output_count = 0;
+        const auto streams_status = encoder->GetStreamCount(&input_count, &output_count);
+        std::wcout << L"  - " << friendly << L": activated"
+                   << L", streams_status=0x" << std::hex
+                   << static_cast<unsigned long>(streams_status) << std::dec
+                   << L", inputs=" << input_count
+                   << L", outputs=" << output_count << L"\n";
+        ++activated;
+        encoder.Reset();
+        candidates.entries[i]->ShutdownObject();
+    }
+    std::wcout << L"Result: " << activated
+               << L" hardware-class MFT(s) activated. No frames encoded.\n";
+    std::wcout << L"Windows Media Foundation MFT inventory does not cover every"
+               << L" vendor's API or prove that LiveKit uses the MFT.\n";
+    // Report diagnostics without treating a machine lacking hardware MFTs as a
+    // tool failure. The result is descriptive, not a pass/fail capability claim.
+    return 0;
 }
 } // namespace gcp::probe
