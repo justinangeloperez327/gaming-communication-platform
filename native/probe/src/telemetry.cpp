@@ -35,7 +35,7 @@ Snapshot take_snapshot() {
 unsigned logical_processor_count() {
     SYSTEM_INFO information{};
     GetSystemInfo(&information);
-    return std::max(1u, information.dwNumberOfProcessors);
+    return std::max(1u, static_cast<unsigned>(information.dwNumberOfProcessors));
 }
 
 double total_machine_cpu_percent(
