@@ -1,5 +1,6 @@
 add_executable(gcp-livekit-smoke
     src/main.cpp
+    src/annexb_h264.cpp
     src/screen_capture.cpp
     ../probe/src/telemetry.cpp
 )

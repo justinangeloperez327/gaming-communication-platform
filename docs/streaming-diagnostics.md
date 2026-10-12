@@ -45,3 +45,9 @@ Start with 720p30; proceed to 1080p30 and 1080p60 only after correct receiving a
 `--list-gpus`, `--list-encoders`, and `--benchmark-copy` do not access the screen or microphone. The separate monitor-share test **does** transmit display content and requires explicit consent. Never put credentials, JWTs, or sensitive screen data into reports.
 
 Windows hosted CI can verify compilation and the synthetic CPU copy benchmark, but cannot reproduce GPU/game performance. There are **no measured gamer-PC FPS, encoding or GPU utilization results** in this repository yet.
+
+## External H.264 access-unit pipeline
+
+The SDK test client can now publish a pre-encoded H.264 file (without re-encoding) and a separate Windows diagnostic attempts to activate hardware-class H.264 Media Foundation transforms. See [H.264 integration](h264-integration.md).
+
+**Do not conflate these features:** an installed MFT may not support the required formats, and pre-encoded file ingest does not connect the encoder to live screen capture.

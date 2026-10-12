@@ -14,7 +14,7 @@
 #include <string_view>
 
 namespace {
-enum class Mode { help, monitors, audio, capture, microphone, gpus, encoders, copy, test };
+enum class Mode { help, monitors, audio, capture, microphone, gpus, encoders, hardware_h264, copy, test };
 
 struct Options {
     Mode mode = Mode::help;
@@ -41,6 +41,7 @@ Options parse(int argc, char* argv[]) {
     else if (command == "--probe-mic") options.mode = Mode::microphone;
     else if (command == "--list-gpus") options.mode = Mode::gpus;
     else if (command == "--list-encoders") options.mode = Mode::encoders;
+    else if (command == "--probe-hardware-h264") options.mode = Mode::hardware_h264;
     else if (command == "--benchmark-copy") options.mode = Mode::copy;
     else if (command == "--self-test") options.mode = Mode::test;
     else if (command == "--help") options.mode = Mode::help;
@@ -88,6 +89,7 @@ void help() {
         "  --list-audio                    List active capture/render endpoints\n"
         "  --list-gpus                     Enumerate DXGI graphics adapters\n"
         "  --list-encoders                 Enumerate Media Foundation encoder candidates\n"
+        "  --probe-hardware-h264          Activate hardware-class H.264 MFTs (no encode)\\n"
         "  --benchmark-copy [--width 640] [--height 360] [--iterations 64]\n"
         "  --capture-monitor N [--seconds S]  Count captured GPU frames (1-60 s)\n"
         "  --probe-mic [--seconds S]       Count microphone audio frames (1-60 s)\n"
@@ -149,6 +151,7 @@ int main(int argc, char* argv[]) {
             case Mode::audio: gcp::probe::list_audio_devices(); return 0;
             case Mode::gpus: gcp::probe::list_gpu_adapters(); return 0;
             case Mode::encoders: gcp::probe::list_video_encoder_candidates(); return 0;
+            case Mode::hardware_h264: return gcp::probe::probe_hardware_h264_activation();
             case Mode::capture:
                 return gcp::probe::run_monitor_probe(options.monitor, options.seconds);
             case Mode::microphone:

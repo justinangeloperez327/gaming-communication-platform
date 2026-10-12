@@ -1,5 +1,7 @@
 #include "telemetry.h"
 #include "screen_capture.h"
+#include "annexb_h264.h"
+#include "livekit/encoded_video_source.h"
 
 #include "livekit/livekit.h"
 #include <winrt/base.h>
@@ -13,6 +15,10 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <vector>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -24,6 +30,7 @@ namespace {
 using Clock = std::chrono::steady_clock;
 constexpr std::string_view kTrackName = "gcp-test-video";
 constexpr std::string_view kScreenTrackName = "gcp-screen-share";
+constexpr std::string_view kEncodedTrackName = "gcp-h264-encoded";
 std::atomic<bool> g_running{true};
 
 void interrupt_handler(int) {
@@ -33,6 +40,8 @@ void interrupt_handler(int) {
 struct Options {
     std::string action;
     std::string sender;
+    std::string file;
+    bool confirm_video_file_share = false;
     std::string track = "test";
     int monitor = -1;
     bool confirm_screen_share = false;
@@ -56,6 +65,7 @@ Options parse(int argc, char* argv[]) {
     options.action = argv[1];
     if (options.action != "publish" && options.action != "watch" &&
         options.action != "share-monitor" &&
+        options.action != "publish-h264" &&
         options.action != "--self-test" && options.action != "--help") {
         throw std::invalid_argument("Unknown action");
     }
@@ -71,10 +81,15 @@ Options parse(int argc, char* argv[]) {
             options.confirm_screen_share = true;
             continue;
         }
+        if (name == "--confirm-video-file-share") {
+            options.confirm_video_file_share = true;
+            continue;
+        }
         if (++i == argc) throw std::invalid_argument("Missing argument value");
         const std::string_view value = argv[i];
         if (name == "--sender") options.sender = std::string(value);
         else if (name == "--track") options.track = std::string(value);
+        else if (name == "--file") options.file = std::string(value);
         else if (name == "--monitor") {
             if (!number(value, options.monitor) || options.monitor < 0)
                 throw std::invalid_argument("--monitor requires a nonnegative index");
@@ -110,11 +125,19 @@ Options parse(int argc, char* argv[]) {
         (!options.sender.empty() || options.track != "test"))
         throw std::invalid_argument("--sender/--track only apply to watch");
     if (options.action == "watch" &&
-        options.track != "test" && options.track != "screen")
-        throw std::invalid_argument("--track must be test or screen");
+        options.track != "test" && options.track != "screen" && options.track != "h264")
+        throw std::invalid_argument("--track must be test, screen or h264");
     if (options.action != "share-monitor" &&
         (options.confirm_screen_share || options.monitor != -1))
         throw std::invalid_argument("--monitor/confirmation only apply to share-monitor");
+    if (options.action == "publish-h264") {
+        if (options.file.empty() || !options.confirm_video_file_share)
+            throw std::invalid_argument(
+                "publish-h264 needs --file PATH and --confirm-video-file-share");
+    } else if (!options.file.empty() || options.confirm_video_file_share) {
+        throw std::invalid_argument(
+            "--file and confirmation are only valid for publish-h264");
+    }
     if (options.action == "share-monitor") {
         if (options.monitor < 0 || !options.confirm_screen_share)
             throw std::invalid_argument(
@@ -128,16 +151,19 @@ Options parse(int argc, char* argv[]) {
 
 void usage() {
     std::cout <<
-        "GCP LiveKit native transport feasibility test (synthetic video only)\n"
+        "GCP LiveKit native media transport feasibility tests\n"
         "  --help\n"
         "  --self-test\n"
         "  publish [--seconds 15] [--fps 30] [--width 640] [--height 360]\n"
-        "  watch --sender ID [--track test|screen] [--seconds 15]\n"
+        "  watch --sender ID [--track test|screen|h264] [--seconds 15]\n"
         "  share-monitor --monitor N --confirm-screen-share [--fps 30] [--seconds 15]\n"
+        "  publish-h264 --file PATH --confirm-video-file-share --width W --height H\n"
+        "    [--fps 30] [--seconds 15]; reads a pre-encoded Annex B H.264 file.\n"
         "Requires LIVEKIT_URL and LIVEKIT_TOKEN in the environment for both modes.\n"
         "share-monitor CAPTURES the selected display and transmits to the LiveKit room.\n"
         "Explicit opt-in is mandatory. No microphone is captured. Tokens are never printed.\n"
-        "The test uses GPU-to-CPU readback; it is not a zero-copy encoder.\n";
+        "Monitor capture uses CPU readback; publish-h264 does NOT encode frames.\n"
+        "The confirmed H.264 file is transmitted to the LiveKit room.\n";
 }
 
 int self_test() {
@@ -175,6 +201,16 @@ int self_test() {
     char* valid_share[] = {app, action, monitor_flag, monitor_index, consent};
     auto selected = parse(5, valid_share);
     if (selected.monitor != 0 || !selected.confirm_screen_share) return 1;
+    if (!gcp::transport::test_annexb_h264_parser()) return 1;
+    try {
+        char encoded_action[] = "publish-h264";
+        char file_flag[] = "--file";
+        char fake_path[] = "test.h264";
+        char* missing_consent[] = {app, encoded_action, file_flag, fake_path};
+        (void)parse(4, missing_consent);
+        return 1;
+    } catch (const std::invalid_argument&) {
+    }
     livekit::initialize(livekit::LogLevel::Warn);
     livekit::shutdown();
     std::cout << "LiveKit SDK linked and CLI self-test passed\n";
@@ -298,6 +334,74 @@ int share_monitor(livekit::Room& room, const Options& options) {
     return published > 0 ? 0 : 2;
 }
 
+
+int publish_h264_file(livekit::Room& room, const Options& options) {
+    namespace fs = std::filesystem;
+    const fs::path path(options.file);
+    if (!fs::is_regular_file(path)) {
+        throw std::invalid_argument("H.264 test file does not exist");
+    }
+    const auto size = fs::file_size(path);
+    if (size == 0 || size > 64u * 1024u * 1024u) {
+        throw std::invalid_argument("H.264 file must be 1..64 MiB");
+    }
+    std::ifstream input(path, std::ios::binary);
+    if (!input) throw std::runtime_error("Cannot open encoded file");
+    std::vector<std::uint8_t> encoded{
+        std::istreambuf_iterator<char>(input),
+        std::istreambuf_iterator<char>()};
+    if (!input.eof() && input.fail()) {
+        throw std::runtime_error("Unable to read H.264 test file");
+    }
+    const auto units = gcp::transport::split_annexb_access_units(encoded);
+
+    auto participant = room.localParticipant().lock();
+    if (!participant) throw std::runtime_error("No local participant");
+    auto source = std::make_shared<livekit::EncodedVideoSource>(
+        livekit::VideoCodec::H264, options.width, options.height);
+    auto track = participant->publishVideoTrack(
+        std::string(kEncodedTrackName), source,
+        livekit::TrackSource::SOURCE_SCREENSHARE);
+    if (!track) throw std::runtime_error("Encoded H.264 track publish failed");
+
+    std::cerr << "PRE-ENCODED H.264 SHARING ACTIVE: explicitly selected file. "
+              << "No hardware encoder is invoked in this process.\n";
+    const auto started = Clock::now();
+    const auto before = gcp::probe::take_snapshot();
+    const auto step = std::chrono::nanoseconds(1'000'000'000LL / options.fps);
+    std::uint64_t accepted = 0, declined = 0, keyframe_requests = 0;
+    for (std::size_t i = 0; i < units.size() && g_running.load(); ++i) {
+        const auto due = started + step * static_cast<std::int64_t>(i);
+        if (due - started >= std::chrono::seconds(options.seconds)) break;
+        std::this_thread::sleep_until(due);
+        const auto feedback = source->takeFeedback();
+        if (feedback.keyframe_requested) {
+            // Static files cannot generate a new IDR on demand. This is an
+            // explicit limitation, not a replacement for encoder feedback.
+            ++keyframe_requests;
+        }
+        livekit::EncodedVideoSource::Frame frame;
+        frame.is_keyframe = units[i].keyframe;
+        frame.timestamp_us = static_cast<std::int64_t>(
+            (static_cast<std::uint64_t>(i) * 1'000'000u) /
+            static_cast<std::uint64_t>(options.fps));
+        frame.data = units[i].bytes;
+        if (source->captureFrame(frame)) ++accepted;
+        else ++declined;
+    }
+    const auto after = gcp::probe::take_snapshot();
+    const auto elapsed = std::chrono::duration<double>(Clock::now() - started).count();
+    gcp::probe::print_metrics(
+        "livekit_preencoded_h264", elapsed, accepted, declined,
+        before, after, options.width, options.height);
+    std::cout << "{\"access_units\":" << units.size()
+              << ",\"accepted\":" << accepted
+              << ",\"rejected\":" << declined
+              << ",\"unfulfilled_keyframe_requests\":" << keyframe_requests
+              << ",\"encoder\":\"external_preencoded_file\"}\n";
+    return accepted > 0 && declined == 0 ? 0 : 2;
+}
+
 int watch(livekit::Room& room, const Options& options) {
     struct Received {
         std::atomic<std::uint64_t> frames{0};
@@ -308,7 +412,10 @@ int watch(livekit::Room& room, const Options& options) {
     // callback after the subscription is cleared during shutdown.
     auto received = std::make_shared<Received>();
     const auto track_name = options.track == "screen"
-        ? std::string(kScreenTrackName) : std::string(kTrackName);
+        ? std::string(kScreenTrackName)
+        : options.track == "h264"
+            ? std::string(kEncodedTrackName)
+            : std::string(kTrackName);
     room.setOnVideoFrameCallback(options.sender, track_name,
         [received](const livekit::VideoFrame& frame, std::int64_t) {
             received->width.store(frame.width());
@@ -367,6 +474,7 @@ int run(const Options& options) {
                 throw std::runtime_error("LiveKit room connection failed");
             if (options.action == "publish") result = publish(*room, options);
             else if (options.action == "share-monitor") result = share_monitor(*room, options);
+            else if (options.action == "publish-h264") result = publish_h264_file(*room, options);
             else result = watch(*room, options);
             room->disconnect();
             room.reset();

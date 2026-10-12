@@ -48,3 +48,5 @@ During a real test run, pair this information with Windows Performance Monitor /
 **Release gate for hardware encode:** Capture proof + negotiated codec + driver/GPU encode engine activity + publisher/receiver frame timing + no unacceptable game 1%-low regression. Until these are documented, do not label the media path hardware-accelerated.
 
 Hardware-encoder integration and GPU-resident YUV conversion are **not included in this increment**.
+
+Hardware MFT activation and pre-encoded H.264 file publishing do not establish actual GPU encoder usage or game FPS impact. See [H.264 integration](h264-integration.md).
