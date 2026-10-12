@@ -4,6 +4,7 @@ add_executable(gcp-livekit-smoke
 )
 
 target_include_directories(gcp-livekit-smoke PRIVATE ../probe/src)
+target_compile_definitions(gcp-livekit-smoke PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 
 if(MSVC)
     target_compile_options(gcp-livekit-smoke PRIVATE /W4 /permissive- /EHsc)
