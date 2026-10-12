@@ -27,7 +27,7 @@ ctest --test-dir build/desktop -C Release --output-on-failure
 .\build\desktop\native\probe\Release\gcp-media-probe.exe --help
 ```
 
-The Qt desktop executable is `build/desktop/apps/desktop/Release/gcp-desktop.exe`; Qt runtime DLLs/plugins must be available. See [media probe instructions](docs/media-probe.md) for **real hardware** monitor and microphone testing.
+The Qt desktop executable is `build/desktop/Release/gcp-desktop.exe`; Qt runtime DLLs/plugins must be available. See [media probe instructions](docs/media-probe.md) for **real hardware** monitor and microphone testing.
 
 ## Run the backend
 

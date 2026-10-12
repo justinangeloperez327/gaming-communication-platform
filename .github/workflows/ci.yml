@@ -50,6 +50,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gcp-media-probe-win64
-          path: build/desktop/native/probe/Release/gcp-media-probe.exe
+          path: build/desktop/Release/gcp-media-probe.exe
           if-no-files-found: error
           retention-days: 7

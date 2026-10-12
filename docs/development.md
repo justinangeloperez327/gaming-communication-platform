@@ -14,7 +14,7 @@ ctest --test-dir build/desktop -C Release --output-on-failure
 
 Use your actual Qt install path. Qt DLLs and QML plugins must be discoverable when running outside Qt Creator. For future packaging, deploy the app with `windeployqt` and review Qt licensing.
 
-The separate Windows native media diagnostic is built in `build/desktop/native/probe/Release/gcp-media-probe.exe`. See [media probe](media-probe.md) for commands and limitations.
+The separate Windows native media diagnostic is built in `build/desktop/Release/gcp-media-probe.exe`. See [media probe](media-probe.md) for commands and limitations.
 
 ## Rust HTTP server
 

@@ -9,7 +9,7 @@ This diagnostic is separate from the Qt desktop UI. It measures operating-system
 - Windows microphone permission for command-line/desktop applications if testing audio capture.
 - CMake, Visual Studio 2022 C++ workload and Qt as documented in [development](development.md).
 
-After building, locate `gcp-media-probe.exe` under `build/desktop/native/probe/Release/`.
+After building, locate `gcp-media-probe.exe` under `build/desktop/Release/`.
 
 ## Commands
 
