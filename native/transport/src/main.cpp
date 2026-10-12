@@ -285,6 +285,10 @@ int share_monitor(livekit::Room& room, const Options& options) {
               << ",\"throttled\":" << stats.throttled
               << ",\"rejected\":" << stats.rejected
               << ",\"failures\":" << stats.failures
+              << ",\"readback_p50_ms\":"
+              << (static_cast<double>(stats.readback_p50_microseconds) / 1000.0)
+              << ",\"readback_p95_ms\":"
+              << (static_cast<double>(stats.readback_p95_microseconds) / 1000.0)
               << ",\"mean_gpu_readback_ms\":"
               << (stats.copied == 0 ? 0.0 :
                   static_cast<double>(stats.readback_microseconds) /

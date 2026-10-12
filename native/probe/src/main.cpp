@@ -1,4 +1,6 @@
 #include "audio_probe.h"
+#include "encoder_capabilities.h"
+#include "copy_benchmark.h"
 #include "capture_probe.h"
 #include "telemetry.h"
 
@@ -12,12 +14,15 @@
 #include <string_view>
 
 namespace {
-enum class Mode { help, monitors, audio, capture, microphone, test };
+enum class Mode { help, monitors, audio, capture, microphone, gpus, encoders, copy, test };
 
 struct Options {
     Mode mode = Mode::help;
     int monitor = 0;
     int seconds = 5;
+    int width = 640;
+    int height = 360;
+    int iterations = 64;
 };
 
 bool parse_int(std::string_view value, int& result) {
@@ -34,6 +39,9 @@ Options parse(int argc, char* argv[]) {
     else if (command == "--list-audio") options.mode = Mode::audio;
     else if (command == "--capture-monitor") options.mode = Mode::capture;
     else if (command == "--probe-mic") options.mode = Mode::microphone;
+    else if (command == "--list-gpus") options.mode = Mode::gpus;
+    else if (command == "--list-encoders") options.mode = Mode::encoders;
+    else if (command == "--benchmark-copy") options.mode = Mode::copy;
     else if (command == "--self-test") options.mode = Mode::test;
     else if (command == "--help") options.mode = Mode::help;
     else throw std::invalid_argument("Unknown command");
@@ -45,11 +53,23 @@ Options parse(int argc, char* argv[]) {
         }
     }
     for (; i < argc; ++i) {
-        if (std::string_view(argv[i]) == "--seconds" && ++i < argc) {
-            if (!parse_int(argv[i], options.seconds) ||
-                options.seconds < 1 || options.seconds > 60) {
-                throw std::invalid_argument("--seconds must be between 1 and 60");
-            }
+        const std::string_view option = argv[i];
+        if (option == "--seconds") {
+            if (++i == argc || !parse_int(argv[i], options.seconds) ||
+                options.seconds < 1 || options.seconds > 60)
+                throw std::invalid_argument("--seconds must be 1..60");
+        } else if (options.mode == Mode::copy && option == "--width") {
+            if (++i == argc || !parse_int(argv[i], options.width) ||
+                options.width < 160 || options.width > 3840)
+                throw std::invalid_argument("--width must be 160..3840");
+        } else if (options.mode == Mode::copy && option == "--height") {
+            if (++i == argc || !parse_int(argv[i], options.height) ||
+                options.height < 90 || options.height > 2160)
+                throw std::invalid_argument("--height must be 90..2160");
+        } else if (options.mode == Mode::copy && option == "--iterations") {
+            if (++i == argc || !parse_int(argv[i], options.iterations) ||
+                options.iterations < 1 || options.iterations > 1000)
+                throw std::invalid_argument("--iterations must be 1..1000");
         } else {
             throw std::invalid_argument("Unexpected command argument");
         }
@@ -66,6 +86,9 @@ void help() {
         "Gaming Communication Platform - native media diagnostic\n"
         "  --list-monitors                 List display indices\n"
         "  --list-audio                    List active capture/render endpoints\n"
+        "  --list-gpus                     Enumerate DXGI graphics adapters\n"
+        "  --list-encoders                 Enumerate Media Foundation encoder candidates\n"
+        "  --benchmark-copy [--width 640] [--height 360] [--iterations 64]\n"
         "  --capture-monitor N [--seconds S]  Count captured GPU frames (1-60 s)\n"
         "  --probe-mic [--seconds S]       Count microphone audio frames (1-60 s)\n"
         "  --self-test                     Validate argument/telemetry primitives\n"
@@ -91,6 +114,20 @@ int self_test() {
     if (parsed.mode != Mode::capture || parsed.monitor != 2 || parsed.seconds != 10) {
         return 1;
     }
+    char copy_cmd[] = "--benchmark-copy";
+    char width_flag[] = "--width";
+    char wide[] = "1920";
+    char* copy_args[] = {name, copy_cmd, width_flag, wide};
+    const auto copy_test = parse(4, copy_args);
+    if (copy_test.mode != Mode::copy || copy_test.width != 1920 ||
+        copy_test.height != 360 || copy_test.iterations != 64) return 1;
+    char bad_width[] = "-50";
+    char* invalid[] = {name, copy_cmd, width_flag, bad_width};
+    try {
+        (void)parse(4, invalid);
+        return 1;
+    } catch (const std::invalid_argument&) {
+    }
     std::cout << "Native media probe self-test passed\n";
     return 0;
 }
@@ -102,10 +139,16 @@ int main(int argc, char* argv[]) {
         if (options.mode == Mode::help) { help(); return 0; }
         if (options.mode == Mode::test) return self_test();
 
+        if (options.mode == Mode::copy)
+            return gcp::probe::run_copy_benchmark(
+                options.width, options.height, options.iterations);
+
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
         switch (options.mode) {
             case Mode::monitors: gcp::probe::list_monitors(); return 0;
             case Mode::audio: gcp::probe::list_audio_devices(); return 0;
+            case Mode::gpus: gcp::probe::list_gpu_adapters(); return 0;
+            case Mode::encoders: gcp::probe::list_video_encoder_candidates(); return 0;
             case Mode::capture:
                 return gcp::probe::run_monitor_probe(options.monitor, options.seconds);
             case Mode::microphone:
