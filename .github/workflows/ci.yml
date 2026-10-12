@@ -26,7 +26,7 @@ jobs:
         run: cargo test --workspace
 
   desktop:
-    name: Windows Qt desktop build
+    name: Windows Qt and native media build
     runs-on: windows-2022
     steps:
       - name: Checkout
@@ -43,6 +43,13 @@ jobs:
       - name: Build
         shell: pwsh
         run: cmake --build build/desktop --config Release --parallel
-      - name: Smoke test
+      - name: Smoke tests
         shell: pwsh
         run: ctest --test-dir build/desktop -C Release --output-on-failure
+      - name: Upload native diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcp-media-probe-win64
+          path: build/desktop/Release/gcp-media-probe.exe
+          if-no-files-found: error
+          retention-days: 7
