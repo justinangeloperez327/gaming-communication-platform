@@ -43,7 +43,7 @@ $env:LIVEKIT_TOKEN = "<viewer-token>"
 ## Technical characteristics
 
 - Windows Graphics Capture + Direct3D11 reads BGRA display frames from the selected monitor.
-- A GPU-to-CPU staging texture readback feeds the SDK via CPU-backed BGRA VideoFrames. At least two copies occur on the CPU: this is **not** zero-copy.
+- A GPU-to-CPU staging texture readback feeds the SDK via CPU-backed BGRA VideoFrames. The latest captured BGRA pixel buffer is handed to the publisher by ownership swap, avoiding the previous extra full-frame copy. Copying from mapped staging memory and into the LiveKit VideoFrame still occurs: this is **not** zero-copy.
 - A **single latest-frame slot** bounds queued memory. Capture may discard changed frames while the publisher catches up.
 - Monitors up to 1920×1080 are supported, no scaling, HDR, resizing, game-window capture, or device-loss recovery yet.
 - Frame rate is capped at 60 fps; no audio is captured.

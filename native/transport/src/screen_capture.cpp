@@ -13,6 +13,8 @@
 #include <winrt/Windows.Graphics.DirectX.h>
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -54,6 +56,9 @@ struct CaptureState {
     std::atomic<std::uint64_t> rejected{0};
     std::atomic<std::uint64_t> failures{0};
     std::atomic<std::uint64_t> readback_microseconds{0};
+    // Last 256 GPU staging/map/readback durations; no unbounded telemetry.
+    std::array<std::uint64_t, 256> readback_samples{};
+    std::uint64_t sample_count = 0;
 
     CaptureState(int w, int h, int fps) : width(w), height(h), max_fps(fps) {}
 
@@ -126,7 +131,12 @@ struct CaptureState {
             latest.swap(pixels);
             ++sequence;
         }
-        readback_microseconds.fetch_add(static_cast<std::uint64_t>(micros));
+        const auto measurement = static_cast<std::uint64_t>(
+            (std::max<std::int64_t>)(0, micros));
+        readback_samples[static_cast<std::size_t>(
+            sample_count % readback_samples.size())] = measurement;
+        ++sample_count;
+        readback_microseconds.fetch_add(measurement);
         copied.fetch_add(1);
         last_sample = now;
     }
@@ -241,7 +251,9 @@ bool ScreenCapture::take_latest(std::uint64_t& previous_sequence, ScreenFrame& t
     const auto state = impl_->state;
     std::lock_guard lock(state->frame_mutex);
     if (state->sequence == previous_sequence) return false;
-    target.bgra = state->latest; // Explicit extra CPU copy, measured in prototype
+    // Exchange ownership of the latest CPU buffer instead of copying it.
+    // The next frame replaces this slot; the consumer owns its pixel buffer.
+    target.bgra.swap(state->latest);
     target.width = state->width;
     target.height = state->height;
     target.sequence = state->sequence;
@@ -250,9 +262,18 @@ bool ScreenCapture::take_latest(std::uint64_t& previous_sequence, ScreenFrame& t
 }
 
 ScreenCaptureStats ScreenCapture::stats() const {
-    const auto& s = *impl_->state;
+    auto& s = *impl_->state;
+    std::lock_guard lock(s.graphics_mutex);
+    const auto used = static_cast<std::size_t>(
+        (std::min<std::uint64_t>)(s.sample_count, s.readback_samples.size()));
+    std::array<std::uint64_t, 256> sorted = s.readback_samples;
+    std::sort(sorted.begin(), sorted.begin() + used);
+    const auto p50 = used > 0 ? sorted[(used - 1) / 2] : 0;
+    const auto p95 = used > 0 ? sorted[
+        static_cast<std::size_t>((used - 1) * 0.95)] : 0;
     return {s.arrivals.load(), s.copied.load(), s.throttled.load(),
-            s.rejected.load(), s.failures.load(), s.readback_microseconds.load()};
+            s.rejected.load(), s.failures.load(), s.readback_microseconds.load(),
+            p50, p95};
 }
 
 int ScreenCapture::width() const { return impl_->state->width; }

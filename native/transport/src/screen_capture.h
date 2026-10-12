@@ -20,6 +20,8 @@ struct ScreenCaptureStats {
     std::uint64_t rejected = 0;
     std::uint64_t failures = 0;
     std::uint64_t readback_microseconds = 0;
+    std::uint64_t readback_p50_microseconds = 0;
+    std::uint64_t readback_p95_microseconds = 0;
 };
 
 // Explicitly authorized, bounded test pipeline. Uses a staging D3D11
