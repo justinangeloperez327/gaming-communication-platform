@@ -35,3 +35,22 @@ This is stronger evidence than the previous **MFT activation/negotiation** probe
 - Resource profiling: CPU/GPU/RAM, game average and 1% low frame rates under realistic workload.
 
 Sources: [Microsoft asynchronous MFTs](https://learn.microsoft.com/en-us/windows/win32/medfound/asynchronous-mfts), [hardware MFTs](https://learn.microsoft.com/en-us/windows/win32/medfound/hardware-mfts).
+
+## Group 10 GPU-side BGRA-to-NV12 conversion
+
+The hardware-encoder executable additionally accepts `--source bgra`. It generates synthetic SDR BGRA frames on the CPU, uploads them to the same D3D11 hardware device used by the encoder, converts BGRA to NV12 through an `ID3D11VideoProcessor`, and wraps the resulting GPU-resident NV12 texture in a Media Foundation sample. The encoder then consumes this NV12 sample through the existing asynchronous input path.
+
+```powershell
+.\build\desktop\Release\gcp-hardware-h264.exe --run --source bgra `
+  --width 1280 --height 720 --fps 30 --frames 30 --bitrate 4000000 --timeout 30
+```
+
+The default `--source nv12` retains the earlier CPU-generated NV12 upload path. The new BGRA mode is fail-closed: if the actual driver does not support BGRA video-processor input, NV12 output, or the chosen hardware encoder, it reports an error rather than silently switching to CPU conversion.
+
+The conversion code uses `ID3D11VideoProcessorEnumerator::CheckVideoProcessorFormat` to require supported formats and `VideoProcessorBlt` to perform GPU-side conversion. The output texture is allocated per in-flight sample and is not reused while the asynchronous encoder may retain it. This avoids unsafe texture overwrite but increases peak GPU allocation during a test. The encoder diagnostic is limited to 60 frames and remains for feasibility testing.
+
+**What this establishes only when tested on a physical GPU:** whether a compatible driver can process synthetic BGRA textures into NV12 GPU surfaces and provide them to an asynchronous hardware-class H.264 encoder.
+
+**Not included:** Windows Graphics Capture wiring, game/window capture, actual encoder backend/GPU-engine telemetry, LiveKit publication, HDR and colorimetry verification, frame queue/pool optimization, or sustained 1080p60 validation. The program still creates the test input pixels on the CPU before uploading them; the *conversion* itself avoids CPU readback.
+
+GitHub CI compiles and runs the CLI self-test, including `--source` validation. It does not execute the GPU-dependent `--run` command. No hardware-encoder performance results can be inferred from a passing CI run.

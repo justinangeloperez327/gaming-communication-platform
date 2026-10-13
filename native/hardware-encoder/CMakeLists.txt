@@ -1,5 +1,6 @@
 add_executable(gcp-hardware-h264
     src/main.cpp
+    src/gpu_color_converter.cpp
 )
 target_compile_features(gcp-hardware-h264 PRIVATE cxx_std_20)
 target_compile_definitions(gcp-hardware-h264 PRIVATE

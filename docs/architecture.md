@@ -29,3 +29,7 @@ Gaming Communication Platform is a Windows-first communication application that 
 7. Enforce authentication and authorization before introducing private media rooms or messaging.
 
 A modular monolith backend is the initial deployment model.
+
+## GPU conversion prototype
+
+The hardware-encoder diagnostic can convert a synthetic D3D11 BGRA texture to an NV12 texture on the same device using the native D3D11 video processor, then hand it to the asynchronous hardware-class encoder. The runtime hardware test is not automated in CI. Live capture and publishing remain separate paths; this work does not claim they are wired together.
