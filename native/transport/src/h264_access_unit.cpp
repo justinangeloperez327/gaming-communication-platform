@@ -48,7 +48,7 @@ void append_nal(VerifiedAccessUnit& result, NalSummary& summary,
 }
 
 VerifiedAccessUnit validate(const std::vector<std::uint8_t>& bytes,
-                            bool has_start_codes) {
+                            bool has_start_codes, bool require_sets = true) {
     VerifiedAccessUnit result;
     NalSummary summary;
     if (has_start_codes) {
@@ -91,7 +91,7 @@ VerifiedAccessUnit validate(const std::vector<std::uint8_t>& bytes,
         }
     }
     if (!summary.slice) throw std::invalid_argument("H.264 AU has no video slice");
-    if (summary.idr && (!summary.sps || !summary.pps))
+    if (require_sets && summary.idr && (!summary.sps || !summary.pps))
         throw std::invalid_argument("H.264 IDR is missing SPS/PPS");
     if (result.annexb.size() > kMaxBytes)
         throw std::invalid_argument("Normalized H.264 AU too large");
@@ -102,11 +102,53 @@ VerifiedAccessUnit validate(const std::vector<std::uint8_t>& bytes,
 } // namespace
 
 VerifiedAccessUnit verify_h264_access_unit(
-    const std::vector<std::uint8_t>& encoded) {
+    const std::vector<std::uint8_t>& encoded,
+    const std::vector<std::uint8_t>& sequence_header) {
     if (encoded.empty() || encoded.size() > kMaxBytes)
         throw std::invalid_argument("H.264 access unit size is invalid");
     const bool annexb = prefix_at(encoded, 0) != 0;
-    return validate(encoded, annexb);
+    auto result = validate(encoded, annexb, false);
+    if (!result.keyframe || result.contains_parameter_sets)
+        return result;
+    if (sequence_header.empty())
+        throw std::invalid_argument("H.264 IDR is missing SPS/PPS");
+
+    // Windows MF_MT_MPEG_SEQUENCE_HEADER contains Annex-B SPS and PPS NALs.
+    // Allow only actual parameter sets, never arbitrary extra slices/SEI.
+    // Bound the metadata separately to prevent amplification.
+    if (sequence_header.size() > 64u * 1024u)
+        throw std::invalid_argument("H.264 sequence header is too large");
+    VerifiedAccessUnit sets;
+    NalSummary summary;
+    std::size_t at = 0;
+    while (at < sequence_header.size()) {
+        const auto marker = prefix_at(sequence_header, at);
+        if (!marker || at + marker >= sequence_header.size())
+            throw std::invalid_argument("Invalid MF H.264 sequence-header framing");
+        const auto first = at + marker;
+        std::size_t next = first;
+        while (next < sequence_header.size() &&
+               !prefix_at(sequence_header, next)) ++next;
+        auto last = next;
+        if (last == sequence_header.size()) {
+            while (last > first + 1 && sequence_header[last - 1] == 0) --last;
+        }
+        const auto type = sequence_header[first] & 0x1fu;
+        if (type != 7 && type != 8)
+            throw std::invalid_argument("MF sequence header is not SPS/PPS only");
+        append_nal(sets, summary, sequence_header, first, last);
+        at = next;
+    }
+    if (!summary.sps || !summary.pps)
+        throw std::invalid_argument("MF sequence header is missing SPS/PPS");
+    if (sets.annexb.size() + result.annexb.size() > kMaxBytes)
+        throw std::invalid_argument("H.264 AU exceeds limit after parameter sets");
+    sets.annexb.insert(sets.annexb.end(), result.annexb.begin(),
+                       result.annexb.end());
+    auto verified = validate(sets.annexb, true);
+    if (!verified.keyframe || !verified.contains_parameter_sets)
+        throw std::invalid_argument("Invalid completed H.264 IDR");
+    return verified;
 }
 
 bool h264_access_unit_self_test() {
@@ -124,6 +166,23 @@ bool h264_access_unit_self_test() {
     };
     const auto b = verify_h264_access_unit(avcc);
     if (!b.keyframe || b.annexb != a.annexb) return false;
+    const std::vector<std::uint8_t> media_sets{
+        0,0,0,1,0x67,0x42,0x11,0,0,1,0x68,0xce
+    };
+    const auto recovered = verify_h264_access_unit(
+        {0,0,0,1,0x65,0x88}, media_sets);
+    if (!recovered.keyframe || !recovered.contains_parameter_sets ||
+        recovered.annexb != a.annexb) return false;
+    try {
+        (void)verify_h264_access_unit(
+            {0,0,1,0x65,0x88}, {0,0,1,0x06,0x01});
+        return false;
+    } catch (const std::invalid_argument&) {}
+    try {
+        (void)verify_h264_access_unit(
+            {0,0,1,0x65,0x88}, {0,0,1,0x67,0x42,0x11});
+        return false;
+    } catch (const std::invalid_argument&) {}
     const auto delta = verify_h264_access_unit({0,0,1,0x41,0x88});
     if (delta.keyframe || delta.contains_parameter_sets) return false;
     try {
