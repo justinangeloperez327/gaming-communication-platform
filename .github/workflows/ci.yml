@@ -34,6 +34,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Temporary auth lockfile synchronization
+        run: |
+          cargo generate-lockfile
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          payload = base64.b64encode(Path('Cargo.lock').read_bytes()).decode('ascii')
+          print('GCP_AUTH_CARGO_LOCK_BEGIN')
+          for i in range(0, len(payload), 4096):
+              print('GCP_AUTH_CARGO_LOCK:' + payload[i:i+4096])
+          print('GCP_AUTH_CARGO_LOCK_END')
+          PY
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint

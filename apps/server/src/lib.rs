@@ -1,6 +1,12 @@
 pub mod database;
+pub mod auth;
 
-use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
+use axum::{
+    Json, Router,
+    extract::{DefaultBodyLimit, State},
+    http::StatusCode,
+    routing::{get, post},
+};
 use serde::Serialize;
 use sqlx::PgPool;
 
@@ -11,8 +17,8 @@ struct HealthResponse {
 }
 
 #[derive(Clone, Default)]
-struct AppState {
-    database: Option<PgPool>,
+pub(crate) struct AppState {
+    pub(crate) database: Option<PgPool>,
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -47,6 +53,12 @@ pub fn router_with_database(database: Option<PgPool>) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/ready", get(ready))
+        .route("/v1/auth/register", post(auth::register))
+        .route("/v1/auth/login", post(auth::login))
+        .route("/v1/auth/refresh", post(auth::refresh))
+        .route("/v1/auth/logout", post(auth::logout))
+        .route("/v1/me", get(auth::me).patch(auth::update_profile))
+        .layer(DefaultBodyLimit::max(8 * 1024))
         .with_state(AppState { database })
 }
 

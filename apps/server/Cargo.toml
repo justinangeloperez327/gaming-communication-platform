@@ -7,10 +7,13 @@ description = "HTTP API foundation for Gaming Communication Platform"
 publish = false
 
 [dependencies]
+argon2 = "=0.5.3"
+rand = "=0.8.5"
+sha2 = "=0.10.9"
 axum = "0.8"
 serde = { version = "1", features = ["derive"] }
 sqlx = { version = "=0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres", "migrate", "macros", "uuid"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
