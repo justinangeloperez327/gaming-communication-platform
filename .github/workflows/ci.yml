@@ -11,6 +11,22 @@ jobs:
   rust:
     name: Rust API checks
     runs-on: ubuntu-latest
+    env:
+      GCP_TEST_DATABASE_URL: postgres://gcp_test:gcp_test@127.0.0.1:5432/gcp_test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: gcp_test
+          POSTGRES_USER: gcp_test
+          POSTGRES_PASSWORD: gcp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gcp_test -d gcp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,9 +37,9 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
       - name: Offline physical GPU evidence validator tests
         run: python3 -m unittest discover -s scripts -p 'test_validate_hardware_stream.py'
       - name: Frame-time comparison tests
