@@ -99,3 +99,7 @@ When Windows Graphics Capture delivers no fresh frames (e.g. a static desktop), 
 **Physical acceptance remains mandatory:** run at least three paired game workloads, validate that the remote receiver decoded real frames, inspect GPU Video Encode engine activity, and compare CPU/private memory and game frame-time results. The asynchronous hardware MFT may retain its own surfaces internally; no memory-stability guarantee can be inferred from the bounded latest-frame capture slot. A 300-second cap is a diagnostic safety bound, **not proof of stable long-term sessions or optimized 1080p60**.
 
 Hosted CI only exercises parsing, consent, build and self-tests. It does not start WGC, GPU hardware encoding, a LiveKit server or actual gameplay.
+
+## Group 16 evidence acceptance
+
+Use the [physical Windows GPU acceptance runbook](physical-gpu-acceptance.md) to sample Windows Video Encode counters and validate one pair of publisher/receiver JSON logs. A positive transport observation is not a release qualification or attribution of GPU hardware use.
