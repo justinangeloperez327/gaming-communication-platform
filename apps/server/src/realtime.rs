@@ -314,8 +314,12 @@ async fn handle(
                         break;
                     }
                     match encode(&event) {
-                        Ok(payload) if send_text(&mut socket, payload).await => {}
-                        _ => break,
+                        Ok(payload) => {
+                            if !send_text(&mut socket, payload).await {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
                     }
                 }
                 Ok(_) => {}
