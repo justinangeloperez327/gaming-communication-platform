@@ -140,28 +140,27 @@ int publish(const Options& options) {
         if (!track) throw std::runtime_error("H.264 screen track publication failed");
 
         std::uint64_t accepted = 0, rejected = 0, skipped = 0;
-        std::uint64_t unhandled_keyframes = 0, unhandled_rate = 0;
+        std::uint64_t ignored_bitrate_feedback = 0;
+        gcp::media::HardwareH264FeedbackStats feedback_stats;
         std::int64_t last_ts = -1;
         bool first_idr_sent = false;
         const gcp::media::HardwareH264Callback emit =
             [&](const gcp::media::HardwareH264AccessUnit& encoded) -> bool {
                 if (interrupted.load()) return false;
-                auto verified = gcp::transport::verify_h264_access_unit(encoded.bytes);
+                auto verified = gcp::transport::verify_h264_access_unit(
+                    encoded.bytes, encoded.parameter_sets);
                 if (encoded.keyframe && !verified.keyframe)
                     throw std::runtime_error("Encoder's keyframe metadata is inconsistent");
                 if (encoded.timestamp_us < 0 || encoded.timestamp_us < last_ts)
                     throw std::runtime_error("Invalid H.264 output timestamp");
                 last_ts = encoded.timestamp_us;
 
-                const auto feedback = source->takeFeedback();
-                if (feedback.keyframe_requested) ++unhandled_keyframes;
-                if (feedback.rate_control.has_value()) ++unhandled_rate;
+                // Feedback is polled BEFORE ProcessInput in the encoder loop,
+                // not while emitting packets that have already been encoded.
                 if (!first_idr_sent && !verified.keyframe) {
                     ++skipped;
                     return true;
                 }
-                if (verified.keyframe) first_idr_sent = true;
-
                 livekit::EncodedVideoSource::Frame frame;
                 frame.is_keyframe = verified.keyframe;
                 frame.timestamp_us = encoded.timestamp_us;
@@ -171,18 +170,43 @@ int publish(const Options& options) {
                     return false;
                 }
                 ++accepted;
+                if (verified.keyframe) first_idr_sent = true;
                 return true;
             };
 
+        const gcp::media::HardwareH264FeedbackCallback fetch_feedback = [&]() {
+            gcp::media::HardwareH264Feedback requested;
+            const auto feedback = source->takeFeedback();
+            requested.force_keyframe = feedback.keyframe_requested;
+            if (feedback.rate_control.has_value()) {
+                const auto bitrate = feedback.rate_control->target_bitrate_bps;
+                // The native control layer supports only bounded UINT32
+                // bitrates. Reject unsupported targets explicitly.
+                if (bitrate >= 100'000 && bitrate <= 16'000'000) {
+                    requested.target_bitrate_bps =
+                        static_cast<std::uint32_t>(bitrate);
+                } else {
+                    ++ignored_bitrate_feedback;
+                }
+            }
+            return requested;
+        };
+
         std::cerr << "SCREEN SHARING ACTIVE: monitor " << p.monitor_index
                   << " is transmitted to the LiveKit room. Ctrl+C to stop.\n";
-        const auto result = gcp::media::encode_monitor_h264(p, emit);
+        const auto result = gcp::media::encode_monitor_h264(
+            p, emit, fetch_feedback, &feedback_stats);
         std::cout << "{\"probe\":\"hardware_h264_livekit\""
                   << ",\"packets_accepted\":" << accepted
                   << ",\"packets_rejected\":" << rejected
                   << ",\"pre_idr_skipped\":" << skipped
-                  << ",\"unhandled_keyframe_feedback\":" << unhandled_keyframes
-                  << ",\"unhandled_rate_feedback\":" << unhandled_rate
+                  << ",\"keyframe_requests\":" << feedback_stats.keyframe_requests
+                  << ",\"keyframe_controls_accepted\":" << feedback_stats.keyframe_controls_accepted
+                  << ",\"keyframe_controls_unsupported\":" << feedback_stats.keyframe_controls_unsupported
+                  << ",\"bitrate_requests\":" << feedback_stats.bitrate_requests
+                  << ",\"bitrate_controls_accepted\":" << feedback_stats.bitrate_controls_accepted
+                  << ",\"bitrate_controls_unsupported\":" << feedback_stats.bitrate_controls_unsupported
+                  << ",\"out_of_range_bitrate_feedback\":" << ignored_bitrate_feedback
                   << ",\"gpu_encoder_engine_verified\":false"
                   << ",\"receiver_playback_verified\":false}\n";
         room->disconnect();

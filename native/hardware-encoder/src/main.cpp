@@ -11,6 +11,8 @@
 #include <mfidl.h>
 #include <mfobjects.h>
 #include <mftransform.h>
+#include <codecapi.h>
+#include <oaidl.h>
 #include <wrl.h>
 #include <wrl/client.h>
 
@@ -429,6 +431,30 @@ void receive_output(IMFTransform* encoder, DWORD output_id,
         require(bytes->Unlock(), "Unlock encoded H.264 payload");
         packet.timestamp_us = timestamp / 10;
         packet.keyframe = is_keyframe;
+        if (is_keyframe) {
+            // Windows encoders may attach Annex-B SPS/PPS to their H.264
+            // output media type rather than include them in every IDR packet.
+            ComPtr<IMFMediaType> current_type;
+            if (SUCCEEDED(encoder->GetOutputCurrentType(
+                    output_id, current_type.GetAddressOf()))) {
+                UINT32 size = 0;
+                if (SUCCEEDED(current_type->GetBlobSize(
+                        MF_MT_MPEG_SEQUENCE_HEADER, &size))) {
+                    if (size > 64u * 1024u)
+                        throw std::runtime_error(
+                            "Invalid MF H.264 parameter-set header size");
+                    if (size != 0) {
+                        packet.parameter_sets.resize(size);
+                        UINT32 actual = 0;
+                        require(current_type->GetBlob(
+                            MF_MT_MPEG_SEQUENCE_HEADER,
+                            packet.parameter_sets.data(), size, &actual),
+                            "Read H.264 parameter sets");
+                        packet.parameter_sets.resize(actual);
+                    }
+                }
+            }
+        }
         if (!(*on_encoded)(packet))
             throw std::runtime_error("Hardware H.264 transport rejected encoded packet");
     }
@@ -439,7 +465,9 @@ void receive_output(IMFTransform* encoder, DWORD output_id,
 
 bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                       const Options& options, OutputRecord& totals,
-                      const gcp::media::HardwareH264Callback* on_encoded) {
+                      const gcp::media::HardwareH264Callback* on_encoded,
+                      const gcp::media::HardwareH264FeedbackCallback* feedback,
+                      gcp::media::HardwareH264FeedbackStats* feedback_stats) {
     ComPtr<IMFTransform> encoder;
     if (FAILED(activation->ActivateObject(IID_PPV_ARGS(encoder.GetAddressOf()))))
         return false;
@@ -481,6 +509,12 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
 
     MFT_OUTPUT_STREAM_INFO info{};
     require(encoder->GetOutputStreamInfo(output_id, &info), "Output stream info");
+
+    // ICodecAPI is available on some, not all, hardware-class MFTs.
+    // Unsupported controls are recorded rather than falsely reported as
+    // successfully applied or failing an otherwise valid diagnostic.
+    ComPtr<ICodecAPI> codec;
+    (void)encoder.As(&codec);
     ComPtr<IMFMediaEventGenerator> events;
     require(encoder.As(&events), "Async IMFMediaEventGenerator");
     auto pump = Microsoft::WRL::Make<EventPump>();
@@ -529,6 +563,38 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                 } else {
                     sample = gpu.frame(options, submitted);
                 }
+                if (feedback && *feedback) {
+                    const auto request = (*feedback)();
+                    auto set_codec_u32 = [&](const GUID& property, ULONG value) {
+                        if (!codec) return false;
+                        VARIANT requested{};
+                        requested.vt = VT_UI4;
+                        requested.ulVal = value;
+                        return SUCCEEDED(codec->SetValue(&property, &requested));
+                    };
+                    if (request.force_keyframe) {
+                        if (feedback_stats) ++feedback_stats->keyframe_requests;
+                        const bool applied = set_codec_u32(
+                            CODECAPI_AVEncVideoForceKeyFrame, 1);
+                        if (feedback_stats) {
+                            if (applied) ++feedback_stats->keyframe_controls_accepted;
+                            else ++feedback_stats->keyframe_controls_unsupported;
+                        }
+                    }
+                    if (request.target_bitrate_bps != 0) {
+                        if (feedback_stats) ++feedback_stats->bitrate_requests;
+                        const bool in_range =
+                            request.target_bitrate_bps >= 100'000 &&
+                            request.target_bitrate_bps <= 16'000'000;
+                        const bool applied = in_range && set_codec_u32(
+                            CODECAPI_AVEncCommonMeanBitRate,
+                            request.target_bitrate_bps);
+                        if (feedback_stats) {
+                            if (applied) ++feedback_stats->bitrate_controls_accepted;
+                            else ++feedback_stats->bitrate_controls_unsupported;
+                        }
+                    }
+                }
                 require(encoder->ProcessInput(input_id, sample.Get(), 0),
                         "GPU NV12 ProcessInput");
                 ++submitted;
@@ -573,7 +639,9 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
 }
 
 int run(const Options& options,
-        const gcp::media::HardwareH264Callback* on_encoded = nullptr) {
+        const gcp::media::HardwareH264Callback* on_encoded = nullptr,
+        const gcp::media::HardwareH264FeedbackCallback* feedback = nullptr,
+        gcp::media::HardwareH264FeedbackStats* feedback_stats = nullptr) {
     if (options.use_monitor_capture)
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
     MfLifetime media;
@@ -590,7 +658,8 @@ int run(const Options& options,
     for (UINT32 i = 0; i < list.count; ++i) {
         OutputRecord output;
         try {
-            if (encode_candidate(list.entries[i], gpu, options, output, on_encoded)) {
+            if (encode_candidate(list.entries[i], gpu, options, output,
+                                 on_encoded, feedback, feedback_stats)) {
                 const auto elapsed =
                     std::chrono::duration<double>(Clock::now() - start).count();
                 std::cout << "{\"probe\":\"hardware_async_h264\""
@@ -624,7 +693,9 @@ int run(const Options& options,
 namespace gcp::media {
 int encode_monitor_h264(
     const HardwareH264Profile& profile,
-    const HardwareH264Callback& callback) {
+    const HardwareH264Callback& callback,
+    const HardwareH264FeedbackCallback& feedback,
+    HardwareH264FeedbackStats* feedback_stats) {
     if (!callback)
         throw std::invalid_argument("H.264 output callback is required");
     Options options;
@@ -640,7 +711,8 @@ int encode_monitor_h264(
     options.use_monitor_capture = true;
     if (!valid(options))
         throw std::invalid_argument("Monitor H.264 source needs explicit consent and valid dimensions");
-    return run(options, &callback);
+    return run(options, &callback,
+               feedback ? &feedback : nullptr, feedback_stats);
 }
 } // namespace gcp::media
 

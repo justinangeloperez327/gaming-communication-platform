@@ -69,3 +69,19 @@ GitHub-hosted Windows CI can compile the native bridge and run the **H.264 acces
 A zero exit status on physical hardware means the hardware-class Media Foundation encoder drained its output and the LiveKit SDK accepted at least one complete keyframe-bearing stream. **It does not independently prove remote playback.** The receiving client must show decoded frames, and a controlled gaming-PC benchmark must confirm resource and FPS impact.
 
 The current diagnostic deliberately uses a finite frame budget. Production work still requires keyframe generation, bitrate adaptation, longer-lived lifecycle, capture resizing/recovery, frame pacing, buffering limits, privacy controls and native UI integration.
+
+## Group 13 — hardware encoder interoperability and SFU feedback
+
+Windows hardware MFTs may store H.264 SPS/PPS in the output type's `MF_MT_MPEG_SEQUENCE_HEADER` attribute. The diagnostic now reads up to 64 KiB of **Annex-B encoded parameter sets** from that metadata for IDR samples. If the IDR access unit lacks SPS/PPS, the publisher validates that the metadata contains only SPS/PPS NAL units, prepends them, and verifies the resulting access unit again. Without a valid parameter set, transmission is rejected. This does not make the parser compatible with arbitrary vendor packet formats or profiles.
+
+LiveKit's `EncodedVideoSource::takeFeedback()` is now polled on **hardware encoder input readiness**, not in the encoded-output callback. When LiveKit requests a keyframe, the diagnostic attempts `ICodecAPI::SetValue(CODECAPI_AVEncVideoForceKeyFrame)` before the next `ProcessInput`. A bitrate request between **100 kbps and 16 Mbps** is passed via `CODECAPI_AVEncCommonMeanBitRate`. Requests outside the bounds are rejected. Missing `ICodecAPI`, unsupported driver properties, or `SetValue` errors are counted independently. A successful `SetValue` means **driver control API accepted the request**, not that the encoder produced the expected keyframe or achieved the new bitrate; those outcomes need encoded-output measurements.
+
+The publisher emits distinct diagnostic counters for keyframe and bitrate requests, successful control API calls, unsupported control attempts, and out-of-bounds rate requests. These are **not network-side delivery or decoder statistics**.
+
+### Validation
+
+The hardware publisher self-test now includes H.264 Annex-B/AVCC parser coverage for recovering an IDR with an externally supplied SPS/PPS header and rejecting incomplete/malformed headers. Hosted CI cannot exercise hardware `ICodecAPI` requests against a physical GPU and cannot verify LiveKit SFU feedback actually arrives. Confirm feedback and decoded frames using two live room participants on a physical Windows GPU before claiming adaptive streaming.
+
+### Remaining engineering gates
+
+Hardware H.264 output format adaptation beyond strict Annex-B/4-byte AVCC, verified keyframe and bitrate responses, first-IDR recovery on late subscription, end-to-end receiver frame counts/latency, GPU Video Encode engine utilization, game frame-time/1%-low FPS impact, and longer-lived production session handling remain unverified or unimplemented.
