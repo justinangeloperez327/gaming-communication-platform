@@ -50,21 +50,33 @@ fn parse_id(raw: &str) -> Result<Uuid, AuthError> {
 fn valid_body(body: &str) -> bool {
     (1..=4000).contains(&body.len())
         && !body.trim().is_empty()
-        && !body.chars().any(|c| c == '\0' || (c.is_control() && c != '\n' && c != '\t'))
+        && !body
+            .chars()
+            .any(|c| c == '\0' || (c.is_control() && c != '\n' && c != '\t'))
 }
 
 fn view(row: &PgRow) -> Result<MessageView, AuthError> {
     let id: Uuid = row.try_get("id").map_err(|_| AuthError::Unavailable)?;
-    let channel: Uuid = row.try_get("channel_id").map_err(|_| AuthError::Unavailable)?;
-    let author: Uuid = row.try_get("author_id").map_err(|_| AuthError::Unavailable)?;
+    let channel: Uuid = row
+        .try_get("channel_id")
+        .map_err(|_| AuthError::Unavailable)?;
+    let author: Uuid = row
+        .try_get("author_id")
+        .map_err(|_| AuthError::Unavailable)?;
     Ok(MessageView {
         id: id.to_string(),
         channel_id: channel.to_string(),
         author_id: author.to_string(),
         body: row.try_get("body").map_err(|_| AuthError::Unavailable)?,
-        created_at_ms: row.try_get("created_at_ms").map_err(|_| AuthError::Unavailable)?,
-        edited_at_ms: row.try_get("edited_at_ms").map_err(|_| AuthError::Unavailable)?,
-        deleted_at_ms: row.try_get("deleted_at_ms").map_err(|_| AuthError::Unavailable)?,
+        created_at_ms: row
+            .try_get("created_at_ms")
+            .map_err(|_| AuthError::Unavailable)?,
+        edited_at_ms: row
+            .try_get("edited_at_ms")
+            .map_err(|_| AuthError::Unavailable)?,
+        deleted_at_ms: row
+            .try_get("deleted_at_ms")
+            .map_err(|_| AuthError::Unavailable)?,
     })
 }
 
@@ -182,7 +194,10 @@ pub(crate) async fn list(
     .await
     .map_err(|_| AuthError::Unavailable)?;
     let more = rows.len() as i64 > size;
-    let mut messages = rows.iter().take(size as usize).map(view)
+    let mut messages = rows
+        .iter()
+        .take(size as usize)
+        .map(view)
         .collect::<Result<Vec<_>, _>>()?;
     let next_before = if more {
         messages.last().map(|message| message.id.clone())
@@ -191,7 +206,10 @@ pub(crate) async fn list(
     };
     // Delete records are retained only as content-free tombstones; editing
     // and further deleting them is forbidden.
-    Ok(Json(MessagePage { messages: std::mem::take(&mut messages), next_before }))
+    Ok(Json(MessagePage {
+        messages: std::mem::take(&mut messages),
+        next_before,
+    }))
 }
 
 pub(crate) async fn get(

@@ -17,8 +17,13 @@ async fn test_db() -> Option<PgPool> {
         Err(std::env::VarError::NotPresent) => return None,
         Err(_) => panic!("GCP_TEST_DATABASE_URL must be valid Unicode"),
     };
-    Some(PgPoolOptions::new().max_connections(6).connect(&url).await
-        .expect("disposable PostgreSQL service must be available"))
+    Some(
+        PgPoolOptions::new()
+            .max_connections(6)
+            .connect(&url)
+            .await
+            .expect("disposable PostgreSQL service must be available"),
+    )
 }
 
 async fn req(
@@ -36,11 +41,16 @@ async fn req(
         builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
     }
     let payload = body.map_or_else(Body::empty, |item| Body::from(item.to_string()));
-    let response = app.clone().oneshot(builder.body(payload).expect("valid request")).await
+    let response = app
+        .clone()
+        .oneshot(builder.body(payload).expect("valid request"))
+        .await
         .expect("router response");
     let status = response.status();
     let bytes = to_bytes(response.into_body(), 65_536).await.expect("body");
-    let json = if bytes.is_empty() { Value::Null } else {
+    let json = if bytes.is_empty() {
+        Value::Null
+    } else {
         serde_json::from_slice(&bytes).expect("JSON response")
     };
     (status, json)
@@ -49,30 +59,51 @@ async fn req(
 async fn register(app: &Router, prefix: &str) -> (String, String) {
     let id = format!("{:016x}", rand::random::<u64>());
     let handle = format!("{prefix}_{id}");
-    let (status, data) = req(app, Method::POST, "/v1/auth/register",
+    let (status, data) = req(
+        app,
+        Method::POST,
+        "/v1/auth/register",
         Some(json!({
             "handle":handle, "display_name":"Player",
             "email":format!("{handle}@example.test"),
             "password":"long unique test password 2026"
-        })), None).await;
+        })),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     (
-        data["access_token"].as_str().expect("access token").to_string(),
-        data["user"]["id"].as_str().expect("user ID").to_string()
+        data["access_token"]
+            .as_str()
+            .expect("access token")
+            .to_string(),
+        data["user"]["id"].as_str().expect("user ID").to_string(),
     )
 }
 
 async fn community(app: &Router, token: &str) -> String {
-    let (status, value) = req(app, Method::POST, "/v1/communities",
-        Some(json!({"name":"Text Room Test"})), Some(token)).await;
+    let (status, value) = req(
+        app,
+        Method::POST,
+        "/v1/communities",
+        Some(json!({"name":"Text Room Test"})),
+        Some(token),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     value["id"].as_str().expect("community id").to_string()
 }
 
 async fn channel(app: &Router, community: &str, token: &str, kind: &str, name: &str) -> String {
     let url = format!("/v1/communities/{community}/channels");
-    let (status, value) = req(app, Method::POST, &url,
-        Some(json!({"name":name,"channel_kind":kind,"position":0})), Some(token)).await;
+    let (status, value) = req(
+        app,
+        Method::POST,
+        &url,
+        Some(json!({"name":name,"channel_kind":kind,"position":0})),
+        Some(token),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     value["id"].as_str().expect("channel id").to_string()
 }
@@ -96,33 +127,70 @@ async fn authorized_message_lifecycle_and_privacy() {
     let cross = format!("/v1/communities/{community_b}/channels/{text_a}/messages");
     let alien = format!("/v1/communities/{community_a}/channels/{text_b}/messages");
 
-    let (code, _) = req(&app, Method::POST, &base, Some(json!({"body":"hello"})), None).await;
+    let (code, _) = req(
+        &app,
+        Method::POST,
+        &base,
+        Some(json!({"body":"hello"})),
+        None,
+    )
+    .await;
     assert_eq!(code, StatusCode::UNAUTHORIZED);
     let (code, _) = req(&app, Method::GET, &base, None, Some(&outsider)).await;
     assert_eq!(code, StatusCode::NOT_FOUND);
     for url in [&cross, &alien, &voice] {
-        let (code, _) = req(&app, Method::POST, url,
-            Some(json!({"body":"cross resource"})), Some(&owner)).await;
+        let (code, _) = req(
+            &app,
+            Method::POST,
+            url,
+            Some(json!({"body":"cross resource"})),
+            Some(&owner),
+        )
+        .await;
         assert_eq!(code, StatusCode::NOT_FOUND);
     }
     let (code, _) = req(&app, Method::GET, &voice, None, Some(&owner)).await;
     assert_eq!(code, StatusCode::NOT_FOUND);
-    let (code, _) = req(&app, Method::POST, &base,
-        Some(json!({"body":" \t\n"})), Some(&owner)).await;
+    let (code, _) = req(
+        &app,
+        Method::POST,
+        &base,
+        Some(json!({"body":" \t\n"})),
+        Some(&owner),
+    )
+    .await;
     assert_eq!(code, StatusCode::BAD_REQUEST);
-    let (code, _) = req(&app, Method::POST, &base,
-        Some(json!({"body":"x".repeat(4001)})), Some(&owner)).await;
+    let (code, _) = req(
+        &app,
+        Method::POST,
+        &base,
+        Some(json!({"body":"x".repeat(4001)})),
+        Some(&owner),
+    )
+    .await;
     assert_eq!(code, StatusCode::BAD_REQUEST);
 
     let invites = format!("/v1/communities/{community_a}/invitations");
     let (code, invite) = req(&app, Method::POST, &invites, None, Some(&owner)).await;
     assert_eq!(code, StatusCode::CREATED);
-    let (code, _) = req(&app, Method::POST, "/v1/invitations/accept",
-        Some(json!({"token": invite["token"]})), Some(&member)).await;
+    let (code, _) = req(
+        &app,
+        Method::POST,
+        "/v1/invitations/accept",
+        Some(json!({"token": invite["token"]})),
+        Some(&member),
+    )
+    .await;
     assert_eq!(code, StatusCode::CREATED);
 
-    let (code, first) = req(&app, Method::POST, &base,
-        Some(json!({"body":"Original text"})), Some(&member)).await;
+    let (code, first) = req(
+        &app,
+        Method::POST,
+        &base,
+        Some(json!({"body":"Original text"})),
+        Some(&member),
+    )
+    .await;
     assert_eq!(code, StatusCode::CREATED);
     assert_eq!(first["body"], "Original text");
     assert_eq!(first["author_id"], member_id);
@@ -135,14 +203,33 @@ async fn authorized_message_lifecycle_and_privacy() {
     assert_eq!(value["body"], "Original text");
     let (code, _) = req(&app, Method::GET, &item, None, Some(&outsider)).await;
     assert_eq!(code, StatusCode::NOT_FOUND);
-    let (code, _) = req(&app, Method::GET, &format!("{alien}/{id}"), None, Some(&owner)).await;
+    let (code, _) = req(
+        &app,
+        Method::GET,
+        &format!("{alien}/{id}"),
+        None,
+        Some(&owner),
+    )
+    .await;
     assert_eq!(code, StatusCode::NOT_FOUND);
 
-    let (code, _) = req(&app, Method::PATCH, &item,
-        Some(json!({"body":"owner rewrote this"})), Some(&owner)).await;
+    let (code, _) = req(
+        &app,
+        Method::PATCH,
+        &item,
+        Some(json!({"body":"owner rewrote this"})),
+        Some(&owner),
+    )
+    .await;
     assert_eq!(code, StatusCode::NOT_FOUND);
-    let (code, updated) = req(&app, Method::PATCH, &item,
-        Some(json!({"body":"Edited by author"})), Some(&member)).await;
+    let (code, updated) = req(
+        &app,
+        Method::PATCH,
+        &item,
+        Some(json!({"body":"Edited by author"})),
+        Some(&member),
+    )
+    .await;
     assert_eq!(code, StatusCode::OK);
     assert_eq!(updated["body"], "Edited by author");
     assert!(updated["edited_at_ms"].is_number());
@@ -155,29 +242,55 @@ async fn authorized_message_lifecycle_and_privacy() {
     assert!(deleted["deleted_at_ms"].is_number());
     let stored: String = sqlx::query_scalar("SELECT body FROM messages WHERE id = $1")
         .bind(Uuid::parse_str(id).expect("uuid"))
-        .fetch_one(&pool).await.expect("stored tombstone");
+        .fetch_one(&pool)
+        .await
+        .expect("stored tombstone");
     assert_eq!(stored, "[deleted]");
-    let (code, _) = req(&app, Method::PATCH, &item,
-        Some(json!({"body":"restore"})), Some(&member)).await;
+    let (code, _) = req(
+        &app,
+        Method::PATCH,
+        &item,
+        Some(json!({"body":"restore"})),
+        Some(&member),
+    )
+    .await;
     assert_eq!(code, StatusCode::NOT_FOUND);
     let (code, _) = req(&app, Method::DELETE, &item, None, Some(&owner)).await;
     assert_eq!(code, StatusCode::NOT_FOUND);
 
     // Regular members can neither delete nor edit another author's content.
-    let (code, second) = req(&app, Method::POST, &base,
-        Some(json!({"body":"Owned by admin"})), Some(&owner)).await;
+    let (code, second) = req(
+        &app,
+        Method::POST,
+        &base,
+        Some(json!({"body":"Owned by admin"})),
+        Some(&owner),
+    )
+    .await;
     assert_eq!(code, StatusCode::CREATED);
     let second_item = format!("{base}/{}", second["id"].as_str().expect("message"));
     let (code, _) = req(&app, Method::DELETE, &second_item, None, Some(&member)).await;
     assert_eq!(code, StatusCode::NOT_FOUND);
-    let (code, _) = req(&app, Method::PATCH, &second_item,
-        Some(json!({"body":"tamper"})), Some(&member)).await;
+    let (code, _) = req(
+        &app,
+        Method::PATCH,
+        &second_item,
+        Some(json!({"body":"tamper"})),
+        Some(&member),
+    )
+    .await;
     assert_eq!(code, StatusCode::NOT_FOUND);
 
     // Paging returns a stable descending keyset and no duplicates.
     for i in 0..5 {
-        let (code, _) = req(&app, Method::POST, &base,
-            Some(json!({"body":format!("page {i}")})), Some(&member)).await;
+        let (code, _) = req(
+            &app,
+            Method::POST,
+            &base,
+            Some(json!({"body":format!("page {i}")})),
+            Some(&member),
+        )
+        .await;
         assert_eq!(code, StatusCode::CREATED);
     }
     let mut cursor: Option<String> = None;
@@ -198,11 +311,16 @@ async fn authorized_message_lifecycle_and_privacy() {
         pages += 1;
         assert!(pages < 10, "pagination must terminate");
         cursor = value["next_before"].as_str().map(ToOwned::to_owned);
-        if cursor.is_none() { break; }
+        if cursor.is_none() {
+            break;
+        }
     }
     assert_eq!(collected.len(), 7);
-    for url in [format!("{base}?limit=0"), format!("{base}?limit=101"),
-        format!("{base}?limit=1&before=invalid")] {
+    for url in [
+        format!("{base}?limit=0"),
+        format!("{base}?limit=101"),
+        format!("{base}?limit=1&before=invalid"),
+    ] {
         let (code, _) = req(&app, Method::GET, &url, None, Some(&member)).await;
         assert_eq!(code, StatusCode::BAD_REQUEST);
     }
@@ -213,21 +331,35 @@ async fn authorized_message_lifecycle_and_privacy() {
     assert_eq!(code, StatusCode::NO_CONTENT);
     let (code, _) = req(&app, Method::GET, &base, None, Some(&member)).await;
     assert_eq!(code, StatusCode::NOT_FOUND);
-    let (code, _) = req(&app, Method::POST, &base,
-        Some(json!({"body":"after removal"})), Some(&member)).await;
+    let (code, _) = req(
+        &app,
+        Method::POST,
+        &base,
+        Some(json!({"body":"after removal"})),
+        Some(&member),
+    )
+    .await;
     assert_eq!(code, StatusCode::NOT_FOUND);
     let (code, _) = req(&app, Method::DELETE, &second_item, None, Some(&member)).await;
     assert_eq!(code, StatusCode::NOT_FOUND);
 
     for (id, token) in [(&community_a, &owner), (&community_b, &outsider)] {
-        let (code, _) = req(&app, Method::DELETE,
-            &format!("/v1/communities/{id}"), None, Some(token)).await;
+        let (code, _) = req(
+            &app,
+            Method::DELETE,
+            &format!("/v1/communities/{id}"),
+            None,
+            Some(token),
+        )
+        .await;
         assert_eq!(code, StatusCode::NO_CONTENT);
     }
     for id in [owner_id, member_id, outsider_id] {
         sqlx::query("DELETE FROM users WHERE id=$1")
             .bind(Uuid::parse_str(&id).expect("uuid"))
-            .execute(&pool).await.expect("cleanup");
+            .execute(&pool)
+            .await
+            .expect("cleanup");
     }
 }
 

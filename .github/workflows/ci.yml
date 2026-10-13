@@ -34,20 +34,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Temporary Rust source formatting export
-        run: |
-          cargo fmt --all
-          python3 - <<'PY'
-          import base64
-          from pathlib import Path
-          for name in ["apps/server/src/lib.rs", "apps/server/src/messages.rs",
-                       "apps/server/tests/messages_access.rs"]:
-              encoded = base64.b64encode(Path(name).read_bytes()).decode("ascii")
-              print("GCP23_FORMAT_START:" + name)
-              for i in range(0, len(encoded), 4096):
-                  print("GCP23_FORMAT:" + encoded[i:i+4096])
-              print("GCP23_FORMAT_END:" + name)
-          PY
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint
