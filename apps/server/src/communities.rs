@@ -28,10 +28,7 @@ fn name(value: &str, limit: usize) -> bool {
 fn channel_name(value: &str) -> bool {
     (2..=80).contains(&value.len())
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || byte == b'-'
-                || byte == b'_'
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'_'
         })
 }
 
@@ -145,8 +142,12 @@ fn channel_row(row: &sqlx::postgres::PgRow) -> Result<ChannelView, AuthError> {
     Ok(ChannelView {
         id: id.to_string(),
         name: row.try_get("name").map_err(|_| AuthError::Unavailable)?,
-        channel_kind: row.try_get("channel_kind").map_err(|_| AuthError::Unavailable)?,
-        position: row.try_get("position").map_err(|_| AuthError::Unavailable)?,
+        channel_kind: row
+            .try_get("channel_kind")
+            .map_err(|_| AuthError::Unavailable)?,
+        position: row
+            .try_get("position")
+            .map_err(|_| AuthError::Unavailable)?,
     })
 }
 
@@ -197,7 +198,9 @@ pub(crate) async fn list(
     .fetch_all(&pool)
     .await
     .map_err(db_error)?;
-    Ok(Json(rows.iter().map(community_row).collect::<Result<_, _>>()?))
+    Ok(Json(
+        rows.iter().map(community_row).collect::<Result<_, _>>()?,
+    ))
 }
 
 pub(crate) async fn get(
@@ -251,7 +254,9 @@ pub(crate) async fn rename(
     let id: Uuid = changed.try_get("id").map_err(|_| AuthError::Unavailable)?;
     Ok(Json(CommunityView {
         id: id.to_string(),
-        name: changed.try_get("name").map_err(|_| AuthError::Unavailable)?,
+        name: changed
+            .try_get("name")
+            .map_err(|_| AuthError::Unavailable)?,
         role: role(&pool, user_id, community).await?,
     }))
 }
@@ -299,15 +304,20 @@ pub(crate) async fn members(
     .fetch_all(&pool)
     .await
     .map_err(db_error)?;
-    let views = rows.iter().map(|row| {
-        let user: Uuid = row.try_get("user_id").map_err(|_| AuthError::Unavailable)?;
-        Ok(MemberView {
-            user_id: user.to_string(),
-            handle: row.try_get("handle").map_err(|_| AuthError::Unavailable)?,
-            display_name: row.try_get("display_name").map_err(|_| AuthError::Unavailable)?,
-            role: row.try_get("role").map_err(|_| AuthError::Unavailable)?,
+    let views = rows
+        .iter()
+        .map(|row| {
+            let user: Uuid = row.try_get("user_id").map_err(|_| AuthError::Unavailable)?;
+            Ok(MemberView {
+                user_id: user.to_string(),
+                handle: row.try_get("handle").map_err(|_| AuthError::Unavailable)?,
+                display_name: row
+                    .try_get("display_name")
+                    .map_err(|_| AuthError::Unavailable)?,
+                role: row.try_get("role").map_err(|_| AuthError::Unavailable)?,
+            })
         })
-    }).collect::<Result<Vec<_>, AuthError>>()?;
+        .collect::<Result<Vec<_>, AuthError>>()?;
     Ok(Json(views))
 }
 
@@ -407,7 +417,10 @@ pub(crate) async fn invite(
     }
     Ok((
         StatusCode::CREATED,
-        Json(InvitationView { token, expires_in: 24 * 60 * 60 }),
+        Json(InvitationView {
+            token,
+            expires_in: 24 * 60 * 60,
+        }),
     ))
 }
 
@@ -449,13 +462,11 @@ pub(crate) async fn accept_invite(
     if let Err(err) = inserted {
         return Err(db_error(err));
     }
-    let row = sqlx::query(
-        "SELECT id, name, 'member'::text AS role FROM communities WHERE id = $1",
-    )
-    .bind(community)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(db_error)?;
+    let row = sqlx::query("SELECT id, name, 'member'::text AS role FROM communities WHERE id = $1")
+        .bind(community)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db_error)?;
     tx.commit().await.map_err(|_| AuthError::Unavailable)?;
     Ok((StatusCode::CREATED, Json(community_row(&row)?)))
 }
@@ -481,7 +492,9 @@ pub(crate) async fn channels(
     .fetch_all(&pool)
     .await
     .map_err(db_error)?;
-    Ok(Json(rows.iter().map(channel_row).collect::<Result<_, _>>()?))
+    Ok(Json(
+        rows.iter().map(channel_row).collect::<Result<_, _>>()?,
+    ))
 }
 
 pub(crate) async fn create_channel(

@@ -1,6 +1,6 @@
 pub mod auth;
-pub mod database;
 mod communities;
+pub mod database;
 
 use axum::{
     Json, Router,
@@ -59,10 +59,15 @@ pub fn router_with_database(database: Option<PgPool>) -> Router {
         .route("/v1/auth/refresh", post(auth::refresh))
         .route("/v1/auth/logout", post(auth::logout))
         .route("/v1/me", get(auth::me).patch(auth::update_profile))
-        .route("/v1/communities", get(communities::list).post(communities::create))
+        .route(
+            "/v1/communities",
+            get(communities::list).post(communities::create),
+        )
         .route(
             "/v1/communities/{community_id}",
-            get(communities::get).patch(communities::rename).delete(communities::delete),
+            get(communities::get)
+                .patch(communities::rename)
+                .delete(communities::delete),
         )
         .route(
             "/v1/communities/{community_id}/members",

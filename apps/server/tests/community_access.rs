@@ -117,20 +117,28 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
     let id = community["id"].as_str().expect("community ID");
     let path = format!("/v1/communities/{id}");
 
-    let (status, _) = request(
-        &app, Method::GET, &path, None, Some(&outsider_token)
-    ).await;
+    let (status, _) = request(&app, Method::GET, &path, None, Some(&outsider_token)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, outsider_list) = request(
-        &app, Method::GET, "/v1/communities", None, Some(&outsider_token)
-    ).await;
+        &app,
+        Method::GET,
+        "/v1/communities",
+        None,
+        Some(&outsider_token),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert!(outsider_list.as_array().expect("array").is_empty());
 
     let channel_path = format!("{path}/channels");
     let (status, _) = request(
-        &app, Method::GET, &channel_path, None, Some(&outsider_token)
-    ).await;
+        &app,
+        Method::GET,
+        &channel_path,
+        None,
+        Some(&outsider_token),
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
     let (status, text) = request(
@@ -139,7 +147,8 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &channel_path,
         Some(json!({"name": "general", "channel_kind": "text", "position": 0})),
         Some(&owner_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let channel_id = text["id"].as_str().expect("channel ID");
     let channel_item = format!("{channel_path}/{channel_id}");
@@ -149,7 +158,8 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &channel_path,
         Some(json!({"name": "general", "channel_kind": "voice", "position": 1})),
         Some(&owner_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::CONFLICT);
     let (status, _) = request(
         &app,
@@ -157,17 +167,28 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &channel_item,
         Some(json!({"name": "secret", "position": 1})),
         Some(&outsider_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
     let invitations_path = format!("{path}/invitations");
     let (status, _) = request(
-        &app, Method::POST, &invitations_path, None, Some(&outsider_token)
-    ).await;
+        &app,
+        Method::POST,
+        &invitations_path,
+        None,
+        Some(&outsider_token),
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, invitation) = request(
-        &app, Method::POST, &invitations_path, None, Some(&owner_token)
-    ).await;
+        &app,
+        Method::POST,
+        &invitations_path,
+        None,
+        Some(&owner_token),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let invite_token = invitation["token"].as_str().expect("invitation token");
     assert_eq!(invite_token.len(), 64);
@@ -179,7 +200,8 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         "/v1/invitations/accept",
         Some(json!({"token": invite_token})),
         Some(&member_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(member_join["role"], "member");
     let (status, _) = request(
@@ -188,7 +210,8 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         "/v1/invitations/accept",
         Some(json!({"token": invite_token})),
         Some(&outsider_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
     let (status, _) = request(
@@ -197,11 +220,11 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &channel_path,
         Some(json!({"name": "member-cannot", "channel_kind": "voice", "position": 0})),
         Some(&member_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, visible) = request(
-        &app, Method::GET, &channel_path, None, Some(&member_token)
-    ).await;
+    let (status, visible) =
+        request(&app, Method::GET, &channel_path, None, Some(&member_token)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(visible.as_array().expect("channels").len(), 1);
     let (status, _) = request(
@@ -210,17 +233,22 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &invitations_path,
         None,
         Some(&member_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
     let members_path = format!("{path}/members");
     let (status, _) = request(
-        &app, Method::GET, &members_path, None, Some(&outsider_token)
-    ).await;
+        &app,
+        Method::GET,
+        &members_path,
+        None,
+        Some(&outsider_token),
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, members) = request(
-        &app, Method::GET, &members_path, None, Some(&member_token)
-    ).await;
+    let (status, members) =
+        request(&app, Method::GET, &members_path, None, Some(&member_token)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(members.as_array().expect("members").len(), 2);
 
@@ -231,7 +259,8 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &role_path,
         Some(json!({"role": "owner"})),
         Some(&owner_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     let (status, _) = request(
         &app,
@@ -239,7 +268,8 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &role_path,
         Some(json!({"role": "admin"})),
         Some(&member_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     let (status, _) = request(
         &app,
@@ -247,7 +277,8 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &role_path,
         Some(json!({"role": "admin"})),
         Some(&owner_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 
     let (status, voice) = request(
@@ -256,7 +287,8 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &channel_path,
         Some(json!({"name": "team-voice", "channel_kind": "voice", "position": 1})),
         Some(&member_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(voice["channel_kind"], "voice");
 
@@ -267,7 +299,8 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &owner_role_path,
         None,
         Some(&member_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, _) = request(
         &app,
@@ -275,7 +308,8 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &owner_role_path,
         Some(json!({"role": "member"})),
         Some(&owner_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
     let (status, _) = request(
@@ -284,33 +318,20 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
         &path,
         Some(json!({"name":"Renamed Community"})),
         Some(&member_token),
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 
-    let (status, _) = request(
-        &app, Method::DELETE, &path, None, Some(&member_token)
-    ).await;
+    let (status, _) = request(&app, Method::DELETE, &path, None, Some(&member_token)).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, _) = request(
-        &app,
-        Method::DELETE,
-        &role_path,
-        None,
-        Some(&owner_token),
-    ).await;
+    let (status, _) = request(&app, Method::DELETE, &role_path, None, Some(&owner_token)).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, _) = request(
-        &app, Method::GET, &channel_path, None, Some(&member_token)
-    ).await;
+    let (status, _) = request(&app, Method::GET, &channel_path, None, Some(&member_token)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
-    let (status, _) = request(
-        &app, Method::DELETE, &path, None, Some(&owner_token)
-    ).await;
+    let (status, _) = request(&app, Method::DELETE, &path, None, Some(&owner_token)).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, _) = request(
-        &app, Method::GET, &path, None, Some(&owner_token)
-    ).await;
+    let (status, _) = request(&app, Method::GET, &path, None, Some(&owner_token)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
     // Remove isolated fixtures. Community FK cascade already deleted channels,
@@ -327,8 +348,6 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
 #[tokio::test]
 async fn community_routes_fail_closed_without_database() {
     let app = router_with_database(None);
-    let (status, _) = request(
-        &app, Method::GET, "/v1/communities", None, None
-    ).await;
+    let (status, _) = request(&app, Method::GET, "/v1/communities", None, None).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }
