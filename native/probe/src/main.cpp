@@ -2,6 +2,7 @@
 #include "encoder_capabilities.h"
 #include "copy_benchmark.h"
 #include "h264_encode_benchmark.h"
+#include "gpu_encoder_qualification.h"
 #include "capture_probe.h"
 #include "telemetry.h"
 
@@ -15,7 +16,7 @@
 #include <string_view>
 
 namespace {
-enum class Mode { help, monitors, audio, capture, microphone, gpus, encoders, hardware_h264, copy, encode, test };
+enum class Mode { help, monitors, audio, capture, microphone, gpus, encoders, hardware_h264, gpu_qualify, copy, encode, test };
 
 struct Options {
     Mode mode = Mode::help;
@@ -48,6 +49,7 @@ Options parse(int argc, char* argv[]) {
     else if (command == "--probe-hardware-h264") options.mode = Mode::hardware_h264;
     else if (command == "--benchmark-copy") options.mode = Mode::copy;
     else if (command == "--benchmark-h264") options.mode = Mode::encode;
+    else if (command == "--qualify-gpu-h264") options.mode = Mode::gpu_qualify;
     else if (command == "--self-test") options.mode = Mode::test;
     else if (command == "--help") options.mode = Mode::help;
     else throw std::invalid_argument("Unknown command");
@@ -64,11 +66,11 @@ Options parse(int argc, char* argv[]) {
             if (++i == argc || !parse_int(argv[i], options.seconds) ||
                 options.seconds < 1 || options.seconds > 60)
                 throw std::invalid_argument("--seconds must be 1..60");
-        } else if ((options.mode == Mode::copy || options.mode == Mode::encode) && option == "--width") {
+        } else if ((options.mode == Mode::copy || options.mode == Mode::encode || options.mode == Mode::gpu_qualify) && option == "--width") {
             if (++i == argc || !parse_int(argv[i], options.width) ||
                 options.width < 160 || options.width > 3840)
                 throw std::invalid_argument("--width must be 160..3840");
-        } else if ((options.mode == Mode::copy || options.mode == Mode::encode) && option == "--height") {
+        } else if ((options.mode == Mode::copy || options.mode == Mode::encode || options.mode == Mode::gpu_qualify) && option == "--height") {
             if (++i == argc || !parse_int(argv[i], options.height) ||
                 options.height < 90 || options.height > 2160)
                 throw std::invalid_argument("--height must be 90..2160");
@@ -76,7 +78,7 @@ Options parse(int argc, char* argv[]) {
             if (++i == argc || !parse_int(argv[i], options.iterations) ||
                 options.iterations < 1 || options.iterations > 1000)
                 throw std::invalid_argument("--iterations must be 1..1000");
-        } else if (options.mode == Mode::encode && option == "--fps") {
+        } else if ((options.mode == Mode::encode || options.mode == Mode::gpu_qualify) && option == "--fps") {
             if (++i == argc || !parse_int(argv[i], options.fps) ||
                 options.fps < 1 || options.fps > 60)
                 throw std::invalid_argument("--fps must be 1..60");
@@ -84,13 +86,19 @@ Options parse(int argc, char* argv[]) {
             if (++i == argc || !parse_int(argv[i], options.frames) ||
                 options.frames < 1 || options.frames > 180)
                 throw std::invalid_argument("--frames must be 1..180");
-        } else if (options.mode == Mode::encode && option == "--bitrate") {
+        } else if ((options.mode == Mode::encode || options.mode == Mode::gpu_qualify) && option == "--bitrate") {
             if (++i == argc || !parse_int(argv[i], options.bitrate) ||
                 options.bitrate < 100000 || options.bitrate > 16000000)
                 throw std::invalid_argument("--bitrate must be 100000..16000000");
         } else {
             throw std::invalid_argument("Unexpected command argument");
         }
+    }
+    if (options.mode == Mode::gpu_qualify &&
+        !gcp::probe::valid_gpu_h264_profile({
+            options.width, options.height, options.fps, options.bitrate
+        })) {
+        throw std::invalid_argument("Invalid GPU H.264 profile");
     }
     if (options.mode != Mode::capture && options.mode != Mode::microphone &&
         options.seconds != 5) {
@@ -109,6 +117,8 @@ void help() {
         "  --probe-hardware-h264          Activate hardware-class H.264 MFTs (no encode)\\n"
         "  --benchmark-copy [--width 640] [--height 360] [--iterations 64]\n"
         "  --benchmark-h264 [--width 640] [--height 360] [--fps 30]\n"
+        "  --qualify-gpu-h264 [--width 640] [--height 360] [--fps 30]\n"
+        "                     [--bitrate 1500000] (requires hardware GPU)\n"
         "                   [--frames 30] [--bitrate 1500000] (synthetic NV12)\n"
         "  --capture-monitor N [--seconds S]  Count captured GPU frames (1-60 s)\n"
         "  --probe-mic [--seconds S]       Count microphone audio frames (1-60 s)\n"
@@ -156,6 +166,19 @@ int self_test() {
     const auto encoded = parse(4, valid_encode);
     if (encoded.mode != Mode::encode || encoded.frames != 12 ||
         encoded.fps != 30 || encoded.bitrate != 1'500'000) return 1;
+    char qualified_mode[] = "--qualify-gpu-h264";
+    char good_width[] = "1280";
+    char* valid_qualify[] = {name, qualified_mode, width_flag, good_width};
+    const auto profile = parse(4, valid_qualify);
+    if (profile.mode != Mode::gpu_qualify || profile.width != 1280 ||
+        profile.height != 360) return 1;
+    char odd_width[] = "333";
+    char* invalid_profile[] = {name, qualified_mode, width_flag, odd_width};
+    try {
+        (void)parse(4, invalid_profile);
+        return 1;
+    } catch (const std::invalid_argument&) {
+    }
     std::cout << "Native media probe self-test passed\n";
     return 0;
 }
@@ -167,6 +190,12 @@ int main(int argc, char* argv[]) {
         if (options.mode == Mode::help) { help(); return 0; }
         if (options.mode == Mode::test) return self_test();
 
+        if (options.mode == Mode::gpu_qualify) {
+            winrt::init_apartment(winrt::apartment_type::multi_threaded);
+            return gcp::probe::qualify_gpu_h264({
+                options.width, options.height, options.fps, options.bitrate
+            });
+        }
         if (options.mode == Mode::encode) {
             winrt::init_apartment(winrt::apartment_type::multi_threaded);
             return gcp::probe::benchmark_h264_encoding(

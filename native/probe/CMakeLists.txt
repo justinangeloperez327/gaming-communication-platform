@@ -6,6 +6,7 @@ add_executable(gcp-media-probe
     src/encoder_capabilities.cpp
     src/copy_benchmark.cpp
     src/h264_encode_benchmark.cpp
+    src/gpu_encoder_qualification.cpp
 )
 
 target_include_directories(gcp-media-probe PRIVATE src)
@@ -31,6 +32,10 @@ if(BUILD_TESTING)
         COMMAND $<TARGET_FILE:gcp-media-probe> --self-test)
     add_test(NAME media_probe_help
         COMMAND $<TARGET_FILE:gcp-media-probe> --help)
+    add_test(NAME gpu_h264_invalid_profile
+        COMMAND $<TARGET_FILE:gcp-media-probe>
+            --qualify-gpu-h264 --width 333)
+    set_tests_properties(gpu_h264_invalid_profile PROPERTIES WILL_FAIL TRUE)
     add_test(NAME media_probe_h264_encode
         COMMAND $<TARGET_FILE:gcp-media-probe> --benchmark-h264
                 --width 320 --height 180 --fps 30 --frames 12)

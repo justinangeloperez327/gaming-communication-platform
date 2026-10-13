@@ -8,9 +8,10 @@ A Windows-first communication client for gaming communities and teams. The long-
 - **Backend:** Rust, Tokio and Axum with a health endpoint and tests.
 - **Windows media diagnostic:** Windows Graphics Capture monitor frame counting, WASAPI microphone packet counting, DXGI GPU inventory, Media Foundation encoder candidate inventory, real synthetic-frame H.264 encode benchmark, and CPU BGRA copy benchmark.
 - **Optional LiveKit diagnostic:** v1.12.2 Windows C++ SDK with synthetic video and opt-in actual monitor capture publishing (requires LiveKit tokens and a Windows interactive desktop).
-- **Performance instrumentation:** bounded capture buffers, CPU/RAM metrics and p50/p95 staging-readback samples; one redundant full-frame CPU copy removed. No GPU hardware encoder selection is implemented.
+- **Performance instrumentation:** bounded capture buffers, CPU/RAM metrics and p50/p95 staging-readback samples; one redundant full-frame CPU copy removed. GPU-resident H.264 encoding and confirmed hardware-encoder selection are not yet implemented.
 - **Hardware-video feasibility:** hardware-class H.264 Media Foundation MFT activation diagnostic, plus opt-in publishing of **externally encoded** Annex B H.264 video through LiveKit. Neither feature encodes frames inside the application.
 - **Actual offline H.264 encode:** Media Foundation synthetic NV12 test frames are encoded to a temporary MP4 using hardware transforms when the OS supports them; **actual hardware selection is not verified**.
+- **GPU pipeline qualification:** D3D11 hardware video device, NV12 GPU texture/media sample, and hardware-only MFT format negotiation, without transmitting pixels or encoding frames. See [GPU qualification](docs/gpu-h264-qualification.md).
 - **CI:** Rust verification and Windows native build/CTest checks.
 
 **Not implemented:** authenticated accounts, real messaging, production voice chat, screen-sharing UI, game window selection, hardware encoding control and persistent storage. A developer-only monitor publisher exists but uses CPU readback and is not optimized game streaming.
