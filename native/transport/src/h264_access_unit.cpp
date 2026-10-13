@@ -111,14 +111,14 @@ VerifiedAccessUnit verify_h264_access_unit(
 
 bool h264_access_unit_self_test() {
     const std::vector<std::uint8_t> annexb{
-        0,0,0,1,0x67,0x42,0x00,
+        0,0,0,1,0x67,0x42,0x11,
         0,0,1,0x68,0xce,
         0,0,1,0x65,0x88
     };
     const auto a = verify_h264_access_unit(annexb);
     if (!a.keyframe || !a.contains_parameter_sets || a.annexb.empty()) return false;
     const std::vector<std::uint8_t> avcc{
-        0,0,0,3,0x67,0x42,0x00,
+        0,0,0,3,0x67,0x42,0x11,
         0,0,0,2,0x68,0xce,
         0,0,0,2,0x65,0x88
     };
