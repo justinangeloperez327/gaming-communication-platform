@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod database;
+mod communities;
 
 use axum::{
     Json, Router,
@@ -58,6 +59,32 @@ pub fn router_with_database(database: Option<PgPool>) -> Router {
         .route("/v1/auth/refresh", post(auth::refresh))
         .route("/v1/auth/logout", post(auth::logout))
         .route("/v1/me", get(auth::me).patch(auth::update_profile))
+        .route("/v1/communities", get(communities::list).post(communities::create))
+        .route(
+            "/v1/communities/{community_id}",
+            get(communities::get).patch(communities::rename).delete(communities::delete),
+        )
+        .route(
+            "/v1/communities/{community_id}/members",
+            get(communities::members),
+        )
+        .route(
+            "/v1/communities/{community_id}/members/{member_id}",
+            axum::routing::patch(communities::change_role).delete(communities::remove_member),
+        )
+        .route(
+            "/v1/communities/{community_id}/invitations",
+            post(communities::invite),
+        )
+        .route("/v1/invitations/accept", post(communities::accept_invite))
+        .route(
+            "/v1/communities/{community_id}/channels",
+            get(communities::channels).post(communities::create_channel),
+        )
+        .route(
+            "/v1/communities/{community_id}/channels/{channel_id}",
+            axum::routing::patch(communities::update_channel).delete(communities::delete_channel),
+        )
         .layer(DefaultBodyLimit::max(8 * 1024))
         .with_state(AppState { database })
 }
