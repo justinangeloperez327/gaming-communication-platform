@@ -1,3 +1,5 @@
+#include "gpu_color_converter.h"
+
 #include <Windows.h>
 #include <d3d11.h>
 #include <mfapi.h>
@@ -15,6 +17,7 @@
 #include <cstdint>
 #include <iostream>
 #include <mutex>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -39,6 +42,7 @@ struct Options {
     int frames = 15;
     int bitrate = 1'500'000;
     int timeout_seconds = 20;
+    bool use_bgra_gpu_conversion = false;
 };
 
 bool read_number(std::string_view value, int& target) {
@@ -58,6 +62,13 @@ Options parse(int argc, char* argv[]) {
     for (int i = 2; i < argc; i += 2) {
         if (i + 1 >= argc) throw std::invalid_argument("Missing flag value");
         const std::string_view flag = argv[i];
+        if (flag == "--source") {
+            const std::string_view input = argv[i+1];
+            if (input == "nv12") o.use_bgra_gpu_conversion = false;
+            else if (input == "bgra") o.use_bgra_gpu_conversion = true;
+            else throw std::invalid_argument("--source must be nv12 or bgra");
+            continue;
+        }
         int number = 0;
         if (!read_number(argv[i+1], number))
             throw std::invalid_argument("Numeric argument required");
@@ -78,9 +89,10 @@ void usage() {
         "gcp-hardware-h264: asynchronous hardware-class MFT GPU test\n"
         "  --help / --self-test\n"
         "  --run [--width 640] [--height 360] [--fps 30] [--frames 15]\n"
-        "        [--bitrate 1500000] [--timeout 20]\n"
-        "Uses SYNTHETIC GPU-backed NV12 frames, without screen, microphone,\n"
+        "        [--bitrate 1500000] [--timeout 20] [--source nv12|bgra]\n"
+        "Uses SYNTHETIC test frames, without screen, microphone,\n"
         "LiveKit, disk recording or credentials. Requires a physical GPU.\n"
+        "BGRA input uses D3D11 video processing to convert to GPU NV12.\n"
         "Fails if no D3D11-aware hardware-class encoder emits H.264 output.\n";
 }
 
@@ -186,10 +198,11 @@ public:
 class HardwareDevice {
 public:
     ComPtr<ID3D11Device> device;
+    ComPtr<ID3D11DeviceContext> context;
     ComPtr<IMFDXGIDeviceManager> manager;
+    std::unique_ptr<gcp::media::GpuColorConverter> converter;
 
-    HardwareDevice() {
-        ComPtr<ID3D11DeviceContext> context;
+    explicit HardwareDevice(const Options& options) {
         require(D3D11CreateDevice(
             nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
             D3D11_CREATE_DEVICE_VIDEO_SUPPORT | D3D11_CREATE_DEVICE_BGRA_SUPPORT,
@@ -199,9 +212,52 @@ public:
         require(MFCreateDXGIDeviceManager(&token, manager.GetAddressOf()),
                 "MFCreateDXGIDeviceManager");
         require(manager->ResetDevice(device.Get(), token), "ResetDevice");
+        if (options.use_bgra_gpu_conversion) {
+            converter = std::make_unique<gcp::media::GpuColorConverter>(
+                device.Get(), context.Get(),
+                static_cast<UINT>(options.width),
+                static_cast<UINT>(options.height),
+                static_cast<UINT>(options.fps));
+        }
     }
 
     ComPtr<IMFSample> frame(const Options& o, int index) {
+        if (o.use_bgra_gpu_conversion) {
+            // Synthetic SDR BGRA generated on CPU and uploaded to the same
+            // D3D11 device. Conversion BGRA -> NV12 happens entirely on GPU.
+            const auto pixels_count =
+                static_cast<std::size_t>(o.width) * o.height;
+            std::vector<std::uint8_t> pixels(pixels_count * 4);
+            for (int y = 0; y < o.height; ++y) {
+                for (int x = 0; x < o.width; ++x) {
+                    const auto at =
+                        (static_cast<std::size_t>(y) * o.width + x) * 4;
+                    pixels[at] = static_cast<std::uint8_t>((x + index * 5) % 256);
+                    pixels[at + 1] = static_cast<std::uint8_t>((y + index * 3) % 256);
+                    pixels[at + 2] = 100;
+                    pixels[at + 3] = 255;
+                }
+            }
+            D3D11_TEXTURE2D_DESC desc{};
+            desc.Width = static_cast<UINT>(o.width);
+            desc.Height = static_cast<UINT>(o.height);
+            desc.MipLevels = 1;
+            desc.ArraySize = 1;
+            desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            desc.SampleDesc.Count = 1;
+            desc.Usage = D3D11_USAGE_DEFAULT;
+            desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+            D3D11_SUBRESOURCE_DATA upload{};
+            upload.pSysMem = pixels.data();
+            upload.SysMemPitch = static_cast<UINT>(o.width * 4);
+            ComPtr<ID3D11Texture2D> bgra;
+            require(device->CreateTexture2D(
+                &desc, &upload, bgra.GetAddressOf()),
+                "Upload synthetic BGRA test texture");
+            return converter->convert(
+                bgra.Get(), (10'000'000LL * index) / o.fps,
+                10'000'000LL / o.fps);
+        }
         // Synthetic NV12 image, uploaded on creation to a D3D11 texture.
         // This is not GPU-resident BGRA->NV12 conversion yet.
         const auto ysize = static_cast<std::size_t>(o.width) * o.height;
@@ -422,7 +478,7 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
 
 int run(const Options& options) {
     MfLifetime media;
-    HardwareDevice gpu;
+    HardwareDevice gpu(options);
     MFT_REGISTER_TYPE_INFO output_type{MFMediaType_Video, MFVideoFormat_H264};
     Activations list;
     require(MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER,
@@ -444,6 +500,8 @@ int run(const Options& options) {
                           << ",\"keyframes\":" << output.keyframes
                           << ",\"elapsed_seconds\":" << elapsed
                           << ",\"hardware_class_mft\":true"
+                          << ",\"gpu_bgra_to_nv12_requested\":"
+                          << (options.use_bgra_gpu_conversion ? "true" : "false")
                           << ",\"livekit_connected\":false"
                           << ",\"gpu_engine_utilization_verified\":false}\n";
                 return 0;
@@ -477,6 +535,15 @@ int main(int argc, char* argv[]) {
             char* valid_args[] = {program, run_mode, width, good};
             const auto o = parse(4, valid_args);
             if (!valid(o) || o.width != 640) return 1;
+            char source_flag[] = "--source";
+            char bgra[] = "bgra";
+            char* with_source[] = {program, run_mode, source_flag, bgra};
+            const auto selected = parse(4, with_source);
+            if (!selected.use_bgra_gpu_conversion) return 1;
+            char invalid_source[] = "gpu";
+            char* bad_source[] = {program, run_mode, source_flag, invalid_source};
+            try { (void)parse(4, bad_source); return 1; }
+            catch (const std::invalid_argument&) {}
             std::cout << "Hardware H.264 CLI self-test passed\n";
             return 0;
         }

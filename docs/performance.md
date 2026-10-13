@@ -52,3 +52,5 @@ Hardware-encoder integration and GPU-resident YUV conversion are **not included 
 Hardware MFT activation and pre-encoded H.264 file publishing do not establish actual GPU encoder usage or game FPS impact. See [H.264 integration](h264-integration.md).
 
 The GPU encoder qualification probe only verifies D3D11/MFT configuration, not encoding or real-time performance. No hardware acceleration or gaming-FPS benefit has been measured. [See qualification notes](gpu-h264-qualification.md).
+
+The native H.264 hardware diagnostic includes a GPU-side BGRA → NV12 conversion path (`--source bgra`) for synthetic frames. Driver compatibility, encode output, GPU engine usage, frame conversion quality and game FPS impact remain unmeasured until run on supported gaming hardware. Do not conflate a completed Windows build with hardware performance validation.
