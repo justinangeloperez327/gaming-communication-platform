@@ -15,6 +15,8 @@ struct HardwareH264Profile {
     int frames = 30;
     int bitrate_bps = 4'000'000;
     int timeout_seconds = 30;
+    // Optional time-bounded stability session, 0 = original frame-count mode.
+    int duration_seconds = 0;
     int monitor_index = -1;
     bool monitor_capture_confirmed = false;
 };

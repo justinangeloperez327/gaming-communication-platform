@@ -44,6 +44,7 @@ Options parse(int argc, char* argv[]) {
     result.publish = true;
     auto& p = result.profile;
     bool consent = false;
+    bool frames_explicit = false, timeout_explicit = false;
     for (int i = 2; i < argc; i += 2) {
         if (i + 1 >= argc)
             throw std::invalid_argument("Missing option value");
@@ -61,19 +62,32 @@ Options parse(int argc, char* argv[]) {
         else if (key == "--width") p.width = n;
         else if (key == "--height") p.height = n;
         else if (key == "--fps") p.fps = n;
-        else if (key == "--frames") p.frames = n;
+        else if (key == "--frames") {
+            p.frames = n;
+            frames_explicit = true;
+        }
         else if (key == "--bitrate") p.bitrate_bps = n;
-        else if (key == "--timeout") p.timeout_seconds = n;
+        else if (key == "--timeout") {
+            p.timeout_seconds = n;
+            timeout_explicit = true;
+        }
+        else if (key == "--duration") p.duration_seconds = n;
         else if (key == "--linger-ms") result.linger_ms = n;
         else throw std::invalid_argument("Unknown command argument");
     }
     p.monitor_capture_confirmed = consent;
+    if (p.duration_seconds > 0 && p.duration_seconds <= 300) {
+        if (!frames_explicit) p.frames = p.fps * p.duration_seconds;
+        if (!timeout_explicit) p.timeout_seconds = p.duration_seconds + 15;
+    }
     if (p.monitor_index < 0 || !consent ||
         p.width < 160 || p.width > 1920 || p.width % 2 ||
         p.height < 90 || p.height > 1080 || p.height % 2 ||
-        p.fps < 1 || p.fps > 60 || p.frames < 1 || p.frames > 60 ||
+        p.fps < 1 || p.fps > 60 || p.frames < 1 || p.frames > 18000 ||
         p.bitrate_bps < 100'000 || p.bitrate_bps > 16'000'000 ||
-        p.timeout_seconds < 5 || p.timeout_seconds > 120 ||
+        p.timeout_seconds < 5 || p.timeout_seconds > 330 ||
+        p.duration_seconds < 0 || p.duration_seconds > 300 ||
+        (p.duration_seconds > 0 && p.timeout_seconds < p.duration_seconds + 5) ||
         result.linger_ms < 0 || result.linger_ms > 3000)
         throw std::invalid_argument(
             "Choose monitor, explicit sharing consent, and valid bounded H.264 profile");
@@ -87,9 +101,10 @@ void usage() {
         "  --publish-monitor --monitor N --confirm-screen-share yes\n"
         "     [--width 1920] [--height 1080] [--fps 30] [--frames 30]\n"
         "     [--bitrate 4000000] [--timeout 30] [--linger-ms 1000]\n"
+        "     [--duration 1..300] (bounded time-based stability session)\n"
         "SHARES THE ENTIRE SELECTED MONITOR with LiveKit room participants.\n"
         "Requires LIVEKIT_URL, LIVEKIT_TOKEN and compatible hardware H.264 MFT.\n"
-        "No audio or disk recording. Bounded to 60 submitted input frames.\n";
+        "No audio or disk recording. Duration max 300 seconds, 18000 frames.\n";
 }
 
 int self_test() {
@@ -105,6 +120,25 @@ int self_test() {
     const auto options = parse(6, good);
     if (!options.publish || options.profile.monitor_index != 0 ||
         !options.profile.monitor_capture_confirmed) return 1;
+    char duration_flag[] = "--duration", duration_seconds[] = "120";
+    char* long_session[] = {app, publish, monitor, zero, consent, yes,
+                            duration_flag, duration_seconds};
+    const auto bounded = parse(8, long_session);
+    if (bounded.profile.duration_seconds != 120 ||
+        bounded.profile.frames != 3600 ||
+        bounded.profile.timeout_seconds != 135) return 1;
+    char invalid_duration[] = "301";
+    char* over_limit[] = {app, publish, monitor, zero, consent, yes,
+                          duration_flag, invalid_duration};
+    try { (void)parse(8, over_limit); return 1; }
+    catch (const std::invalid_argument&) {}
+    char short_timeout[] = "90";
+    char timeout_flag[] = "--timeout";
+    char* inadequate_timeout[] = {app, publish, monitor, zero, consent, yes,
+                                   duration_flag, duration_seconds,
+                                   timeout_flag, short_timeout};
+    try { (void)parse(10, inadequate_timeout); return 1; }
+    catch (const std::invalid_argument&) {}
     char denied[] = "no";
     char* bad[] = {app, publish, monitor, zero, consent, denied};
     try { (void)parse(6, bad); return 1; }
