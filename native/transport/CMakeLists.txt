@@ -37,3 +37,6 @@ if(BUILD_TESTING)
     add_test(NAME livekit_smoke_help
         COMMAND $<TARGET_FILE:gcp-livekit-smoke> --help)
 endif()
+
+# Optional GPU hardware encoded bridge.
+include(${CMAKE_CURRENT_LIST_DIR}/hardware.cmake)
