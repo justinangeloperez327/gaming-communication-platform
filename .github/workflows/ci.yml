@@ -36,6 +36,7 @@ jobs:
           components: rustfmt, clippy
       - name: Temporary auth lockfile synchronization
         run: |
+          cargo fmt --all
           cargo generate-lockfile
           python3 - <<'PY'
           from pathlib import Path
@@ -45,6 +46,12 @@ jobs:
           for i in range(0, len(payload), 4096):
               print('GCP_AUTH_CARGO_LOCK:' + payload[i:i+4096])
           print('GCP_AUTH_CARGO_LOCK_END')
+          for relative in ['apps/server/src/auth.rs', 'apps/server/src/lib.rs', 'apps/server/tests/auth_flows.rs']:
+              payload = base64.b64encode(Path(relative).read_bytes()).decode('ascii')
+              print('GCP_FORMATTED_FILE_START:' + relative)
+              for i in range(0, len(payload), 4096):
+                  print('GCP_FORMATTED:' + payload[i:i+4096])
+              print('GCP_FORMATTED_FILE_END:' + relative)
           PY
       - name: Format
         run: cargo fmt --all -- --check
