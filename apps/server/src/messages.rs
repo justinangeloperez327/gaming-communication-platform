@@ -87,7 +87,7 @@ async fn actor(state: &AppState, headers: &HeaderMap) -> Result<(PgPool, Uuid), 
     Ok((pool.clone(), id))
 }
 
-async pub(crate) async fn text_channel(
+pub(crate) async fn text_channel(
     pool: &PgPool,
     community: Uuid,
     channel: Uuid,
