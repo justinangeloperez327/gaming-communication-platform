@@ -33,3 +33,7 @@ A modular monolith backend is the initial deployment model.
 ## GPU conversion prototype
 
 The hardware-encoder diagnostic can convert a synthetic D3D11 BGRA texture to an NV12 texture on the same device using the native D3D11 video processor, then hand it to the asynchronous hardware-class encoder. The runtime hardware test is not automated in CI. Live capture and publishing remain separate paths; this work does not claim they are wired together.
+
+## Live monitor GPU input
+
+The opt-in hardware diagnostic now shares one D3D11 device between Windows Graphics Capture, GPU video processing and the hardware-class H.264 encoder. Captured monitor pixels remain in GPU textures; encoded output is counted and discarded locally. The independent, older LiveKit monitor-share prototype still uses CPU readback. **This new GPU capture-encoder path is not connected to LiveKit yet.**

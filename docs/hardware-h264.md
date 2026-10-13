@@ -54,3 +54,7 @@ The conversion code uses `ID3D11VideoProcessorEnumerator::CheckVideoProcessorFor
 **Not included:** Windows Graphics Capture wiring, game/window capture, actual encoder backend/GPU-engine telemetry, LiveKit publication, HDR and colorimetry verification, frame queue/pool optimization, or sustained 1080p60 validation. The program still creates the test input pixels on the CPU before uploading them; the *conversion* itself avoids CPU readback.
 
 GitHub CI compiles and runs the CLI self-test, including `--source` validation. It does not execute the GPU-dependent `--run` command. No hardware-encoder performance results can be inferred from a passing CI run.
+
+## Group 11: real monitor input
+
+The diagnostic also supports `--source monitor --monitor N --confirm-monitor-share yes`, which passes actual selected-display GPU textures to the D3D11 BGRA→NV12 converter and asynchronous H.264 encoder. Encoded frames are **not saved or transmitted**. Monitor size must match the explicit resolution. See [live monitor encoder](live-monitor-encode.md) for privacy, limitations, and testing.

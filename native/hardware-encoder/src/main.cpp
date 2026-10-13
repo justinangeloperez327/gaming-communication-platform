@@ -1,4 +1,7 @@
 #include "gpu_color_converter.h"
+#include "live_monitor_capture.h"
+
+#include <winrt/base.h>
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -43,6 +46,9 @@ struct Options {
     int bitrate = 1'500'000;
     int timeout_seconds = 20;
     bool use_bgra_gpu_conversion = false;
+    bool use_monitor_capture = false;
+    int monitor_index = -1;
+    bool confirmed_monitor_capture = false;
 };
 
 bool read_number(std::string_view value, int& target) {
@@ -54,7 +60,11 @@ bool valid(const Options& o) {
            o.height >= 90 && o.height <= 1080 && o.height % 2 == 0 &&
            o.fps >= 1 && o.fps <= 60 && o.frames >= 1 && o.frames <= 60 &&
            o.bitrate >= 100'000 && o.bitrate <= 16'000'000 &&
-           o.timeout_seconds >= 5 && o.timeout_seconds <= 120;
+           o.timeout_seconds >= 5 && o.timeout_seconds <= 120 &&
+           (o.use_monitor_capture
+               ? (o.use_bgra_gpu_conversion && o.monitor_index >= 0 &&
+                  o.confirmed_monitor_capture)
+               : (o.monitor_index == -1 && !o.confirmed_monitor_capture));
 }
 
 Options parse(int argc, char* argv[]) {
@@ -64,9 +74,24 @@ Options parse(int argc, char* argv[]) {
         const std::string_view flag = argv[i];
         if (flag == "--source") {
             const std::string_view input = argv[i+1];
-            if (input == "nv12") o.use_bgra_gpu_conversion = false;
-            else if (input == "bgra") o.use_bgra_gpu_conversion = true;
-            else throw std::invalid_argument("--source must be nv12 or bgra");
+            if (input == "nv12") {
+                o.use_bgra_gpu_conversion = false;
+                o.use_monitor_capture = false;
+            } else if (input == "bgra") {
+                o.use_bgra_gpu_conversion = true;
+                o.use_monitor_capture = false;
+            } else if (input == "monitor") {
+                o.use_bgra_gpu_conversion = true;
+                o.use_monitor_capture = true;
+            } else throw std::invalid_argument(
+                "--source must be nv12, bgra or monitor");
+            continue;
+        }
+        if (flag == "--confirm-monitor-share") {
+            if (std::string_view(argv[i+1]) != "yes")
+                throw std::invalid_argument(
+                    "--confirm-monitor-share must be exactly yes");
+            o.confirmed_monitor_capture = true;
             continue;
         }
         int number = 0;
@@ -78,6 +103,7 @@ Options parse(int argc, char* argv[]) {
         else if (flag == "--frames") o.frames = number;
         else if (flag == "--bitrate") o.bitrate = number;
         else if (flag == "--timeout") o.timeout_seconds = number;
+        else if (flag == "--monitor") o.monitor_index = number;
         else throw std::invalid_argument("Unknown flag");
     }
     if (!valid(o)) throw std::invalid_argument("Unsupported H.264 hardware profile");
@@ -89,9 +115,12 @@ void usage() {
         "gcp-hardware-h264: asynchronous hardware-class MFT GPU test\n"
         "  --help / --self-test\n"
         "  --run [--width 640] [--height 360] [--fps 30] [--frames 15]\n"
-        "        [--bitrate 1500000] [--timeout 20] [--source nv12|bgra]\n"
-        "Uses SYNTHETIC test frames, without screen, microphone,\n"
-        "LiveKit, disk recording or credentials. Requires a physical GPU.\n"
+        "        [--bitrate 1500000] [--timeout 20]\n"
+        "        [--source nv12|bgra|monitor]\n"
+        "        [--monitor N --confirm-monitor-share yes] (monitor only)\n"
+        "nv12/bgra generate SYNTHETIC frames. MONITOR accesses the selected\n"
+        "display, with explicit consent. No files/network/audio.\n"
+        "A physical GPU and live Windows session are required.\n"
         "BGRA input uses D3D11 video processing to convert to GPU NV12.\n"
         "Fails if no D3D11-aware hardware-class encoder emits H.264 output.\n";
 }
@@ -212,7 +241,7 @@ public:
         require(MFCreateDXGIDeviceManager(&token, manager.GetAddressOf()),
                 "MFCreateDXGIDeviceManager");
         require(manager->ResetDevice(device.Get(), token), "ResetDevice");
-        if (options.use_bgra_gpu_conversion) {
+        if (options.use_bgra_gpu_conversion && !options.use_monitor_capture) {
             converter = std::make_unique<gcp::media::GpuColorConverter>(
                 device.Get(), context.Get(),
                 static_cast<UINT>(options.width),
@@ -427,6 +456,21 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
     if (!pump) throw std::runtime_error("Unable to allocate event pump");
     pump->start(events);
 
+    // Construct only after the MFT has accepted this exact GPU device and
+    // media format. This is strictly local and requires explicit CLI consent.
+    std::unique_ptr<gcp::media::LiveMonitorCapture> monitor_capture;
+    std::uint64_t monitor_sequence = 0;
+    if (options.use_monitor_capture) {
+        monitor_capture = std::make_unique<gcp::media::LiveMonitorCapture>(
+            gpu.device.Get(), gpu.context.Get(), options.monitor_index,
+            static_cast<UINT>(options.width),
+            static_cast<UINT>(options.height),
+            static_cast<UINT>(options.fps));
+        monitor_capture->start();
+        std::cerr << "CAPTURING MONITOR " << options.monitor_index
+                  << " into local hardware encoder (not transmitted)\n";
+    }
+
     try {
         require(encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0),
                 "Begin streaming");
@@ -443,7 +487,17 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
             require(event->GetType(&kind), "Media event type");
 
             if (kind == METransformNeedInput && submitted < options.frames) {
-                const auto sample = gpu.frame(options, submitted);
+                ComPtr<IMFSample> sample;
+                if (monitor_capture) {
+                    if (!monitor_capture->take_next(
+                            monitor_sequence, sample, 2000)) {
+                        throw std::runtime_error(
+                            "No fresh monitor GPU sample arrived in 2 seconds "
+                            "(resize, no changes, or capture failure)");
+                    }
+                } else {
+                    sample = gpu.frame(options, submitted);
+                }
                 require(encoder->ProcessInput(input_id, sample.Get(), 0),
                         "GPU NV12 ProcessInput");
                 ++submitted;
@@ -464,6 +518,17 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
         }
         pump->stop();
         encoder->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
+        if (monitor_capture) {
+            std::cout << "{\"monitor_frames_received\":"
+                      << monitor_capture->received()
+                      << ",\"gpu_frames_converted\":"
+                      << monitor_capture->converted()
+                      << ",\"frames_dropped\":"
+                      << monitor_capture->dropped()
+                      << ",\"capture_failures\":"
+                      << monitor_capture->failures()
+                      << ",\"cpu_pixel_readbacks\":0}\n";
+        }
         if (!complete || totals.samples == 0) {
             std::cerr << "Hardware MFT did not complete within test deadline\n";
             return false;
@@ -477,6 +542,8 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
 }
 
 int run(const Options& options) {
+    if (options.use_monitor_capture)
+        winrt::init_apartment(winrt::apartment_type::multi_threaded);
     MfLifetime media;
     HardwareDevice gpu(options);
     MFT_REGISTER_TYPE_INFO output_type{MFMediaType_Video, MFVideoFormat_H264};
@@ -500,6 +567,8 @@ int run(const Options& options) {
                           << ",\"keyframes\":" << output.keyframes
                           << ",\"elapsed_seconds\":" << elapsed
                           << ",\"hardware_class_mft\":true"
+                          << ",\"real_monitor_capture\":"
+                          << (options.use_monitor_capture ? "true" : "false")
                           << ",\"gpu_bgra_to_nv12_requested\":"
                           << (options.use_bgra_gpu_conversion ? "true" : "false")
                           << ",\"livekit_connected\":false"
@@ -540,6 +609,19 @@ int main(int argc, char* argv[]) {
             char* with_source[] = {program, run_mode, source_flag, bgra};
             const auto selected = parse(4, with_source);
             if (!selected.use_bgra_gpu_conversion) return 1;
+            char monitor_value[] = "monitor";
+            char* unconfirmed[] = {program, run_mode, source_flag, monitor_value};
+            try { (void)parse(4, unconfirmed); return 1; }
+            catch (const std::invalid_argument&) {}
+            char monitor_flag[] = "--monitor";
+            char monitor_index[] = "0";
+            char confirm_flag[] = "--confirm-monitor-share";
+            char yes[] = "yes";
+            char* confirmed[] = {program, run_mode, source_flag, monitor_value,
+                                 monitor_flag, monitor_index, confirm_flag, yes};
+            const auto shared = parse(8, confirmed);
+            if (!shared.use_monitor_capture || shared.monitor_index != 0 ||
+                !shared.confirmed_monitor_capture) return 1;
             char invalid_source[] = "gpu";
             char* bad_source[] = {program, run_mode, source_flag, invalid_source};
             try { (void)parse(4, bad_source); return 1; }
