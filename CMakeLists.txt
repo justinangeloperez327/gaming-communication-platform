@@ -15,6 +15,7 @@ add_subdirectory(apps/desktop)
 
 if(WIN32)
     add_subdirectory(native/probe)
+    add_subdirectory(native/hardware-encoder)
 endif()
 
 option(GCP_ENABLE_LIVEKIT "Build the optional native LiveKit transport smoke test" OFF)

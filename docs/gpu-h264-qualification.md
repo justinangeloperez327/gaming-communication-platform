@@ -35,3 +35,8 @@ The GitHub-hosted Windows runner compiles this code and tests argument rejection
 The next native work is to submit initialized NV12 GPU textures to an explicitly selected hardware transform, handle `METransformNeedInput` and `METransformHaveOutput`, collect complete encoded access units, translate keyframe/bitrate feedback, and deliver through LiveKit's `EncodedVideoSource`. Only then should game-FPS, GPU encoder usage and 1080p60 performance be assessed.
 
 See Microsoft's documentation for [hardware MFTs](https://learn.microsoft.com/en-us/windows/win32/medfound/hardware-mfts), [D3D-aware transforms](https://learn.microsoft.com/en-us/windows/win32/medfound/direct3d-aware-mfts) and [DXGI sample surfaces](https://learn.microsoft.com/en-us/windows/win32/api/mfapi/nf-mfapi-mfcreatedxgisurfacebuffer).
+
+
+## Actual asynchronous output diagnostic
+
+A separate hardware-class encoder diagnostic now submits *synthetic* D3D11/NV12 samples and receives H.264 output in response to Media Foundation readiness events. It is physical-device-only and is not yet connected to live screen capture or LiveKit. See [hardware H.264](hardware-h264.md).
