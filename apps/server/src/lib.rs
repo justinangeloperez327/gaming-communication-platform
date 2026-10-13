@@ -1,5 +1,5 @@
-pub mod database;
 pub mod auth;
+pub mod database;
 
 use axum::{
     Json, Router,

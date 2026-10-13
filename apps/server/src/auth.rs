@@ -2,7 +2,10 @@
 //! response that creates/rotates it; PostgreSQL persists SHA-256 digests.
 //! No passwords, raw tokens, or credential-bearing DATABASE_URL values are logged.
 
-use std::{sync::{Arc, OnceLock}, time::Duration};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use argon2::{
     Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version,
@@ -23,7 +26,6 @@ use tokio::{sync::Semaphore, task, time::timeout};
 use crate::AppState;
 
 const ACCESS_SECONDS: i64 = 15 * 60;
-const REFRESH_DAYS: i64 = 30;
 const TOKEN_BYTES: usize = 32;
 const MAX_PASSWORD_BYTES: usize = 128;
 
@@ -112,9 +114,9 @@ fn database(state: &AppState) -> Result<&PgPool, AuthError> {
 fn valid_handle(handle: &str) -> bool {
     handle.len() >= 3
         && handle.len() <= 32
-        && handle.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
-        })
+        && handle
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
 fn valid_display_name(name: &str) -> bool {
@@ -124,8 +126,11 @@ fn valid_display_name(name: &str) -> bool {
 }
 
 fn canonical_email(input: &str) -> Result<String, AuthError> {
-    if input.len() < 3 || input.len() > 320 || input != input.trim()
-        || !input.is_ascii() || input.bytes().any(|b| b.is_ascii_whitespace())
+    if input.len() < 3
+        || input.len() > 320
+        || input != input.trim()
+        || !input.is_ascii()
+        || input.bytes().any(|b| b.is_ascii_whitespace())
     {
         return Err(AuthError::InvalidRequest);
     }
@@ -133,8 +138,12 @@ fn canonical_email(input: &str) -> Result<String, AuthError> {
     let Some((local, domain)) = value.split_once('@') else {
         return Err(AuthError::InvalidRequest);
     };
-    if local.is_empty() || domain.is_empty() || domain.contains('@')
-        || !domain.contains('.') || domain.starts_with('.') || domain.ends_with('.')
+    if local.is_empty()
+        || domain.is_empty()
+        || domain.contains('@')
+        || !domain.contains('.')
+        || domain.starts_with('.')
+        || domain.ends_with('.')
     {
         return Err(AuthError::InvalidRequest);
     }
@@ -207,9 +216,14 @@ async fn verify_password(password: String, stored: String) -> Result<bool, AuthE
 
 fn read_user(row: &sqlx::postgres::PgRow) -> Result<UserView, AuthError> {
     Ok(UserView {
-        id: row.try_get::<Uuid, _>("id").map_err(|_| AuthError::Unavailable)?.to_string(),
+        id: row
+            .try_get::<Uuid, _>("id")
+            .map_err(|_| AuthError::Unavailable)?
+            .to_string(),
         handle: row.try_get("handle").map_err(|_| AuthError::Unavailable)?,
-        display_name: row.try_get("display_name").map_err(|_| AuthError::Unavailable)?,
+        display_name: row
+            .try_get("display_name")
+            .map_err(|_| AuthError::Unavailable)?,
         email: row.try_get("email").map_err(|_| AuthError::Unavailable)?,
     })
 }
@@ -234,12 +248,13 @@ fn session_response(user: UserView, access: String, refresh: String) -> SessionR
     }
 }
 
-pub async fn register(
+pub(crate) async fn register(
     State(state): State<AppState>,
     Json(input): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<SessionResponse>), AuthError> {
     let pool = database(&state)?;
-    if !valid_handle(&input.handle) || !valid_display_name(&input.display_name)
+    if !valid_handle(&input.handle)
+        || !valid_display_name(&input.display_name)
         || !valid_password(&input.password)
     {
         return Err(AuthError::InvalidRequest);
@@ -281,10 +296,13 @@ pub async fn register(
     .await
     .map_err(|_| AuthError::Unavailable)?;
     tx.commit().await.map_err(|_| AuthError::Unavailable)?;
-    Ok((StatusCode::CREATED, Json(session_response(user, access, refresh))))
+    Ok((
+        StatusCode::CREATED,
+        Json(session_response(user, access, refresh)),
+    ))
 }
 
-pub async fn login(
+pub(crate) async fn login(
     State(state): State<AppState>,
     Json(input): Json<LoginRequest>,
 ) -> Result<Json<SessionResponse>, AuthError> {
@@ -302,7 +320,9 @@ pub async fn login(
     .await
     .map_err(|_| AuthError::Unavailable)?
     .ok_or(AuthError::Unauthorized)?;
-    let stored: String = row.try_get("password_hash").map_err(|_| AuthError::Unavailable)?;
+    let stored: String = row
+        .try_get("password_hash")
+        .map_err(|_| AuthError::Unavailable)?;
     if !verify_password(input.password, stored).await? {
         return Err(AuthError::Unauthorized);
     }
@@ -354,7 +374,7 @@ async fn authenticated_user(
     Ok((id, read_user(&row)?))
 }
 
-pub async fn me(
+pub(crate) async fn me(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<UserView>, AuthError> {
@@ -362,7 +382,7 @@ pub async fn me(
     Ok(Json(user))
 }
 
-pub async fn update_profile(
+pub(crate) async fn update_profile(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(input): Json<ProfileRequest>,
@@ -381,7 +401,7 @@ pub async fn update_profile(
     Ok(Json(user_by_id(pool, user_id).await?))
 }
 
-pub async fn refresh(
+pub(crate) async fn refresh(
     State(state): State<AppState>,
     Json(input): Json<RefreshRequest>,
 ) -> Result<Json<SessionResponse>, AuthError> {
@@ -410,7 +430,7 @@ pub async fn refresh(
     Ok(Json(session_response(user, access, refresh)))
 }
 
-pub async fn logout(
+pub(crate) async fn logout(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<StatusCode, AuthError> {
@@ -446,7 +466,10 @@ mod tests {
         assert!(!valid_display_name("\u{0000}"));
         assert!(valid_password("secure secret passphrase"));
         assert!(!valid_password("short"));
-        assert_eq!(canonical_email("TEST@Example.COM").expect("email"), "test@example.com");
+        assert_eq!(
+            canonical_email("TEST@Example.COM").expect("email"),
+            "test@example.com"
+        );
         assert!(canonical_email("missing-at.example.com").is_err());
     }
 
@@ -457,7 +480,10 @@ mod tests {
         assert_ne!(a, b);
         assert_eq!(a.len(), 64);
         assert_ne!(token_digest(&a).expect("digest"), a);
-        assert_ne!(token_digest(&a).expect("digest"), token_digest(&b).expect("digest"));
+        assert_ne!(
+            token_digest(&a).expect("digest"),
+            token_digest(&b).expect("digest")
+        );
         assert!(token_digest("short").is_err());
     }
 
@@ -467,11 +493,15 @@ mod tests {
             .await
             .expect("argon2 hash");
         assert!(value.starts_with("$argon2id$"));
-        assert!(verify_password("long correct horse battery".into(), value.clone())
-            .await
-            .expect("verification"));
-        assert!(!verify_password("wrong password here".into(), value)
-            .await
-            .expect("wrong password"));
+        assert!(
+            verify_password("long correct horse battery".into(), value.clone())
+                .await
+                .expect("verification")
+        );
+        assert!(
+            !verify_password("wrong password here".into(), value)
+                .await
+                .expect("wrong password")
+        );
     }
 }

@@ -73,15 +73,23 @@ async fn registration_login_rotation_profile_and_revocation() {
         "email": email, "password": password
     });
     let (status, account) = send(
-        &app, Method::POST, "/v1/auth/register", Some(registration.clone()), None
-    ).await;
+        &app,
+        Method::POST,
+        "/v1/auth/register",
+        Some(registration.clone()),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(account["user"]["handle"], handle);
     assert_eq!(account["user"]["email"], email);
     assert_eq!(account["token_type"], "Bearer");
     assert_eq!(account["expires_in"], 900);
     assert_eq!(account["access_token"].as_str().expect("access").len(), 64);
-    assert_eq!(account["refresh_token"].as_str().expect("refresh").len(), 64);
+    assert_eq!(
+        account["refresh_token"].as_str().expect("refresh").len(),
+        64
+    );
     assert!(account["user"].get("password_hash").is_none());
 
     // Case-insensitive uniqueness, without disclosing a stored password.
@@ -89,88 +97,129 @@ async fn registration_login_rotation_profile_and_revocation() {
     duplicate["handle"] = json!(format!("v_{suffix}"));
     duplicate["email"] = json!(email.to_ascii_uppercase());
     let (status, _) = send(
-        &app, Method::POST, "/v1/auth/register", Some(duplicate), None
-    ).await;
+        &app,
+        Method::POST,
+        "/v1/auth/register",
+        Some(duplicate),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::CONFLICT);
 
     let (status, _) = send(
-        &app, Method::POST, "/v1/auth/login",
-        Some(json!({"email": email, "password": "wrong password"})), None
-    ).await;
+        &app,
+        Method::POST,
+        "/v1/auth/login",
+        Some(json!({"email": email, "password": "wrong password"})),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     let (status, login) = send(
-        &app, Method::POST, "/v1/auth/login",
-        Some(json!({"email": email.to_ascii_uppercase(), "password": password})), None
-    ).await;
+        &app,
+        Method::POST,
+        "/v1/auth/login",
+        Some(json!({"email": email.to_ascii_uppercase(), "password": password})),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
-    let access = login["access_token"].as_str().expect("login access").to_owned();
-    let refresh = login["refresh_token"].as_str().expect("login refresh").to_owned();
+    let access = login["access_token"]
+        .as_str()
+        .expect("login access")
+        .to_owned();
+    let refresh = login["refresh_token"]
+        .as_str()
+        .expect("login refresh")
+        .to_owned();
 
     let (status, _) = send(&app, Method::GET, "/v1/me", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
-    let (status, me) = send(
-        &app, Method::GET, "/v1/me", None, Some(&access)
-    ).await;
+    let (status, me) = send(&app, Method::GET, "/v1/me", None, Some(&access)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(me["user_not_present"], Value::Null);
     assert_eq!(me["handle"], handle);
 
     let (status, profile) = send(
-        &app, Method::PATCH, "/v1/me",
-        Some(json!({"display_name":"Updated Player"})), Some(&access)
-    ).await;
+        &app,
+        Method::PATCH,
+        "/v1/me",
+        Some(json!({"display_name":"Updated Player"})),
+        Some(&access),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(profile["display_name"], "Updated Player");
     let (status, _) = send(
-        &app, Method::PATCH, "/v1/me",
-        Some(json!({"display_name":"  "})), Some(&access)
-    ).await;
+        &app,
+        Method::PATCH,
+        "/v1/me",
+        Some(json!({"display_name":"  "})),
+        Some(&access),
+    )
+    .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 
     let (status, rotated) = send(
-        &app, Method::POST, "/v1/auth/refresh",
-        Some(json!({"refresh_token": refresh})), None
-    ).await;
+        &app,
+        Method::POST,
+        "/v1/auth/refresh",
+        Some(json!({"refresh_token": refresh})),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
-    let new_access = rotated["access_token"].as_str().expect("rotated access").to_owned();
-    let new_refresh = rotated["refresh_token"].as_str().expect("rotated refresh").to_owned();
+    let new_access = rotated["access_token"]
+        .as_str()
+        .expect("rotated access")
+        .to_owned();
+    let new_refresh = rotated["refresh_token"]
+        .as_str()
+        .expect("rotated refresh")
+        .to_owned();
     assert_ne!(new_access, access);
     let (status, _) = send(
-        &app, Method::POST, "/v1/auth/refresh",
-        Some(json!({"refresh_token": refresh})), None
-    ).await;
+        &app,
+        Method::POST,
+        "/v1/auth/refresh",
+        Some(json!({"refresh_token": refresh})),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
-    let (status, _) = send(
-        &app, Method::GET, "/v1/me", None, Some(&access)
-    ).await;
+    let (status, _) = send(&app, Method::GET, "/v1/me", None, Some(&access)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
-    let (status, _) = send(
-        &app, Method::GET, "/v1/me", None, Some(&new_access)
-    ).await;
+    let (status, _) = send(&app, Method::GET, "/v1/me", None, Some(&new_access)).await;
     assert_eq!(status, StatusCode::OK);
 
     // The refresh token itself never appears in the database in plaintext.
-    let digest_count: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM user_sessions WHERE refresh_hash = $1"
-    )
-    .bind(&new_refresh)
-    .fetch_one(&pool)
-    .await
-    .expect("plaintext token lookup");
+    let digest_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM user_sessions WHERE refresh_hash = $1")
+            .bind(&new_refresh)
+            .fetch_one(&pool)
+            .await
+            .expect("plaintext token lookup");
     assert_eq!(digest_count, 0);
 
     let (status, _) = send(
-        &app, Method::POST, "/v1/auth/logout", None, Some(&new_access)
-    ).await;
+        &app,
+        Method::POST,
+        "/v1/auth/logout",
+        None,
+        Some(&new_access),
+    )
+    .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, _) = send(
-        &app, Method::GET, "/v1/me", None, Some(&new_access)
-    ).await;
+    let (status, _) = send(&app, Method::GET, "/v1/me", None, Some(&new_access)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     let (status, _) = send(
-        &app, Method::POST, "/v1/auth/refresh",
-        Some(json!({"refresh_token": new_refresh})), None
-    ).await;
+        &app,
+        Method::POST,
+        "/v1/auth/refresh",
+        Some(json!({"refresh_token": new_refresh})),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
     // Other independent sessions need explicit logout; delete test user
@@ -186,9 +235,13 @@ async fn registration_login_rotation_profile_and_revocation() {
 async fn routes_fail_closed_without_postgres() {
     let app = router_with_database(None);
     let (status, _) = send(
-        &app, Method::POST, "/v1/auth/login",
-        Some(json!({"email":"x@y.test","password":"anything"})), None
-    ).await;
+        &app,
+        Method::POST,
+        "/v1/auth/login",
+        Some(json!({"email":"x@y.test","password":"anything"})),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     let (status, _) = send(&app, Method::GET, "/v1/me", None, None).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
