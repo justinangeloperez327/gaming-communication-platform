@@ -24,6 +24,8 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Unit tests
         run: cargo test --workspace
+      - name: Frame-time comparison tests
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
   desktop:
     name: Windows Qt, media and LiveKit builds

@@ -1,6 +1,8 @@
 #include "gpu_color_converter.h"
 #include "live_monitor_capture.h"
 #include "hardware_h264_bridge.h"
+#include "../../transport/src/frame_arrival_metrics.h"
+#include "../../probe/src/telemetry.h"
 
 #include <winrt/base.h>
 
@@ -370,6 +372,8 @@ struct OutputRecord {
     std::uint64_t samples = 0;
     std::uint64_t bytes = 0;
     std::uint64_t keyframes = 0;
+    std::uint64_t submitted_inputs = 0;
+    std::unique_ptr<gcp::transport::FrameArrivalMetrics> timing;
 };
 
 // Only process output after an actual asynchronous HaveOutput event.
@@ -462,6 +466,7 @@ void receive_output(IMFTransform* encoder, DWORD output_id,
     if (is_keyframe) ++totals.keyframes;
     totals.bytes += used;
     ++totals.samples;
+    if (totals.timing) totals.timing->record(Clock::now());
 }
 
 bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
@@ -544,6 +549,8 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                 "Start of stream");
         const auto deadline = Clock::now() +
                               std::chrono::seconds(options.timeout_seconds);
+        totals.timing = std::make_unique<gcp::transport::FrameArrivalMetrics>(
+            Clock::now());
         int submitted = 0;
         bool draining = false, complete = false;
         while (Clock::now() < deadline && !complete) {
@@ -599,6 +606,7 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                 require(encoder->ProcessInput(input_id, sample.Get(), 0),
                         "GPU NV12 ProcessInput");
                 ++submitted;
+                ++totals.submitted_inputs;
                 if (submitted == options.frames) {
                     require(encoder->ProcessMessage(
                         MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0), "End of stream");
@@ -655,17 +663,43 @@ int run(const Options& options,
             "Hardware H264 MFT enumeration");
 
     const auto start = Clock::now();
+    const auto process_before = gcp::probe::take_snapshot();
     std::cout << "Hardware-class H.264 candidates: " << list.count << "\n";
     for (UINT32 i = 0; i < list.count; ++i) {
         OutputRecord output;
         try {
             if (encode_candidate(list.entries[i], gpu, options, output,
                                  on_encoded, feedback, feedback_stats)) {
+                const auto end = Clock::now();
                 const auto elapsed =
-                    std::chrono::duration<double>(Clock::now() - start).count();
+                    std::chrono::duration<double>(end - start).count();
+                const auto process_after = gcp::probe::take_snapshot();
+                const auto latency = output.timing
+                    ? output.timing->report(end)
+                    : gcp::transport::FrameArrivalMetrics::Report{};
                 std::cout << "{\"probe\":\"hardware_async_h264\""
                           << ",\"encoded_samples\":" << output.samples
+                          << ",\"submitted_input_samples\":" << output.submitted_inputs
                           << ",\"encoded_bytes\":" << output.bytes
+                          << ",\"measured_output_bits_per_second\":"
+                          << (elapsed > 0
+                              ? static_cast<double>(output.bytes) * 8.0 / elapsed : 0.0)
+                          << ",\"time_to_first_encoded_output_ms\":"
+                          << latency.time_to_first_ms
+                          << ",\"encoded_output_arrival_p50_ms\":"
+                          << latency.interval_p50_ms
+                          << ",\"encoded_output_arrival_p95_ms\":"
+                          << latency.interval_p95_ms
+                          << ",\"encoded_output_timing_samples\":"
+                          << latency.interval_samples
+                          << ",\"cpu_percent_total_machine\":"
+                          << gcp::probe::total_machine_cpu_percent(
+                                 process_before, process_after, elapsed,
+                                 gcp::probe::logical_processor_count())
+                          << ",\"private_bytes_start\":"
+                          << process_before.private_bytes
+                          << ",\"private_bytes_end\":"
+                          << process_after.private_bytes
                           << ",\"keyframes\":" << output.keyframes
                           << ",\"elapsed_seconds\":" << elapsed
                           << ",\"hardware_class_mft\":true"

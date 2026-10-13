@@ -1,4 +1,5 @@
 #include "telemetry.h"
+#include "frame_arrival_metrics.h"
 #include "screen_capture.h"
 #include "annexb_h264.h"
 #include "livekit/encoded_video_source.h"
@@ -21,6 +22,8 @@
 #include <vector>
 #include <iostream>
 #include <memory>
+#include <mutex>
+#include <iomanip>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -167,6 +170,7 @@ void usage() {
 }
 
 int self_test() {
+    if (!gcp::transport::frame_arrival_metrics_self_test()) return 1;
     char app[] = "test";
     char mode[] = "publish";
     char flag[] = "--fps";
@@ -403,14 +407,17 @@ int publish_h264_file(livekit::Room& room, const Options& options) {
 }
 
 int watch(livekit::Room& room, const Options& options) {
+    const auto start = Clock::now();
     struct Received {
+        explicit Received(Clock::time_point at) : metrics(at) {}
+        std::mutex mutex;
+        gcp::transport::FrameArrivalMetrics metrics;
         std::atomic<std::uint64_t> frames{0};
         std::atomic<int> width{0};
         std::atomic<int> height{0};
     };
-    // Shared state remains valid even if the SDK finishes an in-flight
-    // callback after the subscription is cleared during shutdown.
-    auto received = std::make_shared<Received>();
+    // Callback-state ownership survives in-flight LiveKit callbacks.
+    auto received = std::make_shared<Received>(start);
     const auto track_name = options.track == "screen"
         ? std::string(kScreenTrackName)
         : options.track == "h264"
@@ -420,11 +427,14 @@ int watch(livekit::Room& room, const Options& options) {
         [received](const livekit::VideoFrame& frame, std::int64_t) {
             received->width.store(frame.width());
             received->height.store(frame.height());
+            {
+                std::lock_guard lock(received->mutex);
+                received->metrics.record(Clock::now());
+            }
             received->frames.fetch_add(1);
         });
 
-    std::cout << "Receiving synthetic test track from selected participant\n";
-    const auto start = Clock::now();
+    std::cout << "Watching selected LiveKit video track for decoded callbacks\n";
     const auto before = gcp::probe::take_snapshot();
     while (g_running.load() &&
            Clock::now() - start < std::chrono::seconds(options.seconds)) {
@@ -435,10 +445,28 @@ int watch(livekit::Room& room, const Options& options) {
     const auto after = gcp::probe::take_snapshot();
     const auto elapsed = std::chrono::duration<double>(Clock::now() - start).count();
     const auto count = received->frames.load();
-    gcp::probe::print_metrics("livekit_synthetic_receive", elapsed, count, 0,
+    gcp::transport::FrameArrivalMetrics::Report report;
+    {
+        std::lock_guard lock(received->mutex);
+        report = received->metrics.report(Clock::now());
+    }
+    gcp::probe::print_metrics("livekit_decoded_receive", elapsed, count, 0,
                              before, after, received->width.load(), received->height.load());
+    std::cout << std::fixed << std::setprecision(3)
+              << "{\"probe\":\"livekit_decoded_frame_timing\""
+              << ",\"track\":\"" << options.track << "\""
+              << ",\"decoded_frames\":" << report.frames
+              << ",\"time_to_first_callback_ms\":" << report.time_to_first_ms
+              << ",\"frame_rate_since_first_callback\":"
+              << report.observed_frame_fps
+              << ",\"arrival_p50_ms\":" << report.interval_p50_ms
+              << ",\"arrival_p95_ms\":" << report.interval_p95_ms
+              << ",\"arrival_max_ms\":" << report.interval_max_ms
+              << ",\"interval_samples\":" << report.interval_samples
+              << ",\"end_to_end_latency_measured\":false"
+              << "}\n";
     if (count == 0) {
-        std::cerr << "No synthetic video received: check identity, track, and room\n";
+        std::cerr << "No decoded video callbacks: check identity, track, codec, and room\n";
         return 2;
     }
     return 0;
