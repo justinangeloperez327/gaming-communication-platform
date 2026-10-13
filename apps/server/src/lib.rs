@@ -1,5 +1,6 @@
 pub mod auth;
 mod communities;
+mod messages;
 pub mod database;
 
 use axum::{
@@ -89,6 +90,14 @@ pub fn router_with_database(database: Option<PgPool>) -> Router {
         .route(
             "/v1/communities/{community_id}/channels/{channel_id}",
             axum::routing::patch(communities::update_channel).delete(communities::delete_channel),
+        )
+        .route(
+            "/v1/communities/{community_id}/channels/{channel_id}/messages",
+            get(messages::list).post(messages::create),
+        )
+        .route(
+            "/v1/communities/{community_id}/channels/{channel_id}/messages/{message_id}",
+            get(messages::get).patch(messages::edit).delete(messages::delete),
         )
         .layer(DefaultBodyLimit::max(8 * 1024))
         .with_state(AppState { database })
