@@ -32,7 +32,10 @@ async fn postgres_schema_roundtrip_and_readiness() {
     MIGRATOR.run(&pool).await.expect("run database migrations");
     // Idempotent even when multiple server replicas start at once, but
     // production operators should use a dedicated migration job.
-    MIGRATOR.run(&pool).await.expect("migrations are idempotent");
+    MIGRATOR
+        .run(&pool)
+        .await
+        .expect("migrations are idempotent");
 
     let response = router_with_database(Some(pool.clone()))
         .oneshot(

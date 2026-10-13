@@ -24,13 +24,16 @@ fn optional_flag(name: &str) -> Result<bool, io::Error> {
 fn pool_connections(raw: &str) -> Result<u32, io::Error> {
     match raw.parse::<u32>() {
         Ok(value @ 1..=32) => Ok(value),
-        _ => Err(config_error("GCP_DB_MAX_CONNECTIONS must be between 1 and 32")),
+        _ => Err(config_error(
+            "GCP_DB_MAX_CONNECTIONS must be between 1 and 32",
+        )),
     }
 }
 
 /// The API can run in health-only development mode without DATABASE_URL.
 /// If GCP_DATABASE_REQUIRED=1, missing credentials are a startup error.
-pub async fn connect_from_env() -> Result<Option<PgPool>, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn connect_from_env() -> Result<Option<PgPool>, Box<dyn std::error::Error + Send + Sync>>
+{
     let required = optional_flag("GCP_DATABASE_REQUIRED")?;
     let migrate = optional_flag("GCP_RUN_MIGRATIONS")?;
     let url = match env::var("DATABASE_URL") {

@@ -12,9 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let database = database::connect_from_env().await?;
     if database.is_none() {
-        tracing::warn!(
-            "PostgreSQL not configured; /health is live but /ready reports unavailable"
-        );
+        tracing::warn!("PostgreSQL not configured; /health is live but /ready reports unavailable");
     }
 
     let bind_address =
