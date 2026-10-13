@@ -1,5 +1,7 @@
 #include "hardware_h264_bridge.h"
 #include "h264_access_unit.h"
+#include "frame_arrival_metrics.h"
+#include "../../probe/src/telemetry.h"
 #include "livekit/livekit.h"
 #include "livekit/encoded_video_source.h"
 
@@ -10,6 +12,8 @@
 #include <cstdlib>
 #include <cstdint>
 #include <iostream>
+#include <iomanip>
+#include <thread>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -23,6 +27,7 @@ void interrupt_handler(int) { interrupted.store(true); }
 struct Options {
     bool publish = false;
     gcp::media::HardwareH264Profile profile;
+    int linger_ms = 1000;
 };
 
 bool number(std::string_view value, int& out) {
@@ -59,6 +64,7 @@ Options parse(int argc, char* argv[]) {
         else if (key == "--frames") p.frames = n;
         else if (key == "--bitrate") p.bitrate_bps = n;
         else if (key == "--timeout") p.timeout_seconds = n;
+        else if (key == "--linger-ms") result.linger_ms = n;
         else throw std::invalid_argument("Unknown command argument");
     }
     p.monitor_capture_confirmed = consent;
@@ -67,7 +73,8 @@ Options parse(int argc, char* argv[]) {
         p.height < 90 || p.height > 1080 || p.height % 2 ||
         p.fps < 1 || p.fps > 60 || p.frames < 1 || p.frames > 60 ||
         p.bitrate_bps < 100'000 || p.bitrate_bps > 16'000'000 ||
-        p.timeout_seconds < 5 || p.timeout_seconds > 120)
+        p.timeout_seconds < 5 || p.timeout_seconds > 120 ||
+        result.linger_ms < 0 || result.linger_ms > 3000)
         throw std::invalid_argument(
             "Choose monitor, explicit sharing consent, and valid bounded H.264 profile");
     return result;
@@ -79,7 +86,7 @@ void usage() {
         "  --help | --self-test\n"
         "  --publish-monitor --monitor N --confirm-screen-share yes\n"
         "     [--width 1920] [--height 1080] [--fps 30] [--frames 30]\n"
-        "     [--bitrate 4000000] [--timeout 30]\n"
+        "     [--bitrate 4000000] [--timeout 30] [--linger-ms 1000]\n"
         "SHARES THE ENTIRE SELECTED MONITOR with LiveKit room participants.\n"
         "Requires LIVEKIT_URL, LIVEKIT_TOKEN and compatible hardware H.264 MFT.\n"
         "No audio or disk recording. Bounded to 60 submitted input frames.\n";
@@ -102,9 +109,10 @@ int self_test() {
     char* bad[] = {app, publish, monitor, zero, consent, denied};
     try { (void)parse(6, bad); return 1; }
     catch (const std::invalid_argument&) {}
+    if (!gcp::transport::frame_arrival_metrics_self_test()) return 1;
     livekit::initialize(livekit::LogLevel::Warn);
     livekit::shutdown();
-    std::cout << "H.264 access-unit and consent self-test passed\n";
+    std::cout << "H.264 access-unit, timing and consent self-test passed\n";
     return 0;
 }
 
@@ -139,7 +147,11 @@ int publish(const Options& options) {
             "gcp-h264-encoded", source, livekit::TrackSource::SOURCE_SCREENSHARE);
         if (!track) throw std::runtime_error("H.264 screen track publication failed");
 
+        const auto measurement_start = std::chrono::steady_clock::now();
+        const auto process_start = gcp::probe::take_snapshot();
+        gcp::transport::FrameArrivalMetrics packet_arrivals(measurement_start);
         std::uint64_t accepted = 0, rejected = 0, skipped = 0;
+        std::uint64_t accepted_bytes = 0, accepted_keyframes = 0;
         std::uint64_t ignored_bitrate_feedback = 0;
         gcp::media::HardwareH264FeedbackStats feedback_stats;
         std::int64_t last_ts = -1;
@@ -170,7 +182,12 @@ int publish(const Options& options) {
                     return false;
                 }
                 ++accepted;
-                if (verified.keyframe) first_idr_sent = true;
+                accepted_bytes += frame.data.size();
+                packet_arrivals.record(std::chrono::steady_clock::now());
+                if (verified.keyframe) {
+                    first_idr_sent = true;
+                    ++accepted_keyframes;
+                }
                 return true;
             };
 
@@ -196,9 +213,31 @@ int publish(const Options& options) {
                   << " is transmitted to the LiveKit room. Ctrl+C to stop.\n";
         const auto result = gcp::media::encode_monitor_h264(
             p, emit, fetch_feedback, &feedback_stats);
-        std::cout << "{\"probe\":\"hardware_h264_livekit\""
+        const auto measurement_end = std::chrono::steady_clock::now();
+        const auto process_end = gcp::probe::take_snapshot();
+        const auto seconds = std::chrono::duration<double>(
+            measurement_end - measurement_start).count();
+        const auto timing = packet_arrivals.report(measurement_end);
+        std::cout << std::fixed << std::setprecision(3)
+                  << "{\"probe\":\"hardware_h264_livekit\""
                   << ",\"packets_accepted\":" << accepted
                   << ",\"packets_rejected\":" << rejected
+                  << ",\"accepted_encoded_bytes\":" << accepted_bytes
+                  << ",\"accepted_keyframes\":" << accepted_keyframes
+                  << ",\"sender_observation_seconds\":" << seconds
+                  << ",\"accepted_packet_fps\":"
+                  << (seconds > 0 ? accepted / seconds : 0.0)
+                  << ",\"accepted_encoded_bits_per_second\":"
+                  << (seconds > 0 ? accepted_bytes * 8.0 / seconds : 0.0)
+                  << ",\"first_accepted_packet_ms\":" << timing.time_to_first_ms
+                  << ",\"packet_arrival_p50_ms\":" << timing.interval_p50_ms
+                  << ",\"packet_arrival_p95_ms\":" << timing.interval_p95_ms
+                  << ",\"sender_cpu_percent_total_machine\":"
+                  << gcp::probe::total_machine_cpu_percent(
+                         process_start, process_end, seconds,
+                         gcp::probe::logical_processor_count())
+                  << ",\"sender_private_bytes_start\":" << process_start.private_bytes
+                  << ",\"sender_private_bytes_end\":" << process_end.private_bytes
                   << ",\"pre_idr_skipped\":" << skipped
                   << ",\"keyframe_requests\":" << feedback_stats.keyframe_requests
                   << ",\"keyframe_controls_accepted\":" << feedback_stats.keyframe_controls_accepted
@@ -209,6 +248,16 @@ int publish(const Options& options) {
                   << ",\"out_of_range_bitrate_feedback\":" << ignored_bitrate_feedback
                   << ",\"gpu_encoder_engine_verified\":false"
                   << ",\"receiver_playback_verified\":false}\n";
+        // SDK acceptance is asynchronous; retain the room briefly after
+        // the finite encoder run so packets have an opportunity to forward.
+        // This still does NOT prove SFU delivery or remote playback.
+        if (result == 0 && accepted > 0) {
+            const auto linger_until = std::chrono::steady_clock::now() +
+                std::chrono::milliseconds(options.linger_ms);
+            while (!interrupted.load() &&
+                   std::chrono::steady_clock::now() < linger_until)
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
         room->disconnect();
         room.reset();
         livekit::shutdown();
