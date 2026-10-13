@@ -68,16 +68,32 @@ pub(crate) struct Event {
 
 impl Event {
     pub fn message(channel: Uuid, actor: Uuid, id: Uuid, kind: EventKind) -> Self {
-        Self { channel, actor, message: Some(id), kind, active: None }
+        Self {
+            channel,
+            actor,
+            message: Some(id),
+            kind,
+            active: None,
+        }
     }
 
     fn presence(channel: Uuid, actor: Uuid, kind: EventKind) -> Self {
-        Self { channel, actor, message: None, kind, active: None }
+        Self {
+            channel,
+            actor,
+            message: None,
+            kind,
+            active: None,
+        }
     }
 
     fn typing(channel: Uuid, actor: Uuid, active: bool) -> Self {
         Self {
-            channel, actor, message: None, kind: EventKind::Typing, active: Some(active),
+            channel,
+            actor,
+            message: None,
+            kind: EventKind::Typing,
+            active: Some(active),
         }
     }
 }
@@ -91,7 +107,10 @@ pub(crate) struct EventHub {
 impl EventHub {
     pub fn new() -> Self {
         let (bus, _) = broadcast::channel(EVENT_QUEUE_CAPACITY);
-        Self { bus: Some(bus), presence: Arc::new(Mutex::new(HashMap::new())) }
+        Self {
+            bus: Some(bus),
+            presence: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     pub fn publish(&self, event: Event) {
@@ -108,7 +127,8 @@ impl EventHub {
     async fn join(&self, channel: Uuid, actor: Uuid) -> bool {
         let mut presence = self.presence.lock().await;
         let user_count = presence.get(&(channel, actor)).copied().unwrap_or(0);
-        let channel_count: usize = presence.iter()
+        let channel_count: usize = presence
+            .iter()
             .filter(|((id, _), _)| *id == channel)
             .map(|(_, n)| *n)
             .sum();
@@ -176,13 +196,20 @@ async fn send_text(socket: &mut WebSocket, payload: String) -> bool {
     )
 }
 
-async fn valid_subscriber(pool: &PgPool, headers: &HeaderMap, community: Uuid,
-    channel: Uuid, user: Uuid) -> bool
-{
+async fn valid_subscriber(
+    pool: &PgPool,
+    headers: &HeaderMap,
+    community: Uuid,
+    channel: Uuid,
+    user: Uuid,
+) -> bool {
     let Ok((current, _)) = auth::authenticated_user(pool, headers).await else {
         return false;
     };
-    current == user && messages::text_channel(pool, community, channel, user).await.is_ok()
+    current == user
+        && messages::text_channel(pool, community, channel, user)
+            .await
+            .is_ok()
 }
 
 pub(crate) async fn subscribe(
@@ -200,20 +227,32 @@ pub(crate) async fn subscribe(
     messages::text_channel(pool, community, channel, user).await?;
     let pool = pool.clone();
     let hub = state.realtime.clone();
-    Ok(upgrade.max_message_size(2048).max_frame_size(2048).on_upgrade(move |socket| {
-        handle(socket, hub, pool, headers, community, channel, user)
-    }))
+    Ok(upgrade
+        .max_message_size(2048)
+        .max_frame_size(2048)
+        .on_upgrade(move |socket| handle(socket, hub, pool, headers, community, channel, user)))
 }
 
-async fn handle(mut socket: WebSocket, hub: EventHub, pool: PgPool,
-    headers: HeaderMap, community: Uuid, channel: Uuid, user: Uuid)
-{
+async fn handle(
+    mut socket: WebSocket,
+    hub: EventHub,
+    pool: PgPool,
+    headers: HeaderMap,
+    community: Uuid,
+    channel: Uuid,
+    user: Uuid,
+) {
     // Subscribe before registration, so the channel_join event is observable.
-    let Some(mut listener) = hub.listen() else { return };
+    let Some(mut listener) = hub.listen() else {
+        return;
+    };
     if !hub.join(channel, user).await {
-        let _ = socket.send(Message::Close(Some(CloseFrame {
-            code: close_code::POLICY, reason: "connection_limit".into(),
-        }))).await;
+        let _ = socket
+            .send(Message::Close(Some(CloseFrame {
+                code: close_code::POLICY,
+                reason: "connection_limit".into(),
+            })))
+            .await;
         return;
     }
     let ready = serde_json::json!({
@@ -291,7 +330,7 @@ async fn handle(mut socket: WebSocket, hub: EventHub, pool: PgPool,
         }
     }
     hub.leave(channel, user).await;
-    let _ = time::timeout(OUTGOING_TIMEOUT, socket.close()).await;
+    let _ = time::timeout(OUTGOING_TIMEOUT, socket.send(Message::Close(None))).await;
 }
 
 #[cfg(test)]
@@ -320,8 +359,12 @@ mod tests {
 
     #[test]
     fn identifier_only_message_events() {
-        let ev = Event::message(Uuid::from_u128(3), Uuid::from_u128(4),
-            Uuid::from_u128(5), EventKind::Created);
+        let ev = Event::message(
+            Uuid::from_u128(3),
+            Uuid::from_u128(4),
+            Uuid::from_u128(5),
+            EventKind::Created,
+        );
         let encoded = encode(&ev).expect("JSON");
         assert!(encoded.contains("message_created"));
         assert!(!encoded.contains("body"));

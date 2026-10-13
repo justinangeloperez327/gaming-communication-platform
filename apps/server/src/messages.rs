@@ -152,7 +152,10 @@ pub(crate) async fn create(
     .ok_or(AuthError::NotFound)?;
     let result = view(&row)?;
     state.realtime.publish(Event::message(
-        channel, user, parse_id(&result.id)?, EventKind::Created,
+        channel,
+        user,
+        parse_id(&result.id)?,
+        EventKind::Created,
     ));
     Ok((StatusCode::CREATED, Json(result)))
 }
@@ -290,7 +293,10 @@ pub(crate) async fn edit(
     .ok_or(AuthError::NotFound)?;
     let result = view(&row)?;
     state.realtime.publish(Event::message(
-        channel, user, parse_id(&result.id)?, EventKind::Edited,
+        channel,
+        user,
+        parse_id(&result.id)?,
+        EventKind::Edited,
     ));
     Ok(Json(result))
 }
@@ -327,9 +333,9 @@ pub(crate) async fn delete(
     if result.rows_affected() == 0 {
         return Err(AuthError::NotFound);
     }
-    state.realtime.publish(Event::message(
-        channel, user, message, EventKind::Deleted,
-    ));
+    state
+        .realtime
+        .publish(Event::message(channel, user, message, EventKind::Deleted));
     Ok(StatusCode::NO_CONTENT)
 }
 

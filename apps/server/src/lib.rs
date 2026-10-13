@@ -108,7 +108,10 @@ pub fn router_with_database(database: Option<PgPool>) -> Router {
             get(realtime::subscribe),
         )
         .layer(DefaultBodyLimit::max(8 * 1024))
-        .with_state(AppState { database, realtime: realtime::EventHub::new() })
+        .with_state(AppState {
+            database,
+            realtime: realtime::EventHub::new(),
+        })
 }
 
 #[cfg(test)]
