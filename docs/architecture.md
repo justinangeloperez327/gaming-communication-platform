@@ -37,3 +37,7 @@ The hardware-encoder diagnostic can convert a synthetic D3D11 BGRA texture to an
 ## Live monitor GPU input
 
 The opt-in hardware diagnostic now shares one D3D11 device between Windows Graphics Capture, GPU video processing and the hardware-class H.264 encoder. Captured monitor pixels remain in GPU textures; encoded output is counted and discarded locally. The independent, older LiveKit monitor-share prototype still uses CPU readback. **This new GPU capture-encoder path is not connected to LiveKit yet.**
+
+## Opt-in encoded H.264 transport
+
+A developer-only native bridge connects the hardware-class asynchronous H.264 MFT output callback to LiveKit `EncodedVideoSource`. It validates/normalizes encoded H.264 access units, requires explicit monitor-sharing authorization and remains independent of the Qt application. It has not been exercised on a physical Windows GPU with remote decoding. See [hardware H.264 to LiveKit](hardware-livekit.md).

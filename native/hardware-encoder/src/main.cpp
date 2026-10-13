@@ -1,5 +1,6 @@
 #include "gpu_color_converter.h"
 #include "live_monitor_capture.h"
+#include "hardware_h264_bridge.h"
 
 #include <winrt/base.h>
 
@@ -371,7 +372,8 @@ struct OutputRecord {
 // Only process output after an actual asynchronous HaveOutput event.
 // The caller must provide an output buffer if the MFT does not provide one.
 void receive_output(IMFTransform* encoder, DWORD output_id,
-                    const MFT_OUTPUT_STREAM_INFO& info, OutputRecord& totals) {
+                    const MFT_OUTPUT_STREAM_INFO& info, OutputRecord& totals,
+                    const gcp::media::HardwareH264Callback* on_encoded) {
     MFT_OUTPUT_DATA_BUFFER output{};
     output.dwStreamID = output_id;
     ComPtr<IMFSample> sample;
@@ -401,14 +403,43 @@ void receive_output(IMFTransform* encoder, DWORD output_id,
         throw std::runtime_error("Empty or oversized H.264 output sample");
 
     UINT32 keyframe = 0;
-    if (SUCCEEDED(sample->GetUINT32(MFSampleExtension_CleanPoint, &keyframe))
-        && keyframe) ++totals.keyframes;
+    const bool is_keyframe =
+        SUCCEEDED(sample->GetUINT32(MFSampleExtension_CleanPoint, &keyframe)) &&
+        keyframe != 0;
+
+    if (on_encoded && *on_encoded) {
+        LONGLONG timestamp = 0;
+        require(sample->GetSampleTime(&timestamp),
+                "H.264 encoded sample timestamp");
+        if (timestamp < 0) throw std::runtime_error("Negative H.264 timestamp");
+        BYTE* raw = nullptr;
+        DWORD maximum = 0;
+        DWORD current = 0;
+        require(bytes->Lock(&raw, &maximum, &current),
+                "Lock H.264 encoded payload");
+        gcp::media::HardwareH264AccessUnit packet;
+        try {
+            if (current != used)
+                throw std::runtime_error("H.264 payload size changed");
+            packet.bytes.assign(raw, raw + current);
+        } catch (...) {
+            bytes->Unlock();
+            throw;
+        }
+        require(bytes->Unlock(), "Unlock encoded H.264 payload");
+        packet.timestamp_us = timestamp / 10;
+        packet.keyframe = is_keyframe;
+        if (!(*on_encoded)(packet))
+            throw std::runtime_error("Hardware H.264 transport rejected encoded packet");
+    }
+    if (is_keyframe) ++totals.keyframes;
     totals.bytes += used;
     ++totals.samples;
 }
 
 bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
-                      const Options& options, OutputRecord& totals) {
+                      const Options& options, OutputRecord& totals,
+                      const gcp::media::HardwareH264Callback* on_encoded) {
     ComPtr<IMFTransform> encoder;
     if (FAILED(activation->ActivateObject(IID_PPV_ARGS(encoder.GetAddressOf()))))
         return false;
@@ -509,7 +540,7 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                     draining = true;
                 }
             } else if (kind == METransformHaveOutput) {
-                receive_output(encoder.Get(), output_id, info, totals);
+                receive_output(encoder.Get(), output_id, info, totals, on_encoded);
             } else if (kind == METransformDrainComplete && draining) {
                 complete = true;
             } else if (kind == MEError) {
@@ -541,7 +572,8 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
     }
 }
 
-int run(const Options& options) {
+int run(const Options& options,
+        const gcp::media::HardwareH264Callback* on_encoded = nullptr) {
     if (options.use_monitor_capture)
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
     MfLifetime media;
@@ -558,7 +590,7 @@ int run(const Options& options) {
     for (UINT32 i = 0; i < list.count; ++i) {
         OutputRecord output;
         try {
-            if (encode_candidate(list.entries[i], gpu, options, output)) {
+            if (encode_candidate(list.entries[i], gpu, options, output, on_encoded)) {
                 const auto elapsed =
                     std::chrono::duration<double>(Clock::now() - start).count();
                 std::cout << "{\"probe\":\"hardware_async_h264\""
@@ -571,12 +603,16 @@ int run(const Options& options) {
                           << (options.use_monitor_capture ? "true" : "false")
                           << ",\"gpu_bgra_to_nv12_requested\":"
                           << (options.use_bgra_gpu_conversion ? "true" : "false")
-                          << ",\"livekit_connected\":false"
+                          << ",\"livekit_connected\":"
+                          << (on_encoded ? "true" : "false")
                           << ",\"gpu_engine_utilization_verified\":false}\n";
                 return 0;
             }
         } catch (const std::exception& e) {
             std::cerr << "Candidate " << i << " failed: " << e.what() << "\n";
+            // Once a transport callback is active, never try a different
+            // encoder after sending partial packets to the same LiveKit track.
+            if (on_encoded) throw;
         }
     }
     std::cerr << "No asynchronous D3D11-aware hardware-class H.264 MFT "
@@ -585,6 +621,30 @@ int run(const Options& options) {
 }
 } // namespace
 
+namespace gcp::media {
+int encode_monitor_h264(
+    const HardwareH264Profile& profile,
+    const HardwareH264Callback& callback) {
+    if (!callback)
+        throw std::invalid_argument("H.264 output callback is required");
+    Options options;
+    options.width = profile.width;
+    options.height = profile.height;
+    options.fps = profile.fps;
+    options.frames = profile.frames;
+    options.bitrate = profile.bitrate_bps;
+    options.timeout_seconds = profile.timeout_seconds;
+    options.monitor_index = profile.monitor_index;
+    options.confirmed_monitor_capture = profile.monitor_capture_confirmed;
+    options.use_bgra_gpu_conversion = true;
+    options.use_monitor_capture = true;
+    if (!valid(options))
+        throw std::invalid_argument("Monitor H.264 source needs explicit consent and valid dimensions");
+    return run(options, &callback);
+}
+} // namespace gcp::media
+
+#ifndef GCP_HARDWARE_H264_NO_MAIN
 int main(int argc, char* argv[]) {
     try {
         if (argc < 2 || std::string_view(argv[1]) == "--help") {
@@ -637,3 +697,5 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 }
+
+#endif // GCP_HARDWARE_H264_NO_MAIN
