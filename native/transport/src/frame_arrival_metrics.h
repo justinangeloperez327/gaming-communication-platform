@@ -76,8 +76,7 @@ private:
 };
 
 inline bool frame_arrival_metrics_self_test() {
-    using Clock = FrameArrivalMetrics::Clock;
-    const Clock::TimePoint zero{};
+    const FrameArrivalMetrics::TimePoint zero{};
     FrameArrivalMetrics stats(zero);
     auto empty = stats.report(zero);
     if (empty.frames || empty.interval_samples) return false;
