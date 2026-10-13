@@ -11,6 +11,22 @@ jobs:
   rust:
     name: Rust API checks
     runs-on: ubuntu-latest
+    env:
+      GCP_TEST_DATABASE_URL: postgres://gcp_test:gcp_test@127.0.0.1:5432/gcp_test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: gcp_test
+          POSTGRES_USER: gcp_test
+          POSTGRES_PASSWORD: gcp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gcp_test -d gcp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,6 +34,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Resolve SQLx lockfile (temporary synchronization diagnostic)
+        run: |
+          cargo generate-lockfile
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          data = base64.b64encode(Path('Cargo.lock').read_bytes()).decode('ascii')
+          print('GCP_CARGO_LOCK_BEGIN')
+          for i in range(0, len(data), 4096):
+              print('GCP_CARGO_LOCK:' + data[i:i+4096])
+          print('GCP_CARGO_LOCK_END')
+          PY
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint

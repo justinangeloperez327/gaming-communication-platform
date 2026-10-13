@@ -5,7 +5,7 @@ A Windows-first communication client for gaming communities and teams. The long-
 ## Currently available
 
 - **Desktop:** C++20, Qt 6 and Qt Quick native shell with local UI interactions.
-- **Backend:** Rust, Tokio and Axum with a health endpoint and tests.
+- **Backend:** Rust, Tokio, Axum, and a PostgreSQL SQLx connection pool with explicit schema migrations, liveness and readiness endpoints.
 - **Windows media diagnostic:** Windows Graphics Capture monitor frame counting, WASAPI microphone packet counting, DXGI GPU inventory, Media Foundation encoder candidate inventory, real synthetic-frame H.264 encode benchmark, and CPU BGRA copy benchmark.
 - **Optional LiveKit diagnostic:** v1.12.2 Windows C++ SDK with synthetic video and opt-in actual monitor capture publishing (requires LiveKit tokens and a Windows interactive desktop).
 - **Performance instrumentation:** bounded capture buffers, CPU/RAM metrics and p50/p95 staging-readback samples; one redundant full-frame CPU copy removed. GPU-resident H.264 encoding and confirmed hardware-encoder selection are not yet implemented.
@@ -21,7 +21,7 @@ A Windows-first communication client for gaming communities and teams. The long-
 - **Physical-GPU acceptance toolkit:** Windows Video Encode counter sampling plus an offline, fail-closed sender/receiver diagnostic evidence checker. The toolkit does not itself certify hardware use. See [Group 16 runbook](docs/physical-gpu-acceptance.md).
 - **CI:** Rust verification and Windows native build/CTest checks.
 
-**Not implemented:** authenticated accounts, real messaging, production voice chat, screen-sharing UI, game window selection, hardware encoding control and persistent storage. A developer-only monitor publisher exists but uses CPU readback and is not optimized game streaming.
+**Not implemented:** authenticated accounts, real messaging, production voice chat, screen-sharing UI, game window selection, and production hardware encoding control. PostgreSQL tables exist, but no authenticated CRUD APIs use them yet. A developer-only monitor publisher exists but uses CPU readback and is not optimized game streaming.
 
 ## Requirements
 
@@ -51,7 +51,9 @@ curl http://127.0.0.1:8080/health
 cargo test --workspace
 ```
 
-By default the backend binds to loopback. The only implemented HTTP route is `GET /health`.
+By default the backend binds to loopback. `GET /health` is liveness and remains available without a database; `GET /ready` returns 204 only when PostgreSQL is connected and responsive. The server does not expose user/community/message CRUD endpoints yet.
+
+For PostgreSQL setup, migration controls and database testing, see [PostgreSQL foundation](docs/postgresql.md).
 
 ## Architecture and performance
 
