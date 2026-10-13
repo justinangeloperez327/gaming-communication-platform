@@ -85,3 +85,10 @@ The hardware publisher self-test now includes H.264 Annex-B/AVCC parser coverage
 ### Remaining engineering gates
 
 Hardware H.264 output format adaptation beyond strict Annex-B/4-byte AVCC, verified keyframe and bitrate responses, first-IDR recovery on late subscription, end-to-end receiver frame counts/latency, GPU Video Encode engine utilization, game frame-time/1%-low FPS impact, and longer-lived production session handling remain unverified or unimplemented.
+
+
+## Group 15 — finite duration/idle recovery
+
+The native hardware publisher supports `--duration N` for 1–300-second authorized monitor tests. This uses a bounded frame budget, automatically extends the output-drain timeout, and waits for fresh monitor frames during static-screen periods instead of treating no screen changes as immediate capture failure. Real capture failures and monitor resizes still stop the session. The new duration mode does not change the requirement for `--monitor N --confirm-screen-share yes`. This remains an experimental test tool, not an unattended screen-sharing service.
+
+See the [two-participant validation guide](stream-validation.md) for test commands and explicit verification limits.

@@ -70,3 +70,32 @@ An *optional engineering threshold* may be configured with `--max-regression-pct
 CI validates compilation, deterministic frame-timing self-tests, and the pure-Python comparison calculations. **CI does not execute an actual gaming GPU or two-client session.** Tests do not collect screenshots, audio, game telemetry, driver utilization or network traffic.
 
 Before declaring production hardware streaming, demonstrate: decoded receiver frames, consistent keyframes and codec negotiation, stable memory, GPU engine utilization, bitrate feedback effectiveness, representative 1080p60 runs over minutes rather than 60 frames, and measured game-FPS impact with baseline comparisons. Only then decide if optimizations meet the product's acceptance criteria.
+
+
+## Group 15 — bounded longer-running diagnostic sessions
+
+The original hardware monitor publisher stopped at **60 input frames**, making sustained observations impossible. Both local-only `gcp-hardware-h264.exe` and the opt-in network publisher now accept `--duration 1..300` in **monitor mode only**. When duration is set, the maximum input-frame budget defaults to `fps × duration` (capped at 18,000 frames). An explicit lower `--frames` limit can end the run sooner. The output/drain deadline defaults to `duration + 15 seconds`; a custom `--timeout` must allow at least 5 seconds beyond the requested duration. No stream may remain active beyond 330 seconds including drain. With no `--duration`, the original short frame-count test behavior is retained.
+
+For a **local-only** 2-minute diagnostic:
+
+```powershell
+.\build\desktop\Release\gcp-hardware-h264.exe --run `
+  --source monitor --monitor 0 --confirm-monitor-share yes `
+  --width 1920 --height 1080 --fps 30 --duration 120
+```
+
+For a 2-minute **LiveKit publisher** (transmits the entire chosen display):
+
+```powershell
+.\build\desktop\Release\gcp-livekit-hardware.exe --publish-monitor `
+  --monitor 0 --confirm-screen-share yes `
+  --width 1920 --height 1080 --fps 30 --duration 120
+```
+
+Start the second participant's receiver for longer than the sender, for example `watch --sender "publisher-identity" --track h264 --seconds 150`. Use dedicated test content and separate short-lived JWTs. The application has no production permission control or capture picker.
+
+When Windows Graphics Capture delivers no fresh frames (e.g. a static desktop), the encoder waits for an updated frame until its bounded deadline rather than exiting after a 2-second no-change period. The diagnostic reports `monitor_idle_waits`, `submitted_input_samples` and `time_limit_reached`. There is **no fabricated or repeated video frame**. This may reduce observed FPS during a static scene and is not equivalent to a constant-bitrate 30/60 FPS screen stream.
+
+**Physical acceptance remains mandatory:** run at least three paired game workloads, validate that the remote receiver decoded real frames, inspect GPU Video Encode engine activity, and compare CPU/private memory and game frame-time results. The asynchronous hardware MFT may retain its own surfaces internally; no memory-stability guarantee can be inferred from the bounded latest-frame capture slot. A 300-second cap is a diagnostic safety bound, **not proof of stable long-term sessions or optimized 1080p60**.
+
+Hosted CI only exercises parsing, consent, build and self-tests. It does not start WGC, GPU hardware encoding, a LiveKit server or actual gameplay.

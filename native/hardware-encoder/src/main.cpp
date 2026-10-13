@@ -51,6 +51,7 @@ struct Options {
     int frames = 15;
     int bitrate = 1'500'000;
     int timeout_seconds = 20;
+    int duration_seconds = 0;
     bool use_bgra_gpu_conversion = false;
     bool use_monitor_capture = false;
     int monitor_index = -1;
@@ -64,9 +65,12 @@ bool read_number(std::string_view value, int& target) {
 bool valid(const Options& o) {
     return o.width >= 160 && o.width <= 1920 && o.width % 2 == 0 &&
            o.height >= 90 && o.height <= 1080 && o.height % 2 == 0 &&
-           o.fps >= 1 && o.fps <= 60 && o.frames >= 1 && o.frames <= 60 &&
+           o.fps >= 1 && o.fps <= 60 && o.frames >= 1 && o.frames <= 18000 &&
            o.bitrate >= 100'000 && o.bitrate <= 16'000'000 &&
-           o.timeout_seconds >= 5 && o.timeout_seconds <= 120 &&
+           o.timeout_seconds >= 5 && o.timeout_seconds <= 330 &&
+           o.duration_seconds >= 0 && o.duration_seconds <= 300 &&
+           (o.duration_seconds == 0 || (o.use_monitor_capture &&
+                o.timeout_seconds >= o.duration_seconds + 5)) &&
            (o.use_monitor_capture
                ? (o.use_bgra_gpu_conversion && o.monitor_index >= 0 &&
                   o.confirmed_monitor_capture)
@@ -75,6 +79,8 @@ bool valid(const Options& o) {
 
 Options parse(int argc, char* argv[]) {
     Options o;
+    bool frames_explicit = false;
+    bool timeout_explicit = false;
     for (int i = 2; i < argc; i += 2) {
         if (i + 1 >= argc) throw std::invalid_argument("Missing flag value");
         const std::string_view flag = argv[i];
@@ -106,11 +112,22 @@ Options parse(int argc, char* argv[]) {
         if (flag == "--width") o.width = number;
         else if (flag == "--height") o.height = number;
         else if (flag == "--fps") o.fps = number;
-        else if (flag == "--frames") o.frames = number;
+        else if (flag == "--frames") {
+            o.frames = number;
+            frames_explicit = true;
+        }
         else if (flag == "--bitrate") o.bitrate = number;
-        else if (flag == "--timeout") o.timeout_seconds = number;
+        else if (flag == "--timeout") {
+            o.timeout_seconds = number;
+            timeout_explicit = true;
+        }
+        else if (flag == "--duration") o.duration_seconds = number;
         else if (flag == "--monitor") o.monitor_index = number;
         else throw std::invalid_argument("Unknown flag");
+    }
+    if (o.duration_seconds > 0) {
+        if (!frames_explicit) o.frames = o.fps * o.duration_seconds;
+        if (!timeout_explicit) o.timeout_seconds = o.duration_seconds + 15;
     }
     if (!valid(o)) throw std::invalid_argument("Unsupported H.264 hardware profile");
     return o;
@@ -122,6 +139,7 @@ void usage() {
         "  --help / --self-test\n"
         "  --run [--width 640] [--height 360] [--fps 30] [--frames 15]\n"
         "        [--bitrate 1500000] [--timeout 20]\n"
+        "        [--duration 1..300] (monitor only; auto timeout/duration)\n"
         "        [--source nv12|bgra|monitor]\n"
         "        [--monitor N --confirm-monitor-share yes] (monitor only)\n"
         "nv12/bgra generate SYNTHETIC frames. MONITOR accesses the selected\n"
@@ -373,6 +391,8 @@ struct OutputRecord {
     std::uint64_t bytes = 0;
     std::uint64_t keyframes = 0;
     std::uint64_t submitted_inputs = 0;
+    std::uint64_t monitor_idle_waits = 0;
+    bool time_limit_reached = false;
     std::unique_ptr<gcp::transport::FrameArrivalMetrics> timing;
 };
 
@@ -547,26 +567,60 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                 "Begin streaming");
         require(encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0),
                 "Start of stream");
-        const auto deadline = Clock::now() +
+        const auto session_started = Clock::now();
+        const auto deadline = session_started +
                               std::chrono::seconds(options.timeout_seconds);
+        const auto input_cutoff = options.duration_seconds > 0
+            ? session_started + std::chrono::seconds(options.duration_seconds)
+            : deadline;
         totals.timing = std::make_unique<gcp::transport::FrameArrivalMetrics>(
-            Clock::now());
+            session_started);
         int submitted = 0;
         bool draining = false, complete = false;
+        auto start_drain = [&]() {
+            if (draining) return;
+            require(encoder->ProcessMessage(
+                MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0), "End of stream");
+            require(encoder->ProcessMessage(
+                MFT_MESSAGE_COMMAND_DRAIN, 0), "Drain hardware MFT");
+            draining = true;
+        };
         while (Clock::now() < deadline && !complete) {
+            if (options.duration_seconds > 0 &&
+                Clock::now() >= input_cutoff && !draining) {
+                totals.time_limit_reached = true;
+                start_drain();
+            }
             ComPtr<IMFMediaEvent> event;
             if (!pump->next(event, 200)) continue;
             MediaEventType kind = MEUnknown;
             require(event->GetType(&kind), "Media event type");
 
-            if (kind == METransformNeedInput && submitted < options.frames) {
+            if (kind == METransformNeedInput && !draining &&
+                submitted < options.frames) {
                 ComPtr<IMFSample> sample;
                 if (monitor_capture) {
-                    if (!monitor_capture->take_next(
-                            monitor_sequence, sample, 2000)) {
+                    // Static screens may legitimately produce no new WGC
+                    // frames. Keep the input request outstanding until a
+                    // fresh frame, the explicit duration, or a real failure.
+                    while (Clock::now() < input_cutoff &&
+                           Clock::now() < deadline && !sample) {
+                        if (monitor_capture->take_next(
+                                monitor_sequence, sample, 250)) break;
+                        if (!monitor_capture->healthy()) {
+                            throw std::runtime_error(
+                                "Monitor capture stopped (resize or GPU failure)");
+                        }
+                        ++totals.monitor_idle_waits;
+                    }
+                    if (!sample) {
+                        if (options.duration_seconds > 0) {
+                            totals.time_limit_reached = true;
+                            start_drain();
+                            continue;
+                        }
                         throw std::runtime_error(
-                            "No fresh monitor GPU sample arrived in 2 seconds "
-                            "(resize, no changes, or capture failure)");
+                            "Monitor did not produce a fresh frame before timeout");
                     }
                 } else {
                     sample = gpu.frame(options, submitted);
@@ -607,13 +661,7 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                         "GPU NV12 ProcessInput");
                 ++submitted;
                 ++totals.submitted_inputs;
-                if (submitted == options.frames) {
-                    require(encoder->ProcessMessage(
-                        MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0), "End of stream");
-                    require(encoder->ProcessMessage(
-                        MFT_MESSAGE_COMMAND_DRAIN, 0), "Drain hardware MFT");
-                    draining = true;
-                }
+                if (submitted == options.frames) start_drain();
             } else if (kind == METransformHaveOutput) {
                 receive_output(encoder.Get(), output_id, info, totals, on_encoded);
             } else if (kind == METransformDrainComplete && draining) {
@@ -680,6 +728,9 @@ int run(const Options& options,
                 std::cout << "{\"probe\":\"hardware_async_h264\""
                           << ",\"encoded_samples\":" << output.samples
                           << ",\"submitted_input_samples\":" << output.submitted_inputs
+                          << ",\"monitor_idle_waits\":" << output.monitor_idle_waits
+                          << ",\"time_limit_reached\":"
+                          << (output.time_limit_reached ? "true" : "false")
                           << ",\"encoded_bytes\":" << output.bytes
                           << ",\"measured_output_bits_per_second\":"
                           << (elapsed > 0
@@ -740,6 +791,7 @@ int encode_monitor_h264(
     options.frames = profile.frames;
     options.bitrate = profile.bitrate_bps;
     options.timeout_seconds = profile.timeout_seconds;
+    options.duration_seconds = profile.duration_seconds;
     options.monitor_index = profile.monitor_index;
     options.confirmed_monitor_capture = profile.monitor_capture_confirmed;
     options.use_bgra_gpu_conversion = true;
@@ -789,6 +841,20 @@ int main(int argc, char* argv[]) {
             const auto shared = parse(8, confirmed);
             if (!shared.use_monitor_capture || shared.monitor_index != 0 ||
                 !shared.confirmed_monitor_capture) return 1;
+            char duration_flag[] = "--duration";
+            char duration_time[] = "120";
+            char* stable_args[] = {program, run_mode, source_flag, monitor_value,
+                                   monitor_flag, monitor_index, confirm_flag, yes,
+                                   duration_flag, duration_time};
+            const auto stable = parse(10, stable_args);
+            if (stable.frames != 3600 || stable.duration_seconds != 120 ||
+                stable.timeout_seconds != 135) return 1;
+            char too_long[] = "301";
+            char* bad_duration[] = {program, run_mode, source_flag, monitor_value,
+                                    monitor_flag, monitor_index, confirm_flag, yes,
+                                    duration_flag, too_long};
+            try { (void)parse(10, bad_duration); return 1; }
+            catch (const std::invalid_argument&) {}
             char invalid_source[] = "gpu";
             char* bad_source[] = {program, run_mode, source_flag, invalid_source};
             try { (void)parse(4, bad_source); return 1; }

@@ -242,4 +242,9 @@ std::uint64_t LiveMonitorCapture::dropped() const {
 std::uint64_t LiveMonitorCapture::failures() const {
     return impl_->state->failures.load();
 }
+
+bool LiveMonitorCapture::healthy() const {
+    return impl_->state->active.load() &&
+           impl_->state->failures.load() == 0;
+}
 } // namespace gcp::media

@@ -32,6 +32,7 @@ public:
     std::uint64_t converted() const;
     std::uint64_t dropped() const;
     std::uint64_t failures() const;
+    bool healthy() const;
 
 private:
     struct Impl;
