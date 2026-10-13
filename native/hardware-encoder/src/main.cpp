@@ -12,6 +12,7 @@
 #include <mfobjects.h>
 #include <mftransform.h>
 #include <codecapi.h>
+#include <icodecapi.h>
 #include <oaidl.h>
 #include <wrl.h>
 #include <wrl/client.h>
