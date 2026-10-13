@@ -53,7 +53,7 @@ cargo test --workspace
 
 By default the backend binds to loopback. `GET /health` is liveness and remains available without a database; `GET /ready` returns 204 only when PostgreSQL is connected and responsive. The server does not expose user/community/message CRUD endpoints yet.
 
-For PostgreSQL setup, migration controls and database testing, see [PostgreSQL foundation](docs/postgresql.md). See [authentication API](docs/authentication.md) for accounts and persistent sessions.
+For PostgreSQL setup, migration controls and database testing, see [PostgreSQL foundation](docs/postgresql.md). See [authentication API](docs/authentication.md) for accounts and persistent sessions, and [communities and channels](docs/communities.md) for role-checked membership, channel management and invitations.
 
 ## Architecture and performance
 

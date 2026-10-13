@@ -89,6 +89,8 @@ struct ErrorBody {
 pub enum AuthError {
     InvalidRequest,
     Unauthorized,
+    Forbidden,
+    NotFound,
     Conflict,
     Busy,
     Unavailable,
@@ -99,6 +101,8 @@ impl IntoResponse for AuthError {
         let (status, error) = match self {
             Self::InvalidRequest => (StatusCode::BAD_REQUEST, "invalid_request"),
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
+            Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
+            Self::NotFound => (StatusCode::NOT_FOUND, "not_found"),
             Self::Conflict => (StatusCode::CONFLICT, "conflict"),
             Self::Busy => (StatusCode::TOO_MANY_REQUESTS, "temporarily_busy"),
             Self::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable"),
@@ -107,7 +111,7 @@ impl IntoResponse for AuthError {
     }
 }
 
-fn database(state: &AppState) -> Result<&PgPool, AuthError> {
+pub(crate) fn database(state: &AppState) -> Result<&PgPool, AuthError> {
     state.database.as_ref().ok_or(AuthError::Unavailable)
 }
 
@@ -164,14 +168,14 @@ fn hex(bytes: &[u8]) -> String {
     result
 }
 
-fn token_digest(value: &str) -> Result<String, AuthError> {
+pub(crate) fn token_digest(value: &str) -> Result<String, AuthError> {
     if value.len() != TOKEN_BYTES * 2 || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(AuthError::Unauthorized);
     }
     Ok(hex(&Sha256::digest(value.as_bytes())))
 }
 
-fn random_token() -> String {
+pub(crate) fn random_token() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
     OsRng.fill_bytes(&mut bytes);
     hex(&bytes)
@@ -354,7 +358,7 @@ fn bearer_digest(headers: &HeaderMap) -> Result<String, AuthError> {
     token_digest(token)
 }
 
-async fn authenticated_user(
+pub(crate) async fn authenticated_user(
     pool: &PgPool,
     headers: &HeaderMap,
 ) -> Result<(Uuid, UserView), AuthError> {
