@@ -2,6 +2,7 @@ pub mod auth;
 mod communities;
 pub mod database;
 mod messages;
+mod realtime;
 
 use axum::{
     Json, Router,
@@ -21,6 +22,7 @@ struct HealthResponse {
 #[derive(Clone, Default)]
 pub(crate) struct AppState {
     pub(crate) database: Option<PgPool>,
+    pub(crate) realtime: realtime::EventHub,
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -101,8 +103,12 @@ pub fn router_with_database(database: Option<PgPool>) -> Router {
                 .patch(messages::edit)
                 .delete(messages::delete),
         )
+        .route(
+            "/v1/communities/{community_id}/channels/{channel_id}/events",
+            get(realtime::subscribe),
+        )
         .layer(DefaultBodyLimit::max(8 * 1024))
-        .with_state(AppState { database })
+        .with_state(AppState { database, realtime: realtime::EventHub::new() })
 }
 
 #[cfg(test)]
