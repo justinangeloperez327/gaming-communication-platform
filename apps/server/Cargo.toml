@@ -10,7 +10,8 @@ publish = false
 argon2 = "=0.5.3"
 rand = "=0.8.5"
 sha2 = "=0.10.9"
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
+serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 sqlx = { version = "=0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres", "migrate", "macros", "uuid"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
@@ -18,5 +19,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [dev-dependencies]
-serde_json = "1"
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
 tower = { version = "0.5", features = ["util"] }

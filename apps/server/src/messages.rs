@@ -13,6 +13,7 @@ use sqlx::{PgPool, Row, postgres::PgRow, types::Uuid};
 use crate::{
     AppState,
     auth::{self, AuthError},
+    realtime::{Event, EventKind},
 };
 
 #[derive(Deserialize)]
@@ -86,7 +87,7 @@ async fn actor(state: &AppState, headers: &HeaderMap) -> Result<(PgPool, Uuid), 
     Ok((pool.clone(), id))
 }
 
-async fn text_channel(
+pub(crate) async fn text_channel(
     pool: &PgPool,
     community: Uuid,
     channel: Uuid,
@@ -149,7 +150,14 @@ pub(crate) async fn create(
     .await
     .map_err(|_| AuthError::Unavailable)?
     .ok_or(AuthError::NotFound)?;
-    Ok((StatusCode::CREATED, Json(view(&row)?)))
+    let result = view(&row)?;
+    state.realtime.publish(Event::message(
+        channel,
+        user,
+        parse_id(&result.id)?,
+        EventKind::Created,
+    ));
+    Ok((StatusCode::CREATED, Json(result)))
 }
 
 pub(crate) async fn list(
@@ -283,7 +291,14 @@ pub(crate) async fn edit(
     .await
     .map_err(|_| AuthError::Unavailable)?
     .ok_or(AuthError::NotFound)?;
-    Ok(Json(view(&row)?))
+    let result = view(&row)?;
+    state.realtime.publish(Event::message(
+        channel,
+        user,
+        parse_id(&result.id)?,
+        EventKind::Edited,
+    ));
+    Ok(Json(result))
 }
 
 pub(crate) async fn delete(
@@ -318,6 +333,9 @@ pub(crate) async fn delete(
     if result.rows_affected() == 0 {
         return Err(AuthError::NotFound);
     }
+    state
+        .realtime
+        .publish(Event::message(channel, user, message, EventKind::Deleted));
     Ok(StatusCode::NO_CONTENT)
 }
 
