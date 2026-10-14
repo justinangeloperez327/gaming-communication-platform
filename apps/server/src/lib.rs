@@ -110,13 +110,31 @@ pub fn router_with_database(database: Option<PgPool>) -> Router {
             get(realtime::subscribe),
         )
         .route("/v1/friends", get(friends::list_friends))
-        .route("/v1/friends/{user_id}", axum::routing::delete(friends::remove_friend))
-        .route("/v1/friends/requests", get(friends::requests).post(friends::send_request))
-        .route("/v1/friends/requests/{request_id}/accept", post(friends::accept))
-        .route("/v1/friends/requests/{request_id}/decline", post(friends::decline))
+        .route(
+            "/v1/friends/{user_id}",
+            axum::routing::delete(friends::remove_friend),
+        )
+        .route(
+            "/v1/friends/requests",
+            get(friends::requests).post(friends::send_request),
+        )
+        .route(
+            "/v1/friends/requests/{request_id}/accept",
+            post(friends::accept),
+        )
+        .route(
+            "/v1/friends/requests/{request_id}/decline",
+            post(friends::decline),
+        )
         .route("/v1/blocks", get(friends::blocks).post(friends::block))
-        .route("/v1/blocks/{user_id}", axum::routing::delete(friends::unblock))
-        .route("/v1/dms", get(direct_messages::list).post(direct_messages::open))
+        .route(
+            "/v1/blocks/{user_id}",
+            axum::routing::delete(friends::unblock),
+        )
+        .route(
+            "/v1/dms",
+            get(direct_messages::list).post(direct_messages::open),
+        )
         .route(
             "/v1/dms/{conversation_id}/messages",
             get(direct_messages::history).post(direct_messages::send),
