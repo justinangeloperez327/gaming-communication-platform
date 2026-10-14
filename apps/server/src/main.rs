@@ -1,6 +1,6 @@
 use std::env;
 
-use gaming_comms_server::{database, router_with_database};
+use gaming_comms_server::{database, livekit_tokens::LiveKitConfig, router_with_livekit};
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
@@ -21,7 +21,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     tracing::info!(address = %bind_address, "HTTP server listening");
 
-    axum::serve(listener, router_with_database(database))
+    let livekit = LiveKitConfig::from_env()?;
+    axum::serve(listener, router_with_livekit(database, livekit))
         .with_graceful_shutdown(async {
             if tokio::signal::ctrl_c().await.is_ok() {
                 tracing::info!("Shutdown signal received");
