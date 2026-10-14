@@ -60,3 +60,5 @@ For PostgreSQL setup, migration controls and database testing, see [PostgreSQL f
 See [architecture](docs/architecture.md), [performance acceptance criteria](docs/performance.md), [native H.264 encoding benchmark](docs/native-h264-encode.md), and [Windows setup](docs/development.md).
 
 There is no project license yet. Third-party and Qt licensing must be reviewed before distributing binaries.
+
+- **Experimental real-time events:** authenticated single-process text-channel WebSocket notifications, typing, ephemeral presence, and reconnect via HTTP message history. See [real-time events](docs/realtime.md). No cross-instance delivery guarantee.
