@@ -18,13 +18,15 @@ struct Counters {
     std::atomic<std::uint64_t> captured{0};
     std::atomic<std::uint64_t> published{0};
     std::atomic<std::uint64_t> played{0};
+    std::atomic<std::uint64_t> decoded{0};
+    std::atomic<std::uint64_t> overwritten{0};
     std::atomic<std::uint64_t> dropped{0};
     std::atomic<std::uint64_t> silence{0};
 };
 
 class PlaybackQueue {
 public:
-    void push(std::span<const std::int16_t> mono);
+    std::size_t push(std::span<const std::int16_t> mono);
     void pop(std::span<std::int16_t> out, Counters& stats);
     std::size_t size() const;
 private:

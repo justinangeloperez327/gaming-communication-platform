@@ -124,13 +124,18 @@ void list_direction(IMMDeviceEnumerator* e, EDataFlow direction, const wchar_t* 
 }
 } // namespace
 
-void PlaybackQueue::push(std::span<const std::int16_t> mono) {
+std::size_t PlaybackQueue::push(std::span<const std::int16_t> mono) {
     std::lock_guard lock(mutex_);
-    if (mono.size() > kMaxBufferedSamples) return; // caller counts invalid drops
+    if (mono.size() > kMaxBufferedSamples) return mono.size(); // no unbounded queue
+    std::size_t overwritten = 0;
     for (const auto sample : mono) {
-        if (samples_.size() >= kMaxBufferedSamples) samples_.pop_front();
+        if (samples_.size() >= kMaxBufferedSamples) {
+            samples_.pop_front();
+            ++overwritten;
+        }
         samples_.push_back(sample);
     }
+    return overwritten;
 }
 void PlaybackQueue::pop(std::span<std::int16_t> out, Counters& stats) {
     std::lock_guard lock(mutex_);
@@ -152,14 +157,14 @@ bool queue_self_test() {
     Counters stats;
     PlaybackQueue queue;
     std::array<std::int16_t, 4> samples{100, -10, 8, 42};
-    queue.push(samples);
+    if (queue.push(samples) != 0) return false;
     std::array<std::int16_t, 6> out{};
     queue.pop(out, stats);
     if (out != std::array<std::int16_t, 6>{100, -10, 8, 42, 0, 0}) return false;
     if (stats.silence != 2 || queue.size() != 0) return false;
     std::vector<std::int16_t> capped(kMaxBufferedSamples + 123, 7);
-    queue.push(std::span<const std::int16_t>(capped.data(), kMaxBufferedSamples));
-    queue.push(samples);
+    if (queue.push(std::span<const std::int16_t>(capped.data(), kMaxBufferedSamples)) != 0) return false;
+    if (queue.push(samples) != samples.size()) return false;
     return queue.size() == kMaxBufferedSamples;
 }
 void list_devices() {

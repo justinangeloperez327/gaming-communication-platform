@@ -169,7 +169,8 @@ void receive_audio(const livekit::AudioFrame& frame,
             : frame.data()[at];
         normalized[i] = static_cast<std::int16_t>(value);
     }
-    playback.push(normalized);
+    stats.overwritten += playback.push(normalized);
+    ++stats.decoded;
 }
 
 int run(const Options& opts) {
@@ -265,10 +266,14 @@ int run(const Options& opts) {
     std::cout << "{\"probe\":\"livekit_voice_wasapi\",\"captured_samples\":"
         << stats->captured.load() << ",\"published_frames\":" << stats->published.load()
         << ",\"rendered_samples\":" << stats->played.load()
+        << ",\"decoded_remote_frames\":" << stats->decoded.load()
+        << ",\"overflow_discarded_samples\":" << stats->overwritten.load()
         << ",\"underflow_silence_samples\":" << stats->silence.load()
         << ",\"invalid_remote_frames\":" << stats->dropped.load() << "}\n";
     if (audio_error) std::rethrow_exception(audio_error);
-    return (opts.mode == "--listen" || stats->published.load() > 0) ? 0 : 2;
+    const bool local_ok = opts.mode != "--join" || stats->published.load() > 0;
+    const bool remote_ok = opts.sender.empty() || stats->decoded.load() > 0;
+    return local_ok && remote_ok ? 0 : 2;
 }
 } // namespace
 
