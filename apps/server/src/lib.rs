@@ -3,6 +3,7 @@ mod communities;
 pub mod database;
 mod direct_messages;
 mod friends;
+pub mod livekit_tokens;
 mod messages;
 mod realtime;
 
@@ -24,6 +25,7 @@ struct HealthResponse {
 #[derive(Clone, Default)]
 pub(crate) struct AppState {
     pub(crate) database: Option<PgPool>,
+    pub(crate) livekit: Option<livekit_tokens::LiveKitConfig>,
     pub(crate) realtime: realtime::EventHub,
 }
 
@@ -56,6 +58,15 @@ pub fn router() -> Router {
 }
 
 pub fn router_with_database(database: Option<PgPool>) -> Router {
+    router_with_livekit(database, None)
+}
+
+/// Optional LiveKit token issuance is enabled only when credentials are
+/// configured on the server. No API secrets are exposed to the desktop.
+pub fn router_with_livekit(
+    database: Option<PgPool>,
+    livekit: Option<livekit_tokens::LiveKitConfig>,
+) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/ready", get(ready))
@@ -109,6 +120,10 @@ pub fn router_with_database(database: Option<PgPool>) -> Router {
             "/v1/communities/{community_id}/channels/{channel_id}/events",
             get(realtime::subscribe),
         )
+        .route(
+            "/v1/communities/{community_id}/channels/{channel_id}/livekit-token",
+            post(livekit_tokens::issue),
+        )
         .route("/v1/friends", get(friends::list_friends))
         .route(
             "/v1/friends/{user_id}",
@@ -146,6 +161,7 @@ pub fn router_with_database(database: Option<PgPool>) -> Router {
         .layer(DefaultBodyLimit::max(8 * 1024))
         .with_state(AppState {
             database,
+            livekit,
             realtime: realtime::EventHub::new(),
         })
 }
