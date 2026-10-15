@@ -100,9 +100,12 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         microphoneEnabled_ = false;
         connected_ = false;
         outputBuffer_.clear();
+        const bool deviceLost = deviceLost_;
+        deviceLost_ = false;
         const bool timedOut = connectionTimedOut_;
         connectionTimedOut_ = false;
-        setStatus(timedOut ? QStringLiteral("Room connection timed out; retry manually") :
+        setStatus(deviceLost ? QStringLiteral("Audio device removed; rescan and join manually") :
+                  timedOut ? QStringLiteral("Room connection timed out; retry manually") :
                   intentional ? QStringLiteral("Disconnected") :
                   exitStatus == QProcess::NormalExit && exitCode == 0
                       ? QStringLiteral("Disconnected")
@@ -148,6 +151,14 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
                 connected_ = true;
                 connectWatchdog_.stop();
                 setStatus(QStringLiteral("LiveKit reconnected (audio not verified)"));
+            } else if (line == "GCP_VOICE_EVENT:device_lost" && !stopRequested_) {
+                connected_ = false;
+                deviceLost_ = true;
+                stopRequested_ = true;
+                setStatus(QStringLiteral("Selected audio device disconnected; stopping voice"));
+                connectWatchdog_.stop();
+                process_.terminate();
+                stopWatchdog_.start(2000);
             } else if (line == "GCP_VOICE_EVENT:connection_lost" && !stopRequested_) {
                 connected_ = false;
                 setStatus(QStringLiteral("LiveKit connection lost · stopping voice"));
@@ -279,6 +290,7 @@ void VoiceSession::launch(bool publishMicrophone, const QString &url, const QStr
     env.remove(QStringLiteral("GCP_REFRESH_TOKEN"));
     stopRequested_ = false;
     connectionTimedOut_ = false;
+    deviceLost_ = false;
     connected_ = false;
     outputBuffer_.clear();
     microphoneEnabled_ = publishMicrophone;
