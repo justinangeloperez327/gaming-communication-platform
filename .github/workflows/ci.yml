@@ -124,6 +124,23 @@ jobs:
           path: build/windows-signature-inventory.json
           if-no-files-found: error
           retention-days: 7
+      - name: Create and verify private portable ZIP
+        shell: pwsh
+        run: |
+          ./scripts/package-private-windows-zip.ps1 -BundleDirectory build/gcp-windows-test -OutputZip build/gcp-private-windows-x64.zip
+          $unpacked = Join-Path $env:RUNNER_TEMP 'gcp-zip-verification'
+          Expand-Archive -LiteralPath build/gcp-private-windows-x64.zip -DestinationPath $unpacked
+          ./scripts/verify-windows-test-bundle.ps1 -BundleDirectory $unpacked
+          (Get-FileHash -LiteralPath build/gcp-private-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath build/gcp-private-windows-x64.sha256 -Encoding ascii
+      - name: Upload private portable ZIP and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcp-private-windows-x64
+          path: |
+            build/gcp-private-windows-x64.zip
+            build/gcp-private-windows-x64.sha256
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload verified unsigned desktop test bundle
         uses: actions/upload-artifact@v4
         with:
