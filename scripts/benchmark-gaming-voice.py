@@ -39,8 +39,12 @@ def load_voice(path):
 def report(baseline, voice, telemetry, column, warmup):
     if not baseline or len(baseline) != len(voice) or len(voice) != len(telemetry):
         raise ValueError("An equal nonzero number of baseline, GCP and voice telemetry files is required")
+    if len(set(map(str, baseline + voice + telemetry))) != 3 * len(baseline):
+        raise ValueError("Each baseline, GCP and voice capture must be a distinct file")
     frames = frame.evaluate(baseline, voice, column, warmup)
     stats = [load_voice(path) for path in telemetry]
+    if any(item["session_seconds"] <= 0 for item in stats):
+        raise ValueError("Voice telemetry must represent a positive-duration session")
     frames["condition"] = "gaming_with_gcp_voice"
     frames["voice_process"] = {
         "median_cpu_percent_total_machine": statistics.median(x["cpu_percent_total_machine"] for x in stats),
