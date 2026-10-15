@@ -1,0 +1,17 @@
+name: Windows bundle integrity checks
+on:
+  pull_request:
+    paths:
+      - 'scripts/*windows-test*.ps1'
+      - '.github/workflows/windows-bundle-integrity.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify synthetic integrity fixtures
+        shell: pwsh
+        run: ./scripts/test-windows-test-bundle.ps1
