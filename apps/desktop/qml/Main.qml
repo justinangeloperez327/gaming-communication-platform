@@ -13,7 +13,7 @@ ApplicationWindow {
     color: "#0e141d"
 
     property string selectedChannel: "general"
-    property bool microphonePreviewMuted: false
+    property bool microphoneConsent: false
     readonly property color panel: "#151e2b"
     readonly property color borderTone: "#293649"
     readonly property color textTone: "#e7edf5"
@@ -128,7 +128,7 @@ ApplicationWindow {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "◖  Team Voice (not connected)"
+                    text: "◖  Team Voice · " + voiceSession.status
                     color: root.mutedTone
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -235,30 +235,60 @@ ApplicationWindow {
                     }
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 96
+                        Layout.preferredHeight: 184
                         radius: 6
                         color: root.panel
                         border.color: root.borderTone
-
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: 16
+                            spacing: 8
                             Text {
-                                text: "Local UI controls"
+                                text: "Voice connection · experimental"
                                 color: root.textTone
+                                font.pixelSize: 14
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: voiceSession.status
+                                color: root.mutedTone
+                                wrapMode: Text.Wrap
                                 font.pixelSize: 12
                             }
+                            CheckBox {
+                                id: micPermission
+                                text: "I authorize microphone capture for this call"
+                                checked: root.microphoneConsent
+                                enabled: !voiceSession.running
+                                onToggled: root.microphoneConsent = checked
+                            }
                             RowLayout {
-                                spacing: 12
+                                spacing: 8
                                 Button {
-                                    text: root.microphonePreviewMuted ? "Unmute preview" : "Mute preview"
-                                    onClicked: root.microphonePreviewMuted = !root.microphonePreviewMuted
+                                    text: "Listen only"
+                                    enabled: voiceSession.available && !voiceSession.running
+                                    onClicked: voiceSession.joinListenOnly()
                                 }
-                                Text {
-                                    text: "No microphone or call is connected"
-                                    color: root.mutedTone
-                                    font.pixelSize: 12
+                                Button {
+                                    text: "Join with mic"
+                                    enabled: voiceSession.available && !voiceSession.running && root.microphoneConsent
+                                    onClicked: {
+                                        voiceSession.joinWithMicrophone(root.microphoneConsent)
+                                        root.microphoneConsent = false
+                                    }
                                 }
+                                Button {
+                                    text: "Leave"
+                                    enabled: voiceSession.running
+                                    onClicked: voiceSession.leave()
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Requires backend-issued session credentials in the environment. Calls stop after 5 minutes."
+                                color: root.mutedTone
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
                             }
                         }
                     }
