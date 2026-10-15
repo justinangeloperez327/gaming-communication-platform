@@ -66,6 +66,16 @@ jobs:
       - name: Smoke tests
         shell: pwsh
         run: ctest --test-dir build/desktop -C Release --output-on-failure
+      - name: Upload native voice diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcp-livekit-voice-win64
+          path: |
+            build/desktop/Release/gcp-livekit-voice.exe
+            build/desktop/Release/livekit.dll
+            build/desktop/Release/livekit_ffi.dll
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload GPU hardware H.264 diagnostic
         uses: actions/upload-artifact@v4
         with:
