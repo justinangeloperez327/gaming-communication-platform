@@ -66,3 +66,5 @@ There is no project license yet. Third-party and Qt licensing must be reviewed b
 - **Friendships and direct messages:** PostgreSQL-backed invitations, owner-controlled blocks and permission-checked private text conversations. See [friends and DMs](docs/friends-dm.md). No DM E2EE or real-time DM socket yet.
 
 - **LiveKit voice authorization (experimental):** short-lived, server-signed room credentials for authorized community voice-channel members. Microphone-only grants; not a full desktop voice client or active SFU revocation. See [voice token API](docs/livekit-tokens.md).
+
+- **Native voice diagnostic (Group 27):** consent-gated WebRTC microphone publishing, listen-only speaker mode, device selection, and mute test. Requires a two-user physical Windows audio test. See [native voice](docs/native-voice.md).
