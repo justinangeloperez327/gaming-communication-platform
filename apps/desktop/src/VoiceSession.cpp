@@ -32,7 +32,8 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
     connect(&connectWatchdog_, &QTimer::timeout, this, [this]() {
         if (running() && !connected_ && !stopRequested_) {
             // A running process is not evidence of room authorization or connectivity.
-            setStatus(QStringLiteral("Voice room connection timed out; stopped"));
+            connectionTimedOut_ = true;
+            setStatus(QStringLiteral("Voice room connection timed out; stopping"));
             stopRequested_ = true;
             process_.terminate();
             stopWatchdog_.start(2000);
@@ -68,7 +69,10 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         microphoneEnabled_ = false;
         connected_ = false;
         outputBuffer_.clear();
-        setStatus(intentional ? QStringLiteral("Disconnected") :
+        const bool timedOut = connectionTimedOut_;
+        connectionTimedOut_ = false;
+        setStatus(timedOut ? QStringLiteral("Room connection timed out; retry manually") :
+                  intentional ? QStringLiteral("Disconnected") :
                   exitStatus == QProcess::NormalExit && exitCode == 0
                       ? QStringLiteral("Disconnected")
                       : QStringLiteral("Voice process stopped; connection not verified"));
@@ -204,6 +208,7 @@ void VoiceSession::launch(bool publishMicrophone, const QString &url, const QStr
     env.remove(QStringLiteral("GCP_ACCESS_TOKEN"));
     env.remove(QStringLiteral("GCP_REFRESH_TOKEN"));
     stopRequested_ = false;
+    connectionTimedOut_ = false;
     connected_ = false;
     outputBuffer_.clear();
     microphoneEnabled_ = publishMicrophone;
