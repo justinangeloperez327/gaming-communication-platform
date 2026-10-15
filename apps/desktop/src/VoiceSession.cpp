@@ -26,7 +26,15 @@ bool uuidValid(const QString &value) {
 }
 
 VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent) : QObject(parent), account_(account), directory_(directory) {
+    deviceScanWatchdog_.setSingleShot(true);
+    idleDeviceRefresh_.setInterval(30000);
+    connect(&idleDeviceRefresh_, &QTimer::timeout, this, &VoiceSession::scanDevices);
+    idleDeviceRefresh_.start();
+    connect(&deviceScanWatchdog_, &QTimer::timeout, this, [this]() {
+        if (scanning()) devices_.kill();
+    });
     connect(&devices_, &QProcess::finished, this, [this](int code, QProcess::ExitStatus exit) {
+        deviceScanWatchdog_.stop();
         const QByteArray data = devices_.readAllStandardOutput();
         const QByteArray err = devices_.readAllStandardError();
         Q_UNUSED(err);
@@ -45,6 +53,12 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
                 if (input) inputs.append(item); else outputs.append(item);
             }
         }
+        if (code != 0 || exit != QProcess::NormalExit || data.size() > 65536) {
+            // Failed scans must not erase a previously selected device.
+            setStatus(QStringLiteral("Audio device scan failed; retry manually"));
+            emit devicesChanged();
+            return;
+        }
         inputs_ = inputs;
         outputs_ = outputs;
         bool foundInput = false;
@@ -56,7 +70,10 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         if (!foundOutput) outputId_.clear();
         emit devicesChanged();
     });
-    connect(&devices_, &QProcess::started, this, &VoiceSession::devicesChanged);
+    connect(&devices_, &QProcess::started, this, [this]() {
+        deviceScanWatchdog_.start(6000);
+        emit devicesChanged();
+    });
     startupWatchdog_.setSingleShot(true);
     stopWatchdog_.setSingleShot(true);
     connectWatchdog_.setSingleShot(true);
@@ -188,7 +205,7 @@ void VoiceSession::scanDevices() {
     devices_.setProgram(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-livekit-voice.exe")));
     devices_.setArguments({QStringLiteral("devices")});
     devices_.start();
-    QTimer::singleShot(6000, this, [this]() { if (scanning()) devices_.kill(); });
+
 }
 void VoiceSession::selectInput(const QString &id) {
     if (busy()) return;
