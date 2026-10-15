@@ -206,6 +206,20 @@ void select_devices(livekit::PlatformAudio& audio, const Options& o) {
 struct VoiceEvents final : livekit::RoomDelegate {
     std::atomic<std::uint64_t> subscriptions{0};
     std::atomic<std::uint64_t> unsubscriptions{0};
+    std::atomic<bool> network_lost{false};
+    std::atomic<bool> reconnecting{false};
+    void onReconnecting(livekit::Room&, const livekit::ReconnectingEvent&) override {
+        reconnecting.store(true);
+        std::cout << "GCP_VOICE_EVENT:reconnecting" << std::endl;
+    }
+    void onReconnected(livekit::Room&, const livekit::ReconnectedEvent&) override {
+        reconnecting.store(false);
+        std::cout << "GCP_VOICE_EVENT:reconnected" << std::endl;
+    }
+    void onDisconnected(livekit::Room&, const livekit::DisconnectedEvent&) override {
+        network_lost.store(true);
+        std::cout << "GCP_VOICE_EVENT:connection_lost" << std::endl;
+    }
 
     void onTrackSubscribed(livekit::Room&,
             const livekit::TrackSubscribedEvent& e) override {
@@ -266,7 +280,7 @@ int join(const Options& o) {
         const auto started = Clock::now();
         const auto before = gcp::probe::take_snapshot();
         bool muted = false;
-        while (running.load() &&
+        while (running.load() && !events.network_lost.load() &&
             Clock::now() - started < std::chrono::seconds(o.seconds)) {
             if (mic_track && !muted && o.mute_after > 0 &&
                 Clock::now() - started >= std::chrono::seconds(o.mute_after)) {
