@@ -58,6 +58,8 @@ private:
     QTimer startupWatchdog_;
     QTimer stopWatchdog_;
     QTimer connectWatchdog_;
+    QTimer deviceScanWatchdog_;
+    QTimer idleDeviceRefresh_;
     bool stopRequested_ = false;
     bool connectionTimedOut_ = false;
     bool deviceLost_ = false;
