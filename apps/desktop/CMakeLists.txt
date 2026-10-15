@@ -4,6 +4,8 @@ qt_add_executable(gcp-desktop
     src/VoiceSession.h
     src/AccountSession.cpp
     src/AccountSession.h
+    src/ChannelDirectory.cpp
+    src/ChannelDirectory.h
 )
 
 set_source_files_properties(qml/Main.qml PROPERTIES
