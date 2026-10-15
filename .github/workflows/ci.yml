@@ -66,6 +66,19 @@ jobs:
       - name: Smoke tests
         shell: pwsh
         run: ctest --test-dir build/desktop -C Release --output-on-failure
+      - name: Stage unsigned Windows desktop test bundle
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:QT_ROOT_DIR\\bin;$env:PATH"
+          ./scripts/package-windows-test.ps1 -BuildDirectory build/desktop/Release -OutputDirectory build/gcp-windows-test
+          ./scripts/verify-windows-test-bundle.ps1 -BundleDirectory build/gcp-windows-test
+      - name: Upload verified unsigned desktop test bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcp-desktop-unsigned-test-win64
+          path: build/gcp-windows-test/
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload native voice diagnostic
         uses: actions/upload-artifact@v4
         with:
