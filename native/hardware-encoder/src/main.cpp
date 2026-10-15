@@ -125,6 +125,10 @@ Options parse(int argc, char* argv[]) {
         else if (flag == "--monitor") o.monitor_index = number;
         else throw std::invalid_argument("Unknown flag");
     }
+    // Validate before multiplication/addition: CLI integers may be INT_MAX.
+    if (o.fps < 1 || o.fps > 60 ||
+        o.duration_seconds < 0 || o.duration_seconds > 300)
+        throw std::invalid_argument("Invalid FPS or duration");
     if (o.duration_seconds > 0) {
         if (!frames_explicit) o.frames = o.fps * o.duration_seconds;
         if (!timeout_explicit) o.timeout_seconds = o.duration_seconds + 15;
@@ -417,8 +421,8 @@ void receive_output(IMFTransform* encoder, DWORD output_id,
     DWORD status = 0;
     const HRESULT result = encoder->ProcessOutput(0, 1, &output, &status);
     if (output.pEvents) output.pEvents->Release();
-    if (FAILED(result)) require(result, "Hardware MFT ProcessOutput");
     if (provides) sample.Attach(output.pSample);
+    if (FAILED(result)) require(result, "Hardware MFT ProcessOutput");
     if (!sample) throw std::runtime_error("MFT returned no encoded output sample");
 
     ComPtr<IMFMediaBuffer> bytes;
@@ -551,6 +555,7 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
     // media format. This is strictly local and requires explicit CLI consent.
     std::unique_ptr<gcp::media::LiveMonitorCapture> monitor_capture;
     std::uint64_t monitor_sequence = 0;
+    try {
     if (options.use_monitor_capture) {
         monitor_capture = std::make_unique<gcp::media::LiveMonitorCapture>(
             gpu.device.Get(), gpu.context.Get(), options.monitor_index,
@@ -562,7 +567,6 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                   << " into local hardware encoder (not transmitted)\n";
     }
 
-    try {
         require(encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0),
                 "Begin streaming");
         require(encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0),
@@ -854,6 +858,12 @@ int main(int argc, char* argv[]) {
                                     monitor_flag, monitor_index, confirm_flag, yes,
                                     duration_flag, too_long};
             try { (void)parse(10, bad_duration); return 1; }
+            catch (const std::invalid_argument&) {}
+            char huge[] = "2147483647";
+            char fps_flag[] = "--fps";
+            char* overflow_profile[] = {program, run_mode, fps_flag, huge,
+                                       duration_flag, duration_time};
+            try { (void)parse(6, overflow_profile); return 1; }
             catch (const std::invalid_argument&) {}
             char invalid_source[] = "gpu";
             char* bad_source[] = {program, run_mode, source_flag, invalid_source};

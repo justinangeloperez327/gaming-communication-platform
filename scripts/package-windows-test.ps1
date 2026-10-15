@@ -25,7 +25,7 @@ foreach ($file in $required) {
 }
 $manifest = foreach ($item in Get-ChildItem -LiteralPath $output -Recurse -File) {
     [pscustomobject]@{
-        path = [IO.Path]::GetRelativePath($output, $item.FullName).Replace('\\','/')
+        path = [IO.Path]::GetRelativePath($output, $item.FullName).Replace('\','/')
         sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
         bytes = $item.Length
     }

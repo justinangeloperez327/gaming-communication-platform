@@ -106,10 +106,12 @@ struct CaptureState {
 
         const auto readback_start = Clock::now();
         context->CopyResource(staging.Get(), texture.Get());
-        D3D11_MAPPED_SUBRESOURCE mapped{};
-        winrt::check_hresult(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
+        // Allocate before Map: allocation failure must not leave the GPU
+        // staging resource mapped and poison all subsequent captures.
         std::vector<std::uint8_t> pixels(
             static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4);
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        winrt::check_hresult(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
         const auto bytes_per_row = static_cast<std::size_t>(width) * 4;
         if (mapped.RowPitch < bytes_per_row) {
             context->Unmap(staging.Get(), 0);

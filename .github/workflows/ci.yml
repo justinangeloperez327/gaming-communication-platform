@@ -68,6 +68,9 @@ jobs:
       - name: Smoke tests
         shell: pwsh
         run: ctest --test-dir build/desktop -C Release --output-on-failure
+      - name: Exercise package integrity rejection fixtures
+        shell: pwsh
+        run: ./scripts/test-windows-test-bundle.ps1
       - name: Stage unsigned Windows desktop test bundle
         shell: pwsh
         run: |

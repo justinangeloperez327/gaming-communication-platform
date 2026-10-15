@@ -88,7 +88,7 @@ ApplicationWindow {
                     color: root.borderTone
                 }
                 Text {
-                    text: "TEXT CHANNELS"
+                    text: "COMMUNITY"
                     color: root.mutedTone
                     font.pixelSize: 11
                     font.weight: Font.DemiBold
@@ -182,8 +182,13 @@ ApplicationWindow {
             Layout.fillHeight: true
             color: root.color
 
-            ColumnLayout {
+            ScrollView {
+                id: mainScroll
                 anchors.fill: parent
+                contentWidth: availableWidth
+
+            ColumnLayout {
+                width: mainScroll.availableWidth
                 spacing: 0
 
                 Rectangle {
@@ -229,14 +234,14 @@ ApplicationWindow {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "The native desktop shell is running. Messaging, voice, and screen sharing will be connected in later implementations."
+                        text: "Sign in to select a community and join experimental voice calls of up to five minutes. Desktop messaging and screen sharing are not connected yet."
                         font.pixelSize: 14
                         color: root.mutedTone
                         wrapMode: Text.WordWrap
                     }
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: accountSession.signedIn ? 90 : 224
+                        Layout.preferredHeight: accountSession.signedIn ? 120 : 270
                         radius: 6
                         color: root.panel
                         border.color: root.borderTone
@@ -367,6 +372,7 @@ ApplicationWindow {
                         }
                     }
                 }
+            }
             }
         }
     }

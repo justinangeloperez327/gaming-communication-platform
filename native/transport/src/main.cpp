@@ -527,8 +527,8 @@ int main(int argc, char* argv[]) {
         if (options.action == "--self-test") return self_test();
         std::signal(SIGINT, interrupt_handler);
         return run(options);
-    } catch (const std::exception& error) {
-        std::cerr << "LiveKit transport smoke test failed: " << error.what() << "\n";
+    } catch (const std::exception&) {
+        std::cerr << "LiveKit transport diagnostic failed; check configuration and selected media.\n";
         return 1;
     }
 }

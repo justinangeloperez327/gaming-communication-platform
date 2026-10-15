@@ -76,6 +76,10 @@ Options parse(int argc, char* argv[]) {
         else throw std::invalid_argument("Unknown command argument");
     }
     p.monitor_capture_confirmed = consent;
+    // Validate before multiplication/addition: CLI integers may be INT_MAX.
+    if (p.fps < 1 || p.fps > 60 ||
+        p.duration_seconds < 0 || p.duration_seconds > 300)
+        throw std::invalid_argument("Invalid FPS or duration");
     if (p.duration_seconds > 0 && p.duration_seconds <= 300) {
         if (!frames_explicit) p.frames = p.fps * p.duration_seconds;
         if (!timeout_explicit) p.timeout_seconds = p.duration_seconds + 15;
@@ -138,6 +142,11 @@ int self_test() {
                                    duration_flag, duration_seconds,
                                    timeout_flag, short_timeout};
     try { (void)parse(10, inadequate_timeout); return 1; }
+    catch (const std::invalid_argument&) {}
+    char huge[] = "2147483647", fps_flag[] = "--fps";
+    char* overflow_profile[] = {app, publish, monitor, zero, consent, yes,
+                               fps_flag, huge, duration_flag, duration_seconds};
+    try { (void)parse(10, overflow_profile); return 1; }
     catch (const std::invalid_argument&) {}
     char denied[] = "no";
     char* bad[] = {app, publish, monitor, zero, consent, denied};
@@ -315,8 +324,8 @@ int main(int argc, char* argv[]) {
         }
         std::signal(SIGINT, interrupt_handler);
         return publish(options);
-    } catch (const std::exception& ex) {
-        std::cerr << "Hardware H.264 LiveKit diagnostic failed: " << ex.what() << "\n";
+    } catch (const std::exception&) {
+        std::cerr << "Hardware LiveKit diagnostic failed; check configuration and capture profile.\n";
         return 1;
     }
 }
