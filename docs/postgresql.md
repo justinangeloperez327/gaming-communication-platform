@@ -1,6 +1,6 @@
 # PostgreSQL foundation — Group 20
 
-The Rust/Axum server now supports PostgreSQL using a bounded SQLx connection pool. Migrations define **users, communities, memberships, text/voice channels and messages**. The schema is for future authenticated APIs: it does **not** provide accounts, password hashing logic, authorization, messaging routes or any public access to persisted data.
+The Rust/Axum server now supports PostgreSQL using a bounded SQLx connection pool. Migrations define **users, communities, memberships, text/voice channels and messages**. The schema supports the implemented authenticated accounts, role-checked communities, messages, friends/DMs and voice-token APIs. Protected routes require database-backed bearer sessions.
 
 ## Database requirements
 
@@ -49,4 +49,4 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --locked
 ```
 
-The Windows Qt/LiveKit build remains independent of PostgreSQL. The project still has no persistent authentication, working text chat, production voice, or completed gaming hardware certification.
+The Windows Qt/LiveKit build remains independent of PostgreSQL. Persistent backend sessions and text-message APIs exist; the desktop message composer is not connected. Production voice and gaming hardware certification remain incomplete.

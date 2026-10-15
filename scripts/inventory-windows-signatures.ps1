@@ -12,7 +12,7 @@ $rows = foreach ($item in $executables) {
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Executable links are not permitted' }
     $signature = Get-AuthenticodeSignature -LiteralPath $item.FullName
     [pscustomobject]@{
-        path = [IO.Path]::GetRelativePath($root, $item.FullName).Replace('\\', '/')
+        path = [IO.Path]::GetRelativePath($root, $item.FullName).Replace('\', '/')
         sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
         signature_status = [string]$signature.Status
         signer_subject = if ($signature.SignerCertificate) { [string]$signature.SignerCertificate.Subject } else { $null }

@@ -1,6 +1,6 @@
 # LiveKit native transport feasibility test
 
-The optional `gcp-livekit-smoke.exe` is a **standalone test executable**, not voice chat or game streaming. It connects to a LiveKit room and publishes or subscribes to a synthetic RGBA video track. It never captures a screen or microphone.
+The optional `gcp-livekit-smoke.exe` is a **standalone test executable**, not voice chat or game streaming. It connects to a LiveKit room and publishes or subscribes to a synthetic RGBA video track. Its synthetic publish mode never captures a screen or microphone. The separate `share-monitor` mode explicitly captures/transmits a monitor with consent; see [monitor sharing](monitor-share.md). No microphone mode exists in this executable.
 
 ## Supported version and supply-chain behavior
 

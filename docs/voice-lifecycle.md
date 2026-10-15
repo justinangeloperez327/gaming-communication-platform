@@ -1,5 +1,7 @@
 # Group 32 — Voice process lifecycle reliability
 
+Historical implementation milestone: later room/network callbacks and account integration supersede the limitations described here. For current behavior, read [desktop voice](desktop-voice.md) and the [stabilization audit](stabilization-audit.md).
+
 The desktop voice subprocess has a 12-second startup watchdog, a 2-second graceful shutdown deadline followed by a forceful kill, and explicit handling of normal process termination, crashes, and failed launches. Pending backend authorization is canceled on Leave. Shutdown timers are managed as members of the Qt session object rather than detached single-shot closures, so a previous stop attempt cannot accidentally kill a later session.
 
 The desktop clears its stored child-process environment after launch confirmation or failure, reducing lifetime of the LiveKit token copy in Qt's process configuration. This does **not** scrub environment values already inherited by the native process or other transient Qt memory copies.

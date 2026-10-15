@@ -1,5 +1,7 @@
 # Group 33 — Native LiveKit connection acknowledgment
 
+Historical implementation milestone: later room/network callbacks and account integration supersede the limitations described here. For current behavior, read [desktop voice](desktop-voice.md) and the [stabilization audit](stabilization-audit.md).
+
 The Windows native voice process now emits fixed, non-secret protocol lines to stdout after `room.connect()` succeeds and after a normal `room.disconnect()`:
 
 ```text

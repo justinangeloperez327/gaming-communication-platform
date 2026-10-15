@@ -21,17 +21,31 @@ class Tests(unittest.TestCase):
                 "probe": "livekit_voice_session",
                 "cpu_percent_total_machine": 0.8,
                 "peak_private_bytes_sampled": 104857600,
-                "session_seconds": 60.0}) + "\n")
+                "session_seconds": 60.0, "memory_sample_count": 29}) + "\n")
             result = benchmark.report([base], [gaming], [voice], "frame_ms", 0)
             self.assertAlmostEqual(result["average_fps_change_percent"], -20)
             self.assertEqual(result["voice_process"]["median_peak_private_bytes_sampled"], 104857600)
+    def test_real_native_summary_plus_final_record(self):
+        with tempfile.TemporaryDirectory() as folder:
+            p = Path(folder) / "voice.txt"
+            summary = {"probe": "livekit_voice_process_summary", "frames": 2}
+            final = {"probe": "livekit_voice_session", "cpu_percent_total_machine": 1,
+                     "peak_private_bytes_sampled": 1048576, "session_seconds": 10,
+                     "memory_sample_count": 4}
+            p.write_text(json.dumps(summary) + "\n" + json.dumps(final) + "\n")
+            self.assertEqual(benchmark.load_voice(p)["session_seconds"], 10)
+            final["memory_sample_count"] = 0
+            p.write_text(json.dumps(final) + "\n")
+            with self.assertRaises(ValueError):
+                benchmark.load_voice(p)
+
     def test_rejects_duplicate_captures(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             csv = root / "same.csv"
-            csv.write_text("frame_ms\\n" + "16\\n" * 200)
+            csv.write_text("frame_ms\n" + "16\n" * 200)
             telemetry = root / "voice.txt"
-            telemetry.write_text('{"probe":"livekit_voice_session","cpu_percent_total_machine":1,"peak_private_bytes_sampled":1024,"session_seconds":60}\\n')
+            telemetry.write_text('{"probe":"livekit_voice_session","cpu_percent_total_machine":1,"peak_private_bytes_sampled":1024,"session_seconds":60}\n')
             with self.assertRaises(ValueError):
                 benchmark.report([csv], [csv], [telemetry], "frame_ms", 0)
 
@@ -41,9 +55,9 @@ class Tests(unittest.TestCase):
             a = root / "baseline.csv"
             b = root / "gcp.csv"
             v = root / "voice.txt"
-            a.write_text("frame_ms\\n" + "16\\n" * 200)
-            b.write_text("frame_ms\\n" + "17\\n" * 200)
-            v.write_text('{"probe":"livekit_voice_session","cpu_percent_total_machine":1,"peak_private_bytes_sampled":1024,"session_seconds":0}\\n')
+            a.write_text("frame_ms\n" + "16\n" * 200)
+            b.write_text("frame_ms\n" + "17\n" * 200)
+            v.write_text('{"probe":"livekit_voice_session","cpu_percent_total_machine":1,"peak_private_bytes_sampled":1024,"session_seconds":0}\n')
             with self.assertRaises(ValueError):
                 benchmark.report([a], [b], [v], "frame_ms", 0)
 

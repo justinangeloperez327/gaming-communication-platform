@@ -18,7 +18,7 @@ class PipelineTests(unittest.TestCase):
             c = root / f"voice{i}.txt"
             a.write_text("frame_ms\n" + "16\n" * 200)
             b.write_text("frame_ms\n" + "17\n" * 200)
-            c.write_text('{"probe":"livekit_voice_session","cpu_percent_total_machine":0.8,"peak_private_bytes_sampled":104857600,"session_seconds":60}\n')
+            c.write_text('{"probe":"livekit_voice_session","cpu_percent_total_machine":0.8,"peak_private_bytes_sampled":104857600,"session_seconds":60,"memory_sample_count":29}\n')
             baseline.append(a)
             gcp.append(b)
             voice.append(c)

@@ -29,3 +29,6 @@ Thumbs.db
 
 # Runtime
 *.log
+
+__pycache__/
+*.py[cod]

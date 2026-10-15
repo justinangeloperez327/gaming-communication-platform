@@ -1,3 +1,4 @@
+#include "BoundedReply.h"
 #include "ChannelDirectory.h"
 #include "AccountSession.h"
 #include <QJsonArray>
@@ -69,6 +70,7 @@ void ChannelDirectory::request(const QString &path,bool listCommunities) {
  request.setTransferTimeout(10000);
  status_=QStringLiteral("Loading…");
  pending_=network_.get(request);
+ boundReply(pending_, 131072);
  emit changed();
  auto *reply=pending_;
  auto const version=version_;

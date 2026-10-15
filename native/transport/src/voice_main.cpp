@@ -315,6 +315,12 @@ int join(const Options& o) {
                 muted = true;
                 std::cerr << "MICROPHONE MUTED: publication remains connected.\n";
             }
+            if (Clock::now() >= next_perf_sample) {
+                const auto sample = gcp::probe::take_snapshot();
+                peak_private_bytes = std::max(peak_private_bytes, sample.private_bytes);
+                ++sample_count;
+                next_perf_sample = Clock::now() + std::chrono::seconds(2);
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
         if (mic_track && !muted) {
@@ -331,7 +337,7 @@ int join(const Options& o) {
             std::chrono::duration<double>(Clock::now() - started).count();
         const auto callbacks = events.subscriptions.load();
         const auto departures = events.unsubscriptions.load();
-        gcp::probe::print_metrics("livekit_voice_session", elapsed,
+        gcp::probe::print_metrics("livekit_voice_process_summary", elapsed,
             callbacks, departures, before, after);
         std::cout << "{\"probe\":\"livekit_voice_session\""
                   << ",\"microphone_opted_in\":"
@@ -393,10 +399,10 @@ int main(int argc, char** argv) {
         if (options.mode == Options::Mode::SelfTest) return self_test();
         std::signal(SIGINT, interrupted);
         return execute(options);
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         // Never include URL/token in exception messages returned by SDK;
         // replace connection errors with generic failure where possible.
-        std::cerr << "Native LiveKit voice diagnostic failed: " << e.what() << '\n';
+        std::cerr << "Native LiveKit voice diagnostic failed; check configuration, consent and audio devices.\n";
         return 1;
     }
 }

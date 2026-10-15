@@ -1,3 +1,4 @@
+#include "BoundedReply.h"
 #include "AccountSession.h"
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -53,6 +54,7 @@ void AccountSession::sendAuth(const QString &path, const QByteArray &payload, bo
     request.setTransferTimeout(10000);
     status_ = isRefresh ? QStringLiteral("Refreshing session") : QStringLiteral("Signing in");
     pending_ = network_.post(request, payload);
+    boundReply(pending_, 16384);
     emit changed();
     auto *reply = pending_;
     const quint64 id = generation_;

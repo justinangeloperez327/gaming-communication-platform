@@ -351,11 +351,14 @@ int publish_h264_file(livekit::Room& room, const Options& options) {
     }
     std::ifstream input(path, std::ios::binary);
     if (!input) throw std::runtime_error("Cannot open encoded file");
-    std::vector<std::uint8_t> encoded{
-        std::istreambuf_iterator<char>(input),
-        std::istreambuf_iterator<char>()};
-    if (!input.eof() && input.fail()) {
-        throw std::runtime_error("Unable to read H.264 test file");
+    // Bound the read itself, not just a prior file_size check: a file may grow
+    // between stat and read. Never read a changing file into an unbounded vector.
+    std::vector<std::uint8_t> encoded(static_cast<std::size_t>(size));
+    input.read(reinterpret_cast<char*>(encoded.data()),
+               static_cast<std::streamsize>(encoded.size()));
+    if (input.gcount() != static_cast<std::streamsize>(encoded.size()) ||
+        input.peek() != std::char_traits<char>::eof()) {
+        throw std::runtime_error("H.264 test file changed or could not be read");
     }
     const auto units = gcp::transport::split_annexb_access_units(encoded);
 
@@ -527,8 +530,8 @@ int main(int argc, char* argv[]) {
         if (options.action == "--self-test") return self_test();
         std::signal(SIGINT, interrupt_handler);
         return run(options);
-    } catch (const std::exception& error) {
-        std::cerr << "LiveKit transport smoke test failed: " << error.what() << "\n";
+    } catch (const std::exception&) {
+        std::cerr << "LiveKit transport diagnostic failed; check configuration and selected media.\n";
         return 1;
     }
 }

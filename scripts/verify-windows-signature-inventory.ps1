@@ -24,7 +24,7 @@ foreach ($entry in $entries) {
     $byPath[$name] = $entry
 }
 foreach ($item in $files) {
-    $relative = [IO.Path]::GetRelativePath($root,$item.FullName).Replace('\\','/')
+    $relative = [IO.Path]::GetRelativePath($root,$item.FullName).Replace('\','/')
     if (-not $byPath.ContainsKey($relative)) { throw "Executable not inventoried: $relative" }
     $hash = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($hash -cne [string]$byPath[$relative].sha256) { throw "Executable digest mismatch: $relative" }
