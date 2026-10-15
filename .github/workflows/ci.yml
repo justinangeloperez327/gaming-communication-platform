@@ -72,6 +72,14 @@ jobs:
           $env:PATH = "$env:QT_ROOT_DIR\\bin;$env:PATH"
           ./scripts/package-windows-test.ps1 -BuildDirectory build/desktop/Release -OutputDirectory build/gcp-windows-test
           ./scripts/verify-windows-test-bundle.ps1 -BundleDirectory build/gcp-windows-test
+      - name: Test packaged Qt/QML runtime and native LiveKit startup
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & ./build/gcp-windows-test/gcp-desktop.exe --smoke-qml
+          if ($LASTEXITCODE -ne 0) { throw "Packaged Qt/QML smoke test failed: $LASTEXITCODE" }
+          & ./build/gcp-windows-test/gcp-livekit-voice.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged LiveKit voice self-test failed: $LASTEXITCODE" }
       - name: Upload verified unsigned desktop test bundle
         uses: actions/upload-artifact@v4
         with:
