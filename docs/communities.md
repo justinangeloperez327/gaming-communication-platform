@@ -1,6 +1,6 @@
 # Communities, channels and permissions (Group 22)
 
-Only authenticated PostgreSQL-backed sessions may access communities. Every community has one immutable owner (until owner deletion removes the community). Owner, admin and member roles govern management capabilities. **There are no message endpoints yet.**
+Only authenticated PostgreSQL-backed sessions may access communities. Every community has one immutable owner (until owner deletion removes the community). Owner, admin and member roles govern management capabilities. Authorized text message endpoints are documented in [messages](messages.md).
 
 ## API routes
 

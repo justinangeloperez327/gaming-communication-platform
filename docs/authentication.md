@@ -49,4 +49,4 @@ CI provisions PostgreSQL 16, runs migrations and tests registering, case-insensi
 
 ## Not yet production complete
 
-Distributed login/IP throttling, user enumeration timing controls, email ownership verification, password reset, MFA, device-level session management, audit trails, account deletion and proactive compromised-password screening are not provided yet. They must be addressed before internet exposure. Group 22 will enforce community permissions; Group 23 adds authenticated messages; Group 26 issues authorized LiveKit room tokens.
+Distributed login/IP throttling, user enumeration timing controls, email ownership verification, password reset, MFA, device-level session management, audit trails, account deletion and proactive compromised-password screening are not provided yet. They must be addressed before internet exposure. Community permissions, authenticated messages and authorized LiveKit voice tokens are implemented in their documented API routes.

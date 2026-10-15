@@ -1,6 +1,6 @@
 # Hardware H.264 asynchronous encoder smoke test
 
-The `gcp-hardware-h264.exe` command attempts actual hardware-class H.264 encoding from **synthetic D3D11 NV12 textures**. It deliberately does not capture the display, microphone or camera; connect to LiveKit; or write encoded packets to disk. It is a bounded diagnostic, not production game streaming.
+The `gcp-hardware-h264.exe` command attempts actual hardware-class H.264 encoding from **synthetic D3D11 NV12 textures**. The default NV12/BGRA modes are synthetic. The explicitly consented `--source monitor` mode captures a selected display. This executable does not capture microphones/cameras, connect to LiveKit or write encoded packets to disk; the separate hardware-to-LiveKit bridge performs network publishing. It is a bounded diagnostic, not production game streaming.
 
 ## Windows / GPU requirements
 

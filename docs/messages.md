@@ -2,7 +2,7 @@
 
 The Axum/PostgreSQL backend provides persistent **HTTP text-channel messages**. Every route requires an authenticated Bearer access token and checks current community membership in PostgreSQL. A user cannot access channels by guessing another community ID or by combining an authorized community with an unrelated channel ID.
 
-There are no public unauthenticated message routes, WebSocket delivery, typing indicators, reactions, attachments, or direct messages yet. Real-time messaging is scheduled for Group 24.
+There are no public unauthenticated message routes. Authenticated channel WebSocket events, typing and presence are documented in [realtime](realtime.md); friend-only direct messages in [friends/DMs](friends-dm.md). Reactions, attachments and the desktop message composer remain incomplete.
 
 ## API endpoints
 

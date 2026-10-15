@@ -6,4 +6,4 @@ Selection changes clear previous channel choices and disconnect any active diagn
 
 Requests disable HTTP redirection, enforce timeouts and response size bounds, and discard late results after logout. The directory is cleared when the account signs out. No community/channel data is persisted to disk.
 
-Limitations: no real-time list updates, no favorite channels or invitation UI, no physical two-device voice acceptance, no SFU eviction on revocation. Qt build/CI and physical audio tests are required. The native voice process start is not a verified connected-state event.
+Limitations: no real-time list updates, no favorite channels or invitation UI, no physical two-device voice acceptance, no SFU eviction on revocation. Qt build/CI and physical audio tests are required. The native voice process start is not proof of a room join; separate SDK acknowledgments now drive connected state.

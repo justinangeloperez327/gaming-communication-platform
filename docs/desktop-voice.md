@@ -1,13 +1,15 @@
-# Group 28 — Desktop voice control bridge (experimental)
+# Desktop voice (experimental)
 
-The Qt desktop shell can start/stop the optional native LiveKit voice diagnostic from the desktop UI.
+Build Windows with `GCP_ENABLE_LIVEKIT=ON`, placing `gcp-livekit-voice.exe`, `livekit.dll`, `livekit_ffi.dll` and Qt runtime dependencies alongside the desktop. Use the private ZIP tooling for dependency staging.
 
-## Setup (Windows developer environment)
+1. Configure PostgreSQL and server-only LiveKit credentials on the Rust backend.
+2. Register accounts and create/join a community with a voice channel through the API; those administration screens are not implemented.
+3. Open the desktop and enter the HTTPS API origin, account email and password. Loopback HTTP is allowed for development.
+4. Choose your community and voice channel. Scan/select devices if needed.
+5. Choose Listen only, or explicitly authorize microphone capture for this call and Join with mic. Leave stops the subprocess.
 
-Build with `-DGCP_ENABLE_LIVEKIT=ON` (see [native voice](native-voice.md)). Place `gcp-livekit-voice.exe` and its dependent LiveKit runtime DLLs beside `gcp-desktop.exe`. Obtain a short-lived token from the authenticated backend route `POST /v1/communities/{community_id}/channels/{channel_id}/livekit-token` and start the desktop process with `LIVEKIT_URL` and `LIVEKIT_TOKEN` in its process environment. **Never add these credentials to repository files, screenshots or command-line arguments.**
+No desktop environment token configuration is required. The account controller rotates access/refresh tokens in memory; each join fetches a new authorized LiveKit token. Room credentials go to the native child's environment, not command-line arguments. This reduces accidental exposure but is not secure erasure of all Qt/SDK/environment memory copies.
 
-The desktop UI supports listen-only, explicit per-session microphone consent, and Leave. The microphone checkbox automatically resets after a join request. All voice calls are currently limited to **300 seconds** by the native diagnostic. Leaving terminates the process, followed by a forced stop if needed. The UI never renders child-process stdout, stderr or token contents.
+The UI distinguishes running process, SDK connected acknowledgment, reconnecting, device loss and timeout. SDK connection does not establish microphone transmission, speaker audibility or remote quality. Selected device loss is polled; default-device rerouting is not fully controlled. Fresh microphone consent is required after a stopped call.
 
-## Not production ready
-
-This is a subprocess bridge, **not** integrated application login or backend token retrieval. Environment tokens can expire; they are not refreshed. The UI does not confirm actual LiveKit connection, remote audibility or physical device usage, and a started process is not proof of a joined room. Voice/device handling remains in the pinned native SDK. A production client needs secure in-memory login/session handling, just-in-time room credentials, successful-join state feedback, reconnect, expiring-token recovery, revocation-aware disconnect, device selection, push-to-talk, real hardware acceptance tests and runtime DLL packaging. User-approved microphone capture can continue until Leave or diagnostic timeout.
+Sessions remain diagnostics capped at 300 seconds. There is no in-call mute UI, push-to-talk, participant mixer or uninterrupted long-call implementation. Sign-out stops local media and attempts API logout; offline logout can fail remotely. Active SFU eviction after revoked membership/session is not implemented. Physical two-user voice, microphone permissions, headset loss/recovery and gaming overhead require manual Windows acceptance.
