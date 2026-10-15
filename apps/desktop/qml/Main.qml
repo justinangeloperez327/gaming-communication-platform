@@ -259,19 +259,19 @@ ApplicationWindow {
                                 id: micPermission
                                 text: "I authorize microphone capture for this call"
                                 checked: root.microphoneConsent
-                                enabled: !voiceSession.running
+                                enabled: !voiceSession.busy
                                 onToggled: root.microphoneConsent = checked
                             }
                             RowLayout {
                                 spacing: 8
                                 Button {
                                     text: "Listen only"
-                                    enabled: voiceSession.available && !voiceSession.running
+                                    enabled: voiceSession.available && !voiceSession.busy
                                     onClicked: voiceSession.joinListenOnly()
                                 }
                                 Button {
                                     text: "Join with mic"
-                                    enabled: voiceSession.available && !voiceSession.running && root.microphoneConsent
+                                    enabled: voiceSession.available && !voiceSession.busy && root.microphoneConsent
                                     onClicked: {
                                         voiceSession.joinWithMicrophone(root.microphoneConsent)
                                         root.microphoneConsent = false
@@ -279,13 +279,13 @@ ApplicationWindow {
                                 }
                                 Button {
                                     text: "Leave"
-                                    enabled: voiceSession.running
+                                    enabled: voiceSession.busy
                                     onClicked: voiceSession.leave()
                                 }
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Requires backend-issued session credentials in the environment. Calls stop after 5 minutes."
+                                text: "Fetches a short-lived voice token from the Rust backend for each join. Developer configuration required."
                                 color: root.mutedTone
                                 font.pixelSize: 11
                                 wrapMode: Text.Wrap
