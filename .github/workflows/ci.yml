@@ -79,8 +79,19 @@ jobs:
           # gcp-desktop.exe is a WIN32 GUI-subsystem binary. PowerShell's
           # direct invocation does not reliably wait or set LASTEXITCODE.
           $desktop = (Resolve-Path ./build/gcp-windows-test/gcp-desktop.exe).Path
-          $child = Start-Process -FilePath $desktop -ArgumentList '--smoke-qml' -WorkingDirectory (Split-Path $desktop) -PassThru -Wait
-          if ($child.ExitCode -ne 0) { throw "Packaged Qt/QML smoke test failed: $($child.ExitCode)" }
+          $child = Start-Process -FilePath $desktop -ArgumentList '--smoke-qml' -WorkingDirectory (Split-Path $desktop) -PassThru
+          try {
+            $child | Wait-Process -Timeout 20 -ErrorAction Stop
+            $child.Refresh()
+            if ($null -eq $child.ExitCode -or $child.ExitCode -ne 0) {
+              throw "Packaged Qt/QML smoke test failed: $($child.ExitCode)"
+            }
+          } finally {
+            if (-not $child.HasExited) {
+              Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue
+            }
+            $child.Dispose()
+          }
           & ./build/gcp-windows-test/gcp-livekit-voice.exe --self-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged LiveKit voice self-test failed: $LASTEXITCODE" }
       - name: Upload verified unsigned desktop test bundle
