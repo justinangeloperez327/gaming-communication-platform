@@ -43,6 +43,7 @@ private:
     QNetworkReply *pending_ = nullptr;
     QTimer startupWatchdog_;
     QTimer stopWatchdog_;
+    QTimer connectWatchdog_;
     bool stopRequested_ = false;
     bool connected_ = false;
     QByteArray outputBuffer_;
