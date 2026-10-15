@@ -161,12 +161,12 @@ ApplicationWindow {
                     ColumnLayout {
                         spacing: 1
                         Text {
-                            text: "Local Preview"
+                            text: accountSession.signedIn ? accountSession.displayName : "Signed out"
                             color: root.textTone
                             font.pixelSize: 12
                         }
                         Text {
-                            text: "Offline"
+                            text: accountSession.status
                             color: root.mutedTone
                             font.pixelSize: 11
                         }
@@ -235,6 +235,34 @@ ApplicationWindow {
                     }
                     Rectangle {
                         Layout.fillWidth: true
+                        Layout.preferredHeight: accountSession.signedIn ? 90 : 224
+                        radius: 6
+                        color: root.panel
+                        border.color: root.borderTone
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 5
+                            Text { text: "Account"; color: root.textTone; font.pixelSize: 14 }
+                            Text { text: accountSession.status; color: root.mutedTone }
+                            TextField { id: serverOrigin; Layout.fillWidth: true; visible: !accountSession.signedIn; placeholderText: "https://your-gcp-server" }
+                            TextField { id: loginEmail; Layout.fillWidth: true; visible: !accountSession.signedIn; placeholderText: "Email" }
+                            TextField { id: loginPassword; Layout.fillWidth: true; visible: !accountSession.signedIn; placeholderText: "Password"; echoMode: TextInput.Password }
+                            Button {
+                                text: accountSession.signedIn ? "Sign out" : "Sign in"
+                                enabled: !accountSession.busy
+                                onClicked: {
+                                    if (accountSession.signedIn) accountSession.signOut()
+                                    else {
+                                        accountSession.signIn(serverOrigin.text, loginEmail.text, loginPassword.text)
+                                        loginPassword.text = ""
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
                         Layout.preferredHeight: 184
                         radius: 6
                         color: root.panel
@@ -266,12 +294,12 @@ ApplicationWindow {
                                 spacing: 8
                                 Button {
                                     text: "Listen only"
-                                    enabled: voiceSession.available && !voiceSession.busy
+                                    enabled: voiceSession.available && accountSession.signedIn && !voiceSession.busy
                                     onClicked: voiceSession.joinListenOnly()
                                 }
                                 Button {
                                     text: "Join with mic"
-                                    enabled: voiceSession.available && !voiceSession.busy && root.microphoneConsent
+                                    enabled: voiceSession.available && accountSession.signedIn && !voiceSession.busy && root.microphoneConsent
                                     onClicked: {
                                         voiceSession.joinWithMicrophone(root.microphoneConsent)
                                         root.microphoneConsent = false
@@ -285,7 +313,7 @@ ApplicationWindow {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Fetches a short-lived voice token from the Rust backend for each join. Developer configuration required."
+                                text: "Fetches a short-lived voice token from the Rust backend for each join. Community and voice channel IDs still require developer configuration."
                                 color: root.mutedTone
                                 font.pixelSize: 11
                                 wrapMode: Text.Wrap
