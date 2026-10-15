@@ -179,6 +179,9 @@ int publish(const Options& options) {
         room_options.connect_timeout = std::chrono::seconds(15);
         if (!room->connect(endpoint, token, room_options))
             throw std::runtime_error("LiveKit room connection failed");
+        int result = 1;
+        {
+        // Destroy publication/source/participant references before SDK shutdown.
         auto participant = room->localParticipant().lock();
         if (!participant)
             throw std::runtime_error("Missing local LiveKit participant");
@@ -254,7 +257,7 @@ int publish(const Options& options) {
 
         std::cerr << "SCREEN SHARING ACTIVE: monitor " << p.monitor_index
                   << " is transmitted to the LiveKit room. Ctrl+C to stop.\n";
-        const auto result = gcp::media::encode_monitor_h264(
+        result = gcp::media::encode_monitor_h264(
             p, emit, fetch_feedback, &feedback_stats);
         const auto measurement_end = std::chrono::steady_clock::now();
         const auto process_end = gcp::probe::take_snapshot();
@@ -302,9 +305,12 @@ int publish(const Options& options) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
         room->disconnect();
+        // Compute the result while publication statistics are still in scope.
+        result = result == 0 && accepted && first_idr_sent ? 0 : 2;
+        }
         room.reset();
         livekit::shutdown();
-        return result == 0 && accepted && first_idr_sent ? 0 : 2;
+        return result;
     } catch (...) {
         room.reset();
         livekit::shutdown();

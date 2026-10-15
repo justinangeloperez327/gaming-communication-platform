@@ -564,7 +564,8 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
             static_cast<UINT>(options.fps));
         monitor_capture->start();
         std::cerr << "CAPTURING MONITOR " << options.monitor_index
-                  << " into local hardware encoder (not transmitted)\n";
+                  << (on_encoded ? " into hardware encoder with transport callback\n"
+                                 : " into local hardware encoder (not transmitted)\n");
     }
 
         require(encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0),
