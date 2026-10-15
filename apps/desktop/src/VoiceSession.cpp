@@ -28,6 +28,17 @@ bool uuidValid(const QString &value) {
 VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent) : QObject(parent), account_(account), directory_(directory) {
     startupWatchdog_.setSingleShot(true);
     stopWatchdog_.setSingleShot(true);
+    connectWatchdog_.setSingleShot(true);
+    connect(&connectWatchdog_, &QTimer::timeout, this, [this]() {
+        if (running() && !connected_ && !stopRequested_) {
+            // A running process is not evidence of room authorization or connectivity.
+            connectionTimedOut_ = true;
+            setStatus(QStringLiteral("Voice room connection timed out; stopping"));
+            stopRequested_ = true;
+            process_.terminate();
+            stopWatchdog_.start(2000);
+        }
+    });
     connect(&startupWatchdog_, &QTimer::timeout, this, [this]() {
         if (process_.state() == QProcess::Starting) {
             stopRequested_ = true;
@@ -42,6 +53,7 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
     connect(account_, &AccountSession::signedOut, this, &VoiceSession::leave);
     connect(&process_, &QProcess::started, this, [this]() {
         startupWatchdog_.stop();
+        connectWatchdog_.start(22000);
         process_.setProcessEnvironment(QProcessEnvironment());
         setStatus(microphoneEnabled_ ? QStringLiteral("Native voice process started · microphone enabled")
                                     : QStringLiteral("Native voice process started · listen only"));
@@ -50,13 +62,17 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
     connect(&process_, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
         startupWatchdog_.stop();
         stopWatchdog_.stop();
+        connectWatchdog_.stop();
         process_.setProcessEnvironment(QProcessEnvironment());
         const bool intentional = stopRequested_;
         stopRequested_ = false;
         microphoneEnabled_ = false;
         connected_ = false;
         outputBuffer_.clear();
-        setStatus(intentional ? QStringLiteral("Disconnected") :
+        const bool timedOut = connectionTimedOut_;
+        connectionTimedOut_ = false;
+        setStatus(timedOut ? QStringLiteral("Room connection timed out; retry manually") :
+                  intentional ? QStringLiteral("Disconnected") :
                   exitStatus == QProcess::NormalExit && exitCode == 0
                       ? QStringLiteral("Disconnected")
                       : QStringLiteral("Voice process stopped; connection not verified"));
@@ -65,6 +81,7 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
     connect(&process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
             startupWatchdog_.stop();
+            connectWatchdog_.stop();
             process_.setProcessEnvironment(QProcessEnvironment());
             microphoneEnabled_ = false;
             connected_ = false;
@@ -90,6 +107,7 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
             outputBuffer_.remove(0, newline + 1);
             if (line == "GCP_VOICE_EVENT:connected" && running() && !stopRequested_) {
                 connected_ = true;
+                connectWatchdog_.stop();
                 setStatus(QStringLiteral("Connected to LiveKit room (audio not verified)"));
             } else if (line == "GCP_VOICE_EVENT:disconnected") {
                 connected_ = false;
@@ -190,6 +208,7 @@ void VoiceSession::launch(bool publishMicrophone, const QString &url, const QStr
     env.remove(QStringLiteral("GCP_ACCESS_TOKEN"));
     env.remove(QStringLiteral("GCP_REFRESH_TOKEN"));
     stopRequested_ = false;
+    connectionTimedOut_ = false;
     connected_ = false;
     outputBuffer_.clear();
     microphoneEnabled_ = publishMicrophone;
@@ -222,6 +241,7 @@ void VoiceSession::leave() {
     stopRequested_ = true;
     connected_ = false;
     startupWatchdog_.stop();
+    connectWatchdog_.stop();
     setStatus(QStringLiteral("Disconnecting…"));
     process_.terminate();
     stopWatchdog_.start(2000);
