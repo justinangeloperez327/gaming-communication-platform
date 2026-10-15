@@ -1,6 +1,8 @@
+#include "VoiceSession.h"
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQmlContext>
 #include <QtGlobal>
 
 #include <cstdlib>
@@ -18,7 +20,9 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName(QStringLiteral("Gaming Communication Platform"));
     QCoreApplication::setOrganizationName(QStringLiteral("GCP"));
 
+    VoiceSession voice;
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("voiceSession"), &voice);
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,
@@ -26,7 +30,7 @@ int main(int argc, char *argv[])
         []() { QCoreApplication::exit(EXIT_FAILURE); },
         Qt::QueuedConnection
     );
-
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &voice, &VoiceSession::leave);
     engine.loadFromModule("Gcp.Desktop", "Main");
     return app.exec();
 }
