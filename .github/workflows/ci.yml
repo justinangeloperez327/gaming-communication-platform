@@ -94,6 +94,17 @@ jobs:
           }
           & ./build/gcp-windows-test/gcp-livekit-voice.exe --self-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged LiveKit voice self-test failed: $LASTEXITCODE" }
+      - name: Record CI-only Windows bundle acceptance
+        shell: pwsh
+        run: |
+          ./scripts/write-windows-ci-acceptance.ps1 -BundleDirectory build/gcp-windows-test -OutputFile build/windows-ci-acceptance.json -CommitSha "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Upload Windows package acceptance record
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcp-windows-ci-acceptance
+          path: build/windows-ci-acceptance.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload verified unsigned desktop test bundle
         uses: actions/upload-artifact@v4
         with:
