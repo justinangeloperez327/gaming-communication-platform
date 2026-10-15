@@ -6,6 +6,7 @@ class AccountSession;
 class ChannelDirectory;
 #include <QProcess>
 #include <QString>
+#include <QTimer>
 
 class VoiceSession final : public QObject {
     Q_OBJECT
@@ -38,6 +39,9 @@ private:
     QProcess process_;
     QNetworkAccessManager network_;
     QNetworkReply *pending_ = nullptr;
+    QTimer startupWatchdog_;
+    QTimer stopWatchdog_;
+    bool stopRequested_ = false;
     bool microphoneEnabled_ = false;
     QString status_ = QStringLiteral("Disconnected");
 };

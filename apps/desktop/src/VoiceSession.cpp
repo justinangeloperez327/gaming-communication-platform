@@ -26,22 +26,44 @@ bool uuidValid(const QString &value) {
 }
 
 VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent) : QObject(parent), account_(account), directory_(directory) {
+    startupWatchdog_.setSingleShot(true);
+    stopWatchdog_.setSingleShot(true);
+    connect(&startupWatchdog_, &QTimer::timeout, this, [this]() {
+        if (process_.state() == QProcess::Starting) {
+            stopRequested_ = true;
+            setStatus(QStringLiteral("Native voice startup timed out"));
+            process_.kill();
+        }
+    });
+    connect(&stopWatchdog_, &QTimer::timeout, this, [this]() {
+        if (running()) process_.kill();
+    });
     connect(directory_, &ChannelDirectory::selectionChanged, this, &VoiceSession::leave);
     connect(account_, &AccountSession::signedOut, this, &VoiceSession::leave);
     connect(&process_, &QProcess::started, this, [this]() {
+        startupWatchdog_.stop();
+        process_.setProcessEnvironment(QProcessEnvironment());
         setStatus(microphoneEnabled_ ? QStringLiteral("Native voice process started · microphone enabled")
                                     : QStringLiteral("Native voice process started · listen only"));
         emit runningChanged();
     });
     connect(&process_, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
+        startupWatchdog_.stop();
+        stopWatchdog_.stop();
+        process_.setProcessEnvironment(QProcessEnvironment());
+        const bool intentional = stopRequested_;
+        stopRequested_ = false;
         microphoneEnabled_ = false;
-        setStatus(exitStatus == QProcess::NormalExit && exitCode == 0
+        setStatus(intentional ? QStringLiteral("Disconnected") :
+                  exitStatus == QProcess::NormalExit && exitCode == 0
                       ? QStringLiteral("Disconnected")
                       : QStringLiteral("Voice process stopped; connection not verified"));
         emit runningChanged();
     });
     connect(&process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
+            startupWatchdog_.stop();
+            process_.setProcessEnvironment(QProcessEnvironment());
             microphoneEnabled_ = false;
             setStatus(QStringLiteral("Cannot start native voice executable"));
             emit runningChanged();
@@ -67,7 +89,6 @@ void VoiceSession::setStatus(const QString &value) {
 void VoiceSession::start(bool publishMicrophone) {
     if (busy()) return;
     if (!available()) { setStatus(QStringLiteral("Native voice executable is missing")); return; }
-    const auto env = QProcessEnvironment::systemEnvironment();
     const QUrl api = account_->apiOrigin();
     const auto access = account_->accessToken();
     const auto community = directory_->communityId();
@@ -142,6 +163,7 @@ void VoiceSession::launch(bool publishMicrophone, const QString &url, const QStr
     env.insert(QStringLiteral("LIVEKIT_TOKEN"), token);
     env.remove(QStringLiteral("GCP_ACCESS_TOKEN"));
     env.remove(QStringLiteral("GCP_REFRESH_TOKEN"));
+    stopRequested_ = false;
     microphoneEnabled_ = publishMicrophone;
     process_.setProcessEnvironment(env);
     process_.setProgram(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-livekit-voice.exe")));
@@ -152,6 +174,7 @@ void VoiceSession::launch(bool publishMicrophone, const QString &url, const QStr
     process_.setArguments(args);
     setStatus(QStringLiteral("Starting native voice…"));
     process_.start();
+    startupWatchdog_.start(12000);
     emit runningChanged();
 }
 
@@ -168,7 +191,9 @@ void VoiceSession::leave() {
         emit runningChanged();
     }
     if (!running()) { setStatus(QStringLiteral("Disconnected")); return; }
+    stopRequested_ = true;
+    startupWatchdog_.stop();
     setStatus(QStringLiteral("Disconnecting…"));
     process_.terminate();
-    QTimer::singleShot(2000, this, [this]() { if (running()) process_.kill(); });
+    stopWatchdog_.start(2000);
 }
