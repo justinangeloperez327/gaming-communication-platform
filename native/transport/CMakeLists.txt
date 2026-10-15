@@ -40,3 +40,31 @@ endif()
 
 # Optional GPU hardware encoded bridge.
 include(${CMAKE_CURRENT_LIST_DIR}/hardware.cmake)
+
+# Group 27: standalone opt-in WASAPI 48kHz microphone + speaker LiveKit diagnostic.
+add_executable(gcp-livekit-voice
+    src/voice_main.cpp
+    src/voice_audio.cpp
+)
+target_compile_definitions(gcp-livekit-voice PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(gcp-livekit-voice PRIVATE LiveKit::livekit ole32 uuid)
+target_link_directories(gcp-livekit-voice PRIVATE "${GCP_LIVEKIT_RESOLVED_PREFIX}/lib")
+if(MSVC)
+    target_compile_options(gcp-livekit-voice PRIVATE /W4 /permissive- /EHsc)
+endif()
+foreach(_sdk_runtime IN ITEMS livekit.dll livekit_ffi.dll)
+    if(EXISTS "${GCP_LIVEKIT_RESOLVED_PREFIX}/bin/${_sdk_runtime}")
+        add_custom_command(TARGET gcp-livekit-voice POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${GCP_LIVEKIT_RESOLVED_PREFIX}/bin/${_sdk_runtime}"
+                "$<TARGET_FILE_DIR:gcp-livekit-voice>"
+            VERBATIM
+        )
+    endif()
+endforeach()
+if(BUILD_TESTING)
+    add_test(NAME livekit_voice_help
+        COMMAND $<TARGET_FILE:gcp-livekit-voice> --help)
+    add_test(NAME livekit_voice_self_test
+        COMMAND $<TARGET_FILE:gcp-livekit-voice> --self-test)
+endif()
