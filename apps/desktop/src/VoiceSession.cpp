@@ -109,6 +109,21 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
                 connected_ = true;
                 connectWatchdog_.stop();
                 setStatus(QStringLiteral("Connected to LiveKit room (audio not verified)"));
+            } else if (line == "GCP_VOICE_EVENT:reconnecting" && connected_ && !stopRequested_) {
+                connected_ = false;
+                setStatus(QStringLiteral("Network interrupted · SDK reconnecting"));
+                connectWatchdog_.start(15000);
+            } else if (line == "GCP_VOICE_EVENT:reconnected" && !stopRequested_ && running()) {
+                connected_ = true;
+                connectWatchdog_.stop();
+                setStatus(QStringLiteral("LiveKit reconnected (audio not verified)"));
+            } else if (line == "GCP_VOICE_EVENT:connection_lost" && !stopRequested_) {
+                connected_ = false;
+                setStatus(QStringLiteral("LiveKit connection lost · stopping voice"));
+                stopRequested_ = true;
+                connectWatchdog_.stop();
+                process_.terminate();
+                stopWatchdog_.start(2000);
             } else if (line == "GCP_VOICE_EVENT:disconnected") {
                 connected_ = false;
                 setStatus(QStringLiteral("Disconnected from LiveKit room"));
