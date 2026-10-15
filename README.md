@@ -64,3 +64,5 @@ There is no project license yet. Third-party and Qt licensing must be reviewed b
 - **Experimental real-time events:** authenticated single-process text-channel WebSocket notifications, typing, ephemeral presence, and reconnect via HTTP message history. See [real-time events](docs/realtime.md). No cross-instance delivery guarantee.
 
 - **Friendships and direct messages:** PostgreSQL-backed invitations, owner-controlled blocks and permission-checked private text conversations. See [friends and DMs](docs/friends-dm.md). No DM E2EE or real-time DM socket yet.
+
+- **LiveKit voice authorization (experimental):** short-lived, server-signed room credentials for authorized community voice-channel members. Microphone-only grants; not a full desktop voice client or active SFU revocation. See [voice token API](docs/livekit-tokens.md).
