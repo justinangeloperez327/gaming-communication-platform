@@ -264,7 +264,7 @@ ApplicationWindow {
                     }
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 184
+                        Layout.preferredHeight: 340
                         radius: 6
                         color: root.panel
                         border.color: root.borderTone
@@ -283,6 +283,33 @@ ApplicationWindow {
                                 color: root.mutedTone
                                 wrapMode: Text.Wrap
                                 font.pixelSize: 12
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Button {
+                                    text: voiceSession.scanning ? "Scanning…" : "Scan audio devices"
+                                    enabled: !voiceSession.busy && !voiceSession.scanning
+                                    onClicked: voiceSession.scanDevices()
+                                }
+                                Text { text: "Device choices apply on next join"; color: root.mutedTone; font.pixelSize: 11 }
+                            }
+                            ComboBox {
+                                id: microphoneDevice
+                                Layout.fillWidth: true
+                                enabled: !voiceSession.busy && !voiceSession.scanning
+                                model: [{ "name": "Default microphone", "id": "" }].concat(voiceSession.inputs)
+                                textRole: "name"
+                                valueRole: "id"
+                                onActivated: voiceSession.selectInput(currentValue)
+                            }
+                            ComboBox {
+                                id: speakerDevice
+                                Layout.fillWidth: true
+                                enabled: !voiceSession.busy && !voiceSession.scanning
+                                model: [{ "name": "Default speaker", "id": "" }].concat(voiceSession.outputs)
+                                textRole: "name"
+                                valueRole: "id"
+                                onActivated: voiceSession.selectOutput(currentValue)
                             }
                             CheckBox {
                                 id: micPermission
