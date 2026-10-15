@@ -109,6 +109,17 @@ jobs:
           path: build/windows-ci-acceptance.json
           if-no-files-found: error
           retention-days: 7
+      - name: Inventory Windows executable signing state
+        shell: pwsh
+        run: |
+          ./scripts/inventory-windows-signatures.ps1 -BundleDirectory build/gcp-windows-test -OutputFile build/windows-signature-inventory.json
+      - name: Upload signing inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcp-windows-signature-inventory
+          path: build/windows-signature-inventory.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload verified unsigned desktop test bundle
         uses: actions/upload-artifact@v4
         with:
