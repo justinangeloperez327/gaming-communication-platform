@@ -98,6 +98,10 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/write-windows-ci-acceptance.ps1 -BundleDirectory build/gcp-windows-test -OutputFile build/windows-ci-acceptance.json -CommitSha "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Validate CI-only acceptance record
+        shell: pwsh
+        run: |
+          ./scripts/verify-windows-ci-acceptance.ps1 -RecordFile build/windows-ci-acceptance.json -ExpectedCommit "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Upload Windows package acceptance record
         uses: actions/upload-artifact@v4
         with:
