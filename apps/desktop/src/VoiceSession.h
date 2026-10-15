@@ -45,6 +45,7 @@ private:
     QTimer stopWatchdog_;
     QTimer connectWatchdog_;
     bool stopRequested_ = false;
+    bool connectionTimedOut_ = false;
     bool connected_ = false;
     QByteArray outputBuffer_;
     bool microphoneEnabled_ = false;
