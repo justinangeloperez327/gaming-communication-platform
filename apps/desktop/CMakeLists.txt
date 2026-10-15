@@ -34,3 +34,12 @@ if(BUILD_TESTING)
         COMMAND $<TARGET_FILE:gcp-desktop> --self-test
     )
 endif()
+
+if(BUILD_TESTING)
+    qt_add_executable(gcp-desktop-network-tests
+        src/network_tests.cpp src/AccountSession.cpp src/AccountSession.h)
+    target_link_libraries(gcp-desktop-network-tests PRIVATE Qt6::Network)
+    add_test(NAME desktop_network_limits_and_cancellation
+        COMMAND $<TARGET_FILE:gcp-desktop-network-tests>)
+    set_tests_properties(desktop_network_limits_and_cancellation PROPERTIES TIMEOUT 15)
+endif()

@@ -1,3 +1,4 @@
+#include "BoundedReply.h"
 #include "VoiceSession.h"
 #include "AccountSession.h"
 #include "ChannelDirectory.h"
@@ -73,6 +74,13 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
     connect(&devices_, &QProcess::started, this, [this]() {
         deviceScanWatchdog_.start(6000);
         emit devicesChanged();
+    });
+    connect(&devices_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            deviceScanWatchdog_.stop();
+            setStatus(QStringLiteral("Cannot start audio device scan; retry manually"));
+            emit devicesChanged();
+        }
     });
     startupWatchdog_.setSingleShot(true);
     stopWatchdog_.setSingleShot(true);
@@ -192,6 +200,18 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
     connect(&process_, &QProcess::readyReadStandardError, this, [this]() { process_.readAllStandardError(); });
 }
 
+VoiceSession::~VoiceSession() {
+    // Destruction must not leave microphone capture in an orphan child. There is
+    // no event loop left to deliver the asynchronous leave watchdog here.
+    for (auto *child : {&process_, &devices_}) {
+        child->disconnect(this);
+        if (child->state() != QProcess::NotRunning) {
+            child->kill();
+            child->waitForFinished(2000);
+        }
+    }
+}
+
 bool VoiceSession::available() const {
 #ifdef Q_OS_WIN
     return QFileInfo::exists(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-livekit-voice.exe")));
@@ -259,6 +279,7 @@ void VoiceSession::start(bool publishMicrophone) {
     request.setTransferTimeout(10000);
     setStatus(QStringLiteral("Requesting authorized voice room…"));
     pending_ = network_.post(request, QByteArray("{}"));
+    boundReply(pending_, 16384);
     emit runningChanged();
     QNetworkReply *reply = pending_;
     connect(reply, &QNetworkReply::finished, this, [this, reply, publishMicrophone]() {

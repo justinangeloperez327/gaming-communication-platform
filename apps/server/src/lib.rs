@@ -51,8 +51,15 @@ async fn ready(State(state): State<AppState>) -> StatusCode {
     }
 }
 
-/// Public HTTP routes. Authenticated business endpoints have not been
-/// implemented; do not expose users, channels, or messages before auth.
+async fn no_store(mut response: axum::response::Response) -> axum::response::Response {
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response
+}
+
+/// Public health endpoints and database-authorized business routes.
 pub fn router() -> Router {
     router_with_database(None)
 }
@@ -158,6 +165,9 @@ pub fn router_with_livekit(
             "/v1/dms/{conversation_id}/messages/{message_id}",
             axum::routing::patch(direct_messages::edit).delete(direct_messages::delete),
         )
+        // Session credentials and private API responses must not be cached by
+        // browsers or reverse proxies, including authentication error replies.
+        .layer(axum::middleware::map_response(no_store))
         .layer(DefaultBodyLimit::max(8 * 1024))
         .with_state(AppState {
             database,
@@ -188,6 +198,7 @@ mod tests {
             .expect("infallible router");
 
         assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["cache-control"], "no-store");
 
         let body = to_bytes(response.into_body(), 1024)
             .await

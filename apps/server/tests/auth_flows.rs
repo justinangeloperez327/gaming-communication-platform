@@ -45,6 +45,7 @@ async fn send(
         .oneshot(builder.body(payload).expect("valid request"))
         .await
         .expect("router response");
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
     let status = response.status();
     let bytes = to_bytes(response.into_body(), 16 * 1024)
         .await

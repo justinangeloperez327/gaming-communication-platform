@@ -22,6 +22,7 @@ class VoiceSession final : public QObject {
     Q_PROPERTY(bool scanning READ scanning NOTIFY devicesChanged)
 public:
     explicit VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent = nullptr);
+    ~VoiceSession() override;
     bool connected() const { return connected_; }
     bool running() const { return process_.state() != QProcess::NotRunning; }
     bool busy() const { return pending_ != nullptr || running(); }
