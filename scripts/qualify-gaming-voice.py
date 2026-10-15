@@ -16,14 +16,14 @@ def qualify(report, max_fps_loss_pct, max_cpu_pct, max_peak_mib, max_p99_increas
     if report.get("runs_per_condition", 0) < 3:
         raise ValueError("At least three paired runs required")
     voice = report.get("voice_process", {})
-    metrics = {
+    if "median_peak_private_bytes_sampled" not in voice:\n        raise ValueError("Missing voice memory metric")\n    metrics = {
         "average_fps_change_percent": report.get("average_fps_change_percent"),
         "one_percent_low_fps_change_percent": report.get("one_percent_low_fps_change_percent"),
         "p99_frame_time_increase_percent": 100 * (
             report["streaming"]["p99_frame_time_ms"] /
             report["baseline"]["p99_frame_time_ms"] - 1),
         "voice_cpu_percent_total_machine": voice.get("median_cpu_percent_total_machine"),
-        "voice_peak_memory_mib": voice.get("median_peak_private_bytes_sampled", 0) / 1048576,
+        "voice_peak_memory_mib": voice["median_peak_private_bytes_sampled"] / 1048576,
     }
     if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
            for v in metrics.values()):
