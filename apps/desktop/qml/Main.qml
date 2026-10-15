@@ -94,41 +94,42 @@ ApplicationWindow {
                     font.weight: Font.DemiBold
                 }
 
-                Repeater {
-                    model: ["general", "gaming", "announcements"]
-                    delegate: Rectangle {
-                        required property string modelData
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 38
-                        radius: 5
-                        color: root.selectedChannel === modelData ? "#253953" : "transparent"
-
-                        Text {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            verticalAlignment: Text.AlignVCenter
-                            text: "#  " + modelData
-                            color: root.selectedChannel === modelData ? root.textTone : root.mutedTone
-                            font.pixelSize: 13
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: root.selectedChannel = modelData
-                        }
-                    }
+                ComboBox {
+                    id: communityPicker
+                    Layout.fillWidth: true
+                    enabled: accountSession.signedIn && !channelDirectory.busy && !voiceSession.busy
+                    model: channelDirectory.communities
+                    textRole: "name"
+                    valueRole: "id"
+                    onActivated: channelDirectory.chooseCommunity(currentValue)
+                    Component.onCompleted: currentIndex = -1
                 }
-
-                Text {
-                    Layout.topMargin: 12
-                    text: "VOICE CHANNELS"
-                    color: root.mutedTone
-                    font.pixelSize: 11
-                    font.weight: Font.DemiBold
+                Text { text: "VOICE CHANNELS"; color: root.mutedTone; font.pixelSize: 11 }
+                ComboBox {
+                    id: voicePicker
+                    Layout.fillWidth: true
+                    enabled: accountSession.signedIn && channelDirectory.communityId.length > 0 && !channelDirectory.busy && !voiceSession.busy
+                    model: channelDirectory.channels
+                    textRole: "name"
+                    valueRole: "id"
+                    onActivated: channelDirectory.chooseVoiceChannel(currentValue)
+                    Component.onCompleted: currentIndex = -1
                 }
-
                 Text {
                     Layout.fillWidth: true
-                    text: "◖  Team Voice · " + voiceSession.status
+                    text: channelDirectory.status
+                    color: root.mutedTone
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+                Button {
+                    text: "Refresh communities"
+                    enabled: accountSession.signedIn && !channelDirectory.busy && !voiceSession.busy
+                    onClicked: channelDirectory.refresh()
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Voice · " + voiceSession.status
                     color: root.mutedTone
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -294,12 +295,12 @@ ApplicationWindow {
                                 spacing: 8
                                 Button {
                                     text: "Listen only"
-                                    enabled: voiceSession.available && accountSession.signedIn && !voiceSession.busy
+                                    enabled: voiceSession.available && accountSession.signedIn && channelDirectory.channelId.length > 0 && !voiceSession.busy
                                     onClicked: voiceSession.joinListenOnly()
                                 }
                                 Button {
                                     text: "Join with mic"
-                                    enabled: voiceSession.available && accountSession.signedIn && !voiceSession.busy && root.microphoneConsent
+                                    enabled: voiceSession.available && accountSession.signedIn && channelDirectory.channelId.length > 0 && !voiceSession.busy && root.microphoneConsent
                                     onClicked: {
                                         voiceSession.joinWithMicrophone(root.microphoneConsent)
                                         root.microphoneConsent = false
@@ -313,7 +314,7 @@ ApplicationWindow {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Fetches a short-lived voice token from the Rust backend for each join. Community and voice channel IDs still require developer configuration."
+                                text: "Fetches a short-lived voice token from the Rust backend for each join. Choose your community and voice channel above before joining."
                                 color: root.mutedTone
                                 font.pixelSize: 11
                                 wrapMode: Text.Wrap
