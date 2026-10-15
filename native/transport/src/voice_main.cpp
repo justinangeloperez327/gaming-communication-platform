@@ -241,6 +241,7 @@ int join(const Options& o) {
     opts.connect_timeout = std::chrono::seconds(15);
     if (!room.connect(raw_url, raw_token, opts))
         throw std::runtime_error("Could not join LiveKit voice room");
+    std::cout << "GCP_VOICE_EVENT:connected" << std::endl;
 
     // Ensure microphone source and track both remain alive until disconnect.
     std::shared_ptr<livekit::PlatformAudioSource> mic_source;
@@ -304,6 +305,7 @@ int join(const Options& o) {
         throw;
     }
     room.disconnect();
+    std::cout << "GCP_VOICE_EVENT:disconnected" << std::endl;
     mic_track.reset();
     mic_source.reset();
     return 0; // A connected room does not imply the remote person heard it.
