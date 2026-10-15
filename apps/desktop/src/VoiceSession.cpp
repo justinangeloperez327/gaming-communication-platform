@@ -26,6 +26,37 @@ bool uuidValid(const QString &value) {
 }
 
 VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent) : QObject(parent), account_(account), directory_(directory) {
+    connect(&devices_, &QProcess::finished, this, [this](int code, QProcess::ExitStatus exit) {
+        const QByteArray data = devices_.readAllStandardOutput();
+        const QByteArray err = devices_.readAllStandardError();
+        Q_UNUSED(err);
+        QVariantList inputs, outputs;
+        if (code == 0 && exit == QProcess::NormalExit && data.size() <= 65536) {
+            for (const QByteArray &line : data.split('\n')) {
+                const bool input = line.startsWith("input [");
+                if (!input && !line.startsWith("output [")) continue;
+                const int split = line.indexOf(" | id=");
+                const int close = line.indexOf("] ");
+                if (split <= close || close < 0) continue;
+                const QString name = QString::fromUtf8(line.mid(close + 2, split - close - 2)).trimmed();
+                const QString id = QString::fromUtf8(line.mid(split + 6)).trimmed();
+                if (name.isEmpty() || name.size() > 256 || id.isEmpty() || id.size() > 512) continue;
+                QVariantMap item{{QStringLiteral("name"), name}, {QStringLiteral("id"), id}};
+                if (input) inputs.append(item); else outputs.append(item);
+            }
+        }
+        inputs_ = inputs;
+        outputs_ = outputs;
+        bool foundInput = false;
+        for (const auto &item : inputs_)
+            if (item.toMap().value(QStringLiteral("id")).toString() == inputId_) foundInput = true;
+        if (!foundInput) inputId_.clear();
+        bool foundOutput = false;
+        for (const auto &item : outputs_) if (item.toMap().value("id").toString() == outputId_) foundOutput = true;
+        if (!foundOutput) outputId_.clear();
+        emit devicesChanged();
+    });
+    connect(&devices_, &QProcess::started, this, &VoiceSession::devicesChanged);
     startupWatchdog_.setSingleShot(true);
     stopWatchdog_.setSingleShot(true);
     connectWatchdog_.setSingleShot(true);
@@ -141,12 +172,36 @@ bool VoiceSession::available() const {
 #endif
 }
 
+void VoiceSession::scanDevices() {
+    if (busy() || scanning() || !available()) return;
+    devices_.setProgram(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-livekit-voice.exe")));
+    devices_.setArguments({QStringLiteral("devices")});
+    devices_.start();
+    QTimer::singleShot(6000, this, [this]() { if (scanning()) devices_.kill(); });
+}
+void VoiceSession::selectInput(const QString &id) {
+    if (busy()) return;
+    if (id.isEmpty()) { inputId_.clear(); emit devicesChanged(); return; }
+    for (const auto &item : inputs_)
+        if (item.toMap().value(QStringLiteral("id")).toString() == id) {
+            inputId_ = id; emit devicesChanged(); return;
+        }
+}
+void VoiceSession::selectOutput(const QString &id) {
+    if (busy()) return;
+    if (id.isEmpty()) { outputId_.clear(); emit devicesChanged(); return; }
+    for (const auto &item : outputs_)
+        if (item.toMap().value(QStringLiteral("id")).toString() == id) {
+            outputId_ = id; emit devicesChanged(); return;
+        }
+}
+
 void VoiceSession::setStatus(const QString &value) {
     if (status_ != value) { status_ = value; emit statusChanged(); }
 }
 
 void VoiceSession::start(bool publishMicrophone) {
-    if (busy()) return;
+    if (busy() || scanning()) return;
     if (!available()) { setStatus(QStringLiteral("Native voice executable is missing")); return; }
     const QUrl api = account_->apiOrigin();
     const auto access = account_->accessToken();
@@ -230,6 +285,8 @@ void VoiceSession::launch(bool publishMicrophone, const QString &url, const QStr
     process_.setProcessEnvironment(env);
     process_.setProgram(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-livekit-voice.exe")));
     QStringList args{QStringLiteral("join"), QStringLiteral("--seconds"), QString::number(qMin(lifetime, 300))};
+    if (!outputId_.isEmpty()) args << QStringLiteral("--output") << outputId_;
+    if (publishMicrophone && !inputId_.isEmpty()) args << QStringLiteral("--input") << inputId_;
     if (publishMicrophone) {
         args << QStringLiteral("--publish-mic") << QStringLiteral("--confirm-microphone") << QStringLiteral("yes");
     }
