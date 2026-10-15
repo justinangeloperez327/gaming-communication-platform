@@ -1,5 +1,6 @@
 #include "VoiceSession.h"
 #include "AccountSession.h"
+#include "ChannelDirectory.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -24,7 +25,8 @@ bool uuidValid(const QString &value) {
 }
 }
 
-VoiceSession::VoiceSession(AccountSession *account, QObject *parent) : QObject(parent), account_(account) {
+VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent) : QObject(parent), account_(account), directory_(directory) {
+    connect(directory_, &ChannelDirectory::selectionChanged, this, &VoiceSession::leave);
     connect(account_, &AccountSession::signedOut, this, &VoiceSession::leave);
     connect(&process_, &QProcess::started, this, [this]() {
         setStatus(microphoneEnabled_ ? QStringLiteral("Native voice process started · microphone enabled")
@@ -68,10 +70,10 @@ void VoiceSession::start(bool publishMicrophone) {
     const auto env = QProcessEnvironment::systemEnvironment();
     const QUrl api = account_->apiOrigin();
     const auto access = account_->accessToken();
-    const auto community = env.value(QStringLiteral("GCP_COMMUNITY_ID"));
-    const auto channel = env.value(QStringLiteral("GCP_VOICE_CHANNEL_ID"));
+    const auto community = directory_->communityId();
+    const auto channel = directory_->channelId();
     if (!permittedUrl(api) || access.size() != 64 || !uuidValid(community) || !uuidValid(channel)) {
-        setStatus(QStringLiteral("Authenticated backend voice configuration unavailable"));
+        setStatus(QStringLiteral("Sign in and select an authorized voice channel"));
         return;
     }
     for (const QChar c : access) {
@@ -83,7 +85,7 @@ void VoiceSession::start(bool publishMicrophone) {
     QUrl endpoint = api;
     QString base = endpoint.path();
     if (!base.isEmpty() && base != QStringLiteral("/")) {
-        setStatus(QStringLiteral("GCP_API_URL must not contain a path"));
+        setStatus(QStringLiteral("API server origin must not contain a path"));
         return;
     }
     endpoint.setPath(QStringLiteral("/v1/communities/%1/channels/%2/livekit-token").arg(community, channel));
