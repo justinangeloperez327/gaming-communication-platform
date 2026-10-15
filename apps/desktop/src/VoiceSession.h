@@ -3,6 +3,7 @@
 #include <QNetworkReply>
 #include <QObject>
 class AccountSession;
+class ChannelDirectory;
 #include <QProcess>
 #include <QString>
 
@@ -14,7 +15,7 @@ class VoiceSession final : public QObject {
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(bool available READ available NOTIFY availabilityChanged)
 public:
-    explicit VoiceSession(AccountSession *account, QObject *parent = nullptr);
+    explicit VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent = nullptr);
     bool running() const { return process_.state() != QProcess::NotRunning; }
     bool busy() const { return pending_ != nullptr || running(); }
     bool microphoneEnabled() const { return microphoneEnabled_; }
@@ -33,6 +34,7 @@ private:
     void launch(bool publishMicrophone, const QString &url, const QString &token, int lifetime);
     void setStatus(const QString &value);
     AccountSession *account_ = nullptr;
+    ChannelDirectory *directory_ = nullptr;
     QProcess process_;
     QNetworkAccessManager network_;
     QNetworkReply *pending_ = nullptr;
