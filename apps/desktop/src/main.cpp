@@ -1,5 +1,6 @@
 #include "VoiceSession.h"
 #include "AccountSession.h"
+#include "ChannelDirectory.h"
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -22,10 +23,12 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName(QStringLiteral("GCP"));
 
     AccountSession account;
-    VoiceSession voice(&account);
+    ChannelDirectory directory(&account);
+    VoiceSession voice(&account, &directory);
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("voiceSession"), &voice);
     engine.rootContext()->setContextProperty(QStringLiteral("accountSession"), &account);
+    engine.rootContext()->setContextProperty(QStringLiteral("channelDirectory"), &directory);
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,
