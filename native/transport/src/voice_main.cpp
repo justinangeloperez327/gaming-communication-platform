@@ -280,8 +280,32 @@ int join(const Options& o) {
         const auto started = Clock::now();
         const auto before = gcp::probe::take_snapshot();
         bool muted = false;
+        bool device_lost = false;
+        auto next_device_check = Clock::now() + std::chrono::seconds(5);
         while (running.load() && !events.network_lost.load() &&
             Clock::now() - started < std::chrono::seconds(o.seconds)) {
+            // Only poll explicitly selected devices, at most once per five seconds.
+            // A missing selected device fails closed rather than silently swapping
+            // to a different microphone/output during an active voice call.
+            if ((!o.input_id.empty() || !o.output_id.empty()) &&
+                Clock::now() >= next_device_check) {
+                next_device_check = Clock::now() + std::chrono::seconds(5);
+                const auto present = [](const auto& devices, const std::string& id) {
+                    return id.empty() || std::any_of(devices.begin(), devices.end(),
+                        [&](const auto& d) { return d.id == id; });
+                };
+                try {
+                    if ((!o.input_id.empty() && !present(audio.recordingDevices(), o.input_id)) ||
+                        (!o.output_id.empty() && !present(audio.playoutDevices(), o.output_id))) {
+                        device_lost = true;
+                        std::cout << "GCP_VOICE_EVENT:device_lost" << std::endl;
+                        break;
+                    }
+                } catch (...) {
+                    // An enumeration failure is not proof the device disappeared.
+                    // Leave handling and SDK transport lifecycle remain functional.
+                }
+            }
             if (mic_track && !muted && o.mute_after > 0 &&
                 Clock::now() - started >= std::chrono::seconds(o.mute_after)) {
                 mic_track->mute();
@@ -307,6 +331,7 @@ int join(const Options& o) {
                   << ",\"microphone_muted_at_end\":true"
                   << ",\"remote_audio_subscriptions\":" << callbacks
                   << ",\"remote_audio_unsubscriptions\":" << departures
+                  << ",\"device_lost\":" << (device_lost ? "true" : "false")
                   << ",\"remote_audio_heard_verified\":false"
                   << ",\"physical_device_verified\":false"
                   << ",\"session_seconds\":" << std::fixed
