@@ -345,7 +345,7 @@ int join(const Options& o) {
                   << ",\"private_bytes_end\":" << after.private_bytes
                   << ",\"peak_private_bytes_sampled\":" << peak_private_bytes
                   << ",\"memory_sample_count\":" << sample_count
-                  << ",\"memory_sample_interval_seconds\":2
+                  << ",\"memory_sample_interval_seconds\":2"
                   << ",\"remote_audio_heard_verified\":false"
                   << ",\"physical_device_verified\":false"
                   << ",\"session_seconds\":" << std::fixed
