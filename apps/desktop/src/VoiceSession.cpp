@@ -54,6 +54,8 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         const bool intentional = stopRequested_;
         stopRequested_ = false;
         microphoneEnabled_ = false;
+        connected_ = false;
+        outputBuffer_.clear();
         setStatus(intentional ? QStringLiteral("Disconnected") :
                   exitStatus == QProcess::NormalExit && exitCode == 0
                       ? QStringLiteral("Disconnected")
@@ -65,12 +67,36 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
             startupWatchdog_.stop();
             process_.setProcessEnvironment(QProcessEnvironment());
             microphoneEnabled_ = false;
+            connected_ = false;
+            outputBuffer_.clear();
             setStatus(QStringLiteral("Cannot start native voice executable"));
             emit runningChanged();
         }
     });
     // Never log child output or backend tokens.
-    connect(&process_, &QProcess::readyReadStandardOutput, this, [this]() { process_.readAllStandardOutput(); });
+    connect(&process_, &QProcess::readyReadStandardOutput, this, [this]() {
+        const QByteArray chunk = process_.readAllStandardOutput();
+        // Never print stdout: it may include diagnostic information. Parse only
+        // complete fixed-format status lines; bound buffered memory.
+        if (chunk.size() > 8192 || outputBuffer_.size() + chunk.size() > 8192) {
+            outputBuffer_.clear();
+            return;
+        }
+        outputBuffer_.append(chunk);
+        while (true) {
+            const auto newline = outputBuffer_.indexOf('\n');
+            if (newline < 0) break;
+            const QByteArray line = outputBuffer_.left(newline).trimmed();
+            outputBuffer_.remove(0, newline + 1);
+            if (line == "GCP_VOICE_EVENT:connected" && running() && !stopRequested_) {
+                connected_ = true;
+                setStatus(QStringLiteral("Connected to LiveKit room (audio not verified)"));
+            } else if (line == "GCP_VOICE_EVENT:disconnected") {
+                connected_ = false;
+                setStatus(QStringLiteral("Disconnected from LiveKit room"));
+            }
+        }
+    });
     connect(&process_, &QProcess::readyReadStandardError, this, [this]() { process_.readAllStandardError(); });
 }
 
@@ -164,6 +190,8 @@ void VoiceSession::launch(bool publishMicrophone, const QString &url, const QStr
     env.remove(QStringLiteral("GCP_ACCESS_TOKEN"));
     env.remove(QStringLiteral("GCP_REFRESH_TOKEN"));
     stopRequested_ = false;
+    connected_ = false;
+    outputBuffer_.clear();
     microphoneEnabled_ = publishMicrophone;
     process_.setProcessEnvironment(env);
     process_.setProgram(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-livekit-voice.exe")));
@@ -192,6 +220,7 @@ void VoiceSession::leave() {
     }
     if (!running()) { setStatus(QStringLiteral("Disconnected")); return; }
     stopRequested_ = true;
+    connected_ = false;
     startupWatchdog_.stop();
     setStatus(QStringLiteral("Disconnecting…"));
     process_.terminate();
