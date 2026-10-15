@@ -18,6 +18,7 @@ qt_add_qml_module(gcp-desktop
 target_link_libraries(gcp-desktop PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
+    Qt6::Network
 )
 
 set_target_properties(gcp-desktop PROPERTIES
