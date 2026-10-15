@@ -25,6 +25,28 @@ class Tests(unittest.TestCase):
             result = benchmark.report([base], [gaming], [voice], "frame_ms", 0)
             self.assertAlmostEqual(result["average_fps_change_percent"], -20)
             self.assertEqual(result["voice_process"]["median_peak_private_bytes_sampled"], 104857600)
+    def test_rejects_duplicate_captures(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            csv = root / "same.csv"
+            csv.write_text("frame_ms\\n" + "16\\n" * 200)
+            telemetry = root / "voice.txt"
+            telemetry.write_text('{"probe":"livekit_voice_session","cpu_percent_total_machine":1,"peak_private_bytes_sampled":1024,"session_seconds":60}\\n')
+            with self.assertRaises(ValueError):
+                benchmark.report([csv], [csv], [telemetry], "frame_ms", 0)
+
+    def test_rejects_zero_duration(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            a = root / "baseline.csv"
+            b = root / "gcp.csv"
+            v = root / "voice.txt"
+            a.write_text("frame_ms\\n" + "16\\n" * 200)
+            b.write_text("frame_ms\\n" + "17\\n" * 200)
+            v.write_text('{"probe":"livekit_voice_session","cpu_percent_total_machine":1,"peak_private_bytes_sampled":1024,"session_seconds":0}\\n')
+            with self.assertRaises(ValueError):
+                benchmark.report([a], [b], [v], "frame_ms", 0)
+
     def test_rejects_missing_telemetry(self):
         with tempfile.TemporaryDirectory() as folder:
             p=Path(folder)/"empty.txt"
