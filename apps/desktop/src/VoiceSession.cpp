@@ -47,12 +47,10 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         }
         inputs_ = inputs;
         outputs_ = outputs;
-        if (!inputs_.contains(QVariantMap{{QStringLiteral("name"), QString()}, {QStringLiteral("id"), inputId_}})) {
-            // Retain a preference only if the device identifier still exists.
-            bool found = false;
-            for (const auto &item : inputs_) if (item.toMap().value("id").toString() == inputId_) found = true;
-            if (!found) inputId_.clear();
-        }
+        bool foundInput = false;
+        for (const auto &item : inputs_)
+            if (item.toMap().value(QStringLiteral("id")).toString() == inputId_) foundInput = true;
+        if (!foundInput) inputId_.clear();
         bool foundOutput = false;
         for (const auto &item : outputs_) if (item.toMap().value("id").toString() == outputId_) foundOutput = true;
         if (!foundOutput) outputId_.clear();
