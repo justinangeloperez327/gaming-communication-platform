@@ -65,6 +65,18 @@ Local Linux environment:
 
 The initial audit revision `f5381f99501f8073f1bb9e88ffa1af90ac55dfa7` passed [CI run 38724614640](https://github.com/justinangeloperez327/gaming-communication-platform/actions/runs/38724614640), including Rust formatting, Clippy with warnings denied, disposable PostgreSQL tests, Windows build/CTest, staged and extracted ZIP QML/SDK startup. Subsequent fixes require their own final revision checks; see the evidence update below and PR checks. Hosted Windows has development tooling installed, so this does not substitute for a clean-PC run.
 
+## Final CI evidence
+
+Code revision `6299c1f793e3baa8c8752e9693b9cbd265518d82` passed all workflows:
+
+| Workflow | Result | Evidence |
+| --- | --- | --- |
+| Rust API + Windows Qt/media/LiveKit + private ZIP | Passed | [Run 38725727236](https://github.com/justinangeloperez327/gaming-communication-platform/actions/runs/38725727236) |
+| Windows package integrity fixtures | Passed | [Run 38725727239](https://github.com/justinangeloperez327/gaming-communication-platform/actions/runs/38725727239) |
+| Benchmark tooling tests | Passed | [Run 38725727235](https://github.com/justinangeloperez327/gaming-communication-platform/actions/runs/38725727235) |
+
+This covers Rust format/Clippy, 28 Rust tests with disposable PostgreSQL, 29 Python tests, Linux native ASan/UBSan self-tests, 15 Windows CTests, regular package rejection fixtures, signature inventory consistency, and staged/extracted ZIP Qt/QML and LiveKit SDK initialization. The only follow-up change to this tested tree records these results in this report. It does not imply a live SFU connection or hardware acceptance.
+
 ## Gates before installer work
 
 1. Test the exact extracted ZIP on a clean Windows x64 machine with no Qt/Visual Studio development environment. Confirm platform/QML plugins, runtime dependencies, login and both native voice modes.
