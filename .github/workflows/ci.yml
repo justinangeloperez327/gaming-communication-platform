@@ -147,7 +147,10 @@ jobs:
           }
           & (Join-Path $unpacked 'gcp-livekit-voice.exe') --self-test
           if ($LASTEXITCODE -ne 0) { throw "Extracted ZIP LiveKit self-test failed: $LASTEXITCODE" }
-          (Get-FileHash -LiteralPath build/gcp-private-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath build/gcp-private-windows-x64.sha256 -Encoding ascii
+          $zipSha = (Get-FileHash -LiteralPath build/gcp-private-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $zipSha | Set-Content -LiteralPath build/gcp-private-windows-x64.sha256 -Encoding ascii
+          $savedSha = (Get-Content -LiteralPath build/gcp-private-windows-x64.sha256 -Raw).Trim()
+          if ($savedSha -cne $zipSha) { throw "Portable ZIP checksum file does not match archive" }
       - name: Upload private portable ZIP and checksum
         uses: actions/upload-artifact@v4
         with:
