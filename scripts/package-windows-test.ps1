@@ -30,5 +30,5 @@ $manifest = foreach ($item in Get-ChildItem -LiteralPath $output -Recurse -File)
         bytes = $item.Length
     }
 }
-$manifest | Sort-Object path | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'SHA256-MANIFEST.json') -Encoding utf8
+@($manifest) | Sort-Object path | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'SHA256-MANIFEST.json') -Encoding utf8
 Write-Host "Unsigned test bundle prepared in $output. NOT production qualified."
