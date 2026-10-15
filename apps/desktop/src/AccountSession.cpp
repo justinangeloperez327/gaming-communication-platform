@@ -99,7 +99,7 @@ void AccountSession::refresh() {
 }
 void AccountSession::signOut() {
     // Clear local access immediately; revoke refresh token remotely when possible.
-    const QString revoke = refresh_;
+    const QString bearer = access_;
     const QUrl origin = origin_;
     ++generation_;
     if (pending_) { auto *reply = pending_; pending_ = nullptr; reply->abort(); reply->deleteLater(); }
@@ -107,13 +107,13 @@ void AccountSession::signOut() {
     status_ = QStringLiteral("Signed out");
     emit signedOut();
     emit changed();
-    if (revoke.isEmpty() || !approved(origin)) return;
+    if (bearer.isEmpty() || !approved(origin)) return;
     QUrl url = origin;
     url.setPath(QStringLiteral("/v1/auth/logout"));
     QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    request.setRawHeader("Authorization", QByteArray("Bearer ") + bearer.toUtf8());
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setTransferTimeout(5000);
-    // Backend logout requires an active bearer access token, so only local logout
-    // is guaranteed here. Group 31 will harden server revocation orchestration.
+    auto *reply = network_.post(request, QByteArray());
+    connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
 }
