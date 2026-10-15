@@ -1,4 +1,5 @@
 #include "VoiceSession.h"
+#include "AccountSession.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -23,7 +24,8 @@ bool uuidValid(const QString &value) {
 }
 }
 
-VoiceSession::VoiceSession(QObject *parent) : QObject(parent) {
+VoiceSession::VoiceSession(AccountSession *account, QObject *parent) : QObject(parent), account_(account) {
+    connect(account_, &AccountSession::signedOut, this, &VoiceSession::leave);
     connect(&process_, &QProcess::started, this, [this]() {
         setStatus(microphoneEnabled_ ? QStringLiteral("Native voice process started · microphone enabled")
                                     : QStringLiteral("Native voice process started · listen only"));
@@ -64,8 +66,8 @@ void VoiceSession::start(bool publishMicrophone) {
     if (busy()) return;
     if (!available()) { setStatus(QStringLiteral("Native voice executable is missing")); return; }
     const auto env = QProcessEnvironment::systemEnvironment();
-    const QUrl api(env.value(QStringLiteral("GCP_API_URL")));
-    const auto access = env.value(QStringLiteral("GCP_ACCESS_TOKEN"));
+    const QUrl api = account_->apiOrigin();
+    const auto access = account_->accessToken();
     const auto community = env.value(QStringLiteral("GCP_COMMUNITY_ID"));
     const auto channel = env.value(QStringLiteral("GCP_VOICE_CHANNEL_ID"));
     if (!permittedUrl(api) || access.size() != 64 || !uuidValid(community) || !uuidValid(channel)) {
@@ -137,6 +139,7 @@ void VoiceSession::launch(bool publishMicrophone, const QString &url, const QStr
     env.insert(QStringLiteral("LIVEKIT_URL"), url);
     env.insert(QStringLiteral("LIVEKIT_TOKEN"), token);
     env.remove(QStringLiteral("GCP_ACCESS_TOKEN"));
+    env.remove(QStringLiteral("GCP_REFRESH_TOKEN"));
     microphoneEnabled_ = publishMicrophone;
     process_.setProcessEnvironment(env);
     process_.setProgram(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-livekit-voice.exe")));
