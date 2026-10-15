@@ -113,6 +113,10 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/inventory-windows-signatures.ps1 -BundleDirectory build/gcp-windows-test -OutputFile build/windows-signature-inventory.json
+      - name: Verify executable inventory consistency
+        shell: pwsh
+        run: |
+          ./scripts/verify-windows-signature-inventory.ps1 -BundleDirectory build/gcp-windows-test -InventoryFile build/windows-signature-inventory.json
       - name: Upload signing inventory
         uses: actions/upload-artifact@v4
         with:
