@@ -337,7 +337,7 @@ int join(const Options& o) {
             std::chrono::duration<double>(Clock::now() - started).count();
         const auto callbacks = events.subscriptions.load();
         const auto departures = events.unsubscriptions.load();
-        gcp::probe::print_metrics("livekit_voice_session", elapsed,
+        gcp::probe::print_metrics("livekit_voice_process_summary", elapsed,
             callbacks, departures, before, after);
         std::cout << "{\"probe\":\"livekit_voice_session\""
                   << ",\"microphone_opted_in\":"

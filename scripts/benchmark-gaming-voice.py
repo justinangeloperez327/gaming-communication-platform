@@ -34,6 +34,11 @@ def load_voice(path):
         number = record.get(key)
         if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number) or number < 0:
             raise ValueError(f"{path}: invalid {key}")
+    samples = record.get("memory_sample_count")
+    if isinstance(samples, bool) or not isinstance(samples, int) or samples < 1:
+        raise ValueError(f"{path}: missing periodic memory samples; recapture with current native voice build")
+    if record["cpu_percent_total_machine"] > 100 or record["peak_private_bytes_sampled"] <= 0:
+        raise ValueError(f"{path}: impossible process measurements")
     return {key: record[key] for key in keys}
 
 def report(baseline, voice, telemetry, column, warmup):
