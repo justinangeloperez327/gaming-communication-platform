@@ -280,6 +280,9 @@ int join(const Options& o) {
         const auto started = Clock::now();
         const auto before = gcp::probe::take_snapshot();
         bool muted = false;
+        std::uint64_t peak_private_bytes = before.private_bytes;
+        std::uint64_t sample_count = 0;
+        auto next_perf_sample = Clock::now() + std::chrono::seconds(2);
         bool device_lost = false;
         auto next_device_check = Clock::now() + std::chrono::seconds(5);
         while (running.load() && !events.network_lost.load() &&
@@ -319,6 +322,11 @@ int join(const Options& o) {
             mic_track->mute();
         }
         const auto after = gcp::probe::take_snapshot();
+        peak_private_bytes = std::max(peak_private_bytes, after.private_bytes);
+        const auto machine_cpu = gcp::probe::total_machine_cpu_percent(
+            before, after,
+            std::chrono::duration<double>(Clock::now() - started).count(),
+            gcp::probe::logical_processor_count());
         const auto elapsed =
             std::chrono::duration<double>(Clock::now() - started).count();
         const auto callbacks = events.subscriptions.load();
@@ -332,6 +340,12 @@ int join(const Options& o) {
                   << ",\"remote_audio_subscriptions\":" << callbacks
                   << ",\"remote_audio_unsubscriptions\":" << departures
                   << ",\"device_lost\":" << (device_lost ? "true" : "false")
+                  << ",\"cpu_percent_total_machine\":" << machine_cpu
+                  << ",\"private_bytes_start\":" << before.private_bytes
+                  << ",\"private_bytes_end\":" << after.private_bytes
+                  << ",\"peak_private_bytes_sampled\":" << peak_private_bytes
+                  << ",\"memory_sample_count\":" << sample_count
+                  << ",\"memory_sample_interval_seconds\":2
                   << ",\"remote_audio_heard_verified\":false"
                   << ",\"physical_device_verified\":false"
                   << ",\"session_seconds\":" << std::fixed
