@@ -1,5 +1,7 @@
 # Private Windows stabilization audit — 15 October 2026
 
+Follow-up: server-side voice eviction is now implemented in [PR #65](https://github.com/justinangeloperez327/gaming-communication-platform/pull/65). See the [operating guide](server-voice-eviction.md) and that PR for current CI evidence; the dated evidence below describes the original audit revision.
+
 ## Decision
 
 GCP has real API, Qt account/channel and native media integrations, but remains an experimental private test application. The portable ZIP pipeline exists. An installer should wait for the functional and hardware acceptance gates below; an installer would not resolve them. No service deployment, public release or installer was performed during this audit.
@@ -45,12 +47,12 @@ No codec quality defaults, resolution/FPS/bitrate budgets, dependencies or runti
 ## Security and operational limits
 
 - Microphone defaults off; publication requires explicit consent. Consent is reset after a join request. Voice channel JWTs permit microphone publication only, with no screen/camera/data grant. Screen diagnostics require independent explicit consent and operator-provided test credentials.
-- Joining checks the current GCP session and community membership. **GCP logout/removal does not invoke LiveKit RemoveParticipant**. Existing SFU sessions may survive revocation; a five-minute JWT expiry limits join/reconnect authorization, not active SFU participation. SDK reconnect can occur within the diagnostic's bounded call.
+- Joining checks the current GCP session and community membership. Server reconciliation now invokes LiveKit RemoveParticipant when session or channel access is lost. Removal is periodic and retries after failures; self-hosted cached-token replay and control-plane outages remain limitations. See [voice eviction](server-voice-eviction.md).
 - Every desktop call is capped at 300 seconds. Leave/sign-out stop local voice; remote logout is best effort. No in-call mute/push-to-talk or finished long-call experience exists.
 - Selected devices are polled; OS-default-device swaps and Windows privacy enforcement need physical tests. Idle scans start no microphone publication but still initialize/enumerate the platform audio stack.
 - Server registration is open to reachable clients; there is no invite-only account policy, complete login/IP throttling, email ownership verification, password recovery or MFA. The password-worker semaphore bounds Argon2 concurrency; it is not abuse protection. Use a private network/access boundary and HTTPS/WSS for the intended friend group.
 - Credentials are not command-line arguments or committed configuration. Memory clearing is best effort; Qt implicit copies, SDK allocations and inherited child environment are not secure-zeroization guarantees. Avoid shared administrative access and do not publish diagnostic logs containing secrets.
-- LiveKit participant identity is the user UUID; simultaneous devices can supersede one another. An explicit multi-device policy is absent.
+- LiveKit participant identity is now scoped to the login session. Separate logins do not supersede each other; multiple connections using the same login identity still can.
 - API traffic relies on an HTTPS reverse proxy outside loopback. Message content is plaintext to the API/database and media is not application E2EE.
 - The downloaded SDK archive is pinned/checksummed. Manually supplied SDK paths require operator provenance checks. A local checksum manifest is consistency evidence, not a signature or trust anchor. Review Qt/LiveKit/third-party notices before binary sharing. Publisher signing remains the owner's choice for friends-only ZIP testing.
 
@@ -82,7 +84,7 @@ This covers Rust format/Clippy, 28 Rust tests with disposable PostgreSQL, 29 Pyt
 1. Test the exact extracted ZIP on a clean Windows x64 machine with no Qt/Visual Studio development environment. Confirm platform/QML plugins, runtime dependencies, login and both native voice modes.
 2. Complete two-user private-SFU tests: listen-only really does not transmit; mic capture stops on Leave/logout/process exit; both users hear audio; device loss, offline/online and reconnect behavior are acceptable.
 3. Decide whether five-minute diagnostic calls meet the intended scope. For regular gaming sessions, implement/test long-call behavior, in-call mute and push-to-talk before treating this as a stable communication app.
-4. Resolve active media authorization: implement/test server-side eviction on membership/session revocation, or explicitly accept the private test limitation. Do not treat JWT expiry as eviction.
+4. Validate the implemented server-side eviction on a real LiveKit server during logout, membership removal, restart and network loss. Confirm the acceptable self-hosted cached-token rejoin window. Do not treat JWT expiry as eviction.
 5. For screen sharing, finish the intended desktop consent/picker/viewer flow and independently test the GPU bridge on real hardware. Validate SDR dimensions, stop/cancel, remote decoding, text legibility, cadence and driver/device loss. Current voice-only backend tokens must not be broadened without explicit screen authorization design.
 6. Capture matched gaming baselines and GCP voice/share runs (at least three each), including CPU/private memory, GPU Video Encode, FPS/1% lows, drivers, OS and headset/network details. Set budgets from evidence. Current voice metrics cover the child process, not complete desktop+server+game resource cost. Older broken/unsampled voice logs must be recaptured.
 7. Review third-party redistribution/license notices, version/architecture metadata and checksum delivery. Decide publisher signing separately. Plan installer upgrade/uninstall/rollback only after the portable application passes acceptance.

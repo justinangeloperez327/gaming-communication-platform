@@ -7,6 +7,7 @@ description = "HTTP API foundation for Gaming Communication Platform"
 publish = false
 
 [dependencies]
+reqwest = { version = "=0.12.24", default-features = false, features = ["json", "rustls-tls"] }
 argon2 = "=0.5.3"
 rand = "=0.8.5"
 sha2 = "=0.10.9"
