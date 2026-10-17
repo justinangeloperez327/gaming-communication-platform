@@ -2,8 +2,8 @@
 //!
 //! Join grants expire after five minutes. This limits future join/reconnect
 //! attempts, NOT an existing participant already connected to the LiveKit SFU.
-//! Revoking active media sessions requires a separate LiveKit control-plane
-//! integration (not implemented in Group 26).
+//! Server-side reconciliation removes participants whose backing session or
+//! channel access is no longer valid. Self-hosted JWT replay remains possible.
 
 use axum::{
     Json,
@@ -33,8 +33,11 @@ type HmacSha256 = Hmac<Sha256>;
 #[derive(Clone)]
 pub struct LiveKitConfig {
     server_url: String,
-    api_key: String,
-    api_secret: String,
+    pub(crate) api_key: String,
+    pub(crate) api_secret: String,
+    pub(crate) control_url: reqwest::Url,
+    pub(crate) http: reqwest::Client,
+    pub(crate) eviction_guard: std::sync::Arc<crate::livekit_eviction::EvictionHealth>,
 }
 
 impl LiveKitConfig {
@@ -55,12 +58,16 @@ impl LiveKitConfig {
     }
 
     pub fn new(server_url: String, api_key: String, api_secret: String) -> Result<Self, io::Error> {
-        // Only permit cleartext WebSockets on loopback for local testing.
-        let secure = server_url.starts_with("wss://");
-        let local =
-            server_url.starts_with("ws://127.0.0.1:") || server_url.starts_with("ws://localhost:");
+        // Parse the authority, not just a prefix: cleartext is loopback-only.
+        let url = reqwest::Url::parse(&server_url).map_err(|_| io::Error::new(
+            io::ErrorKind::InvalidInput, "Invalid LiveKit URL configuration"))?;
+        let secure = url.scheme() == "wss" && url.host_str().is_some();
+        let local = url.scheme() == "ws" && matches!(url.host_str(), Some("127.0.0.1" | "localhost"));
         if (!secure && !local)
             || server_url.len() > 2048
+            || !url.username().is_empty() || url.password().is_some()
+            || url.query().is_some() || url.fragment().is_some()
+            || (url.path() != "/" && !url.path().is_empty())
             || server_url.bytes().any(|b| b.is_ascii_whitespace())
             || server_url.contains(['?', '#', '@'])
             || api_key.len() < 3
@@ -74,20 +81,32 @@ impl LiveKitConfig {
                 "Invalid LiveKit URL or credential configuration",
             ));
         }
+        let mut control_url = url;
+        control_url.set_scheme(if secure { "https" } else { "http" })
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Invalid LiveKit scheme"))?;
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
+            .connect_timeout(std::time::Duration::from_secs(2))
+            .timeout(std::time::Duration::from_secs(3))
+            .pool_max_idle_per_host(2)
+            .build().map_err(|_| io::Error::other("Cannot initialize LiveKit HTTP client"))?;
         Ok(Self {
             server_url,
             api_key,
             api_secret,
+            control_url,
+            http,
+            eviction_guard: std::sync::Arc::new(crate::livekit_eviction::EvictionHealth::new()),
         })
     }
 
-    fn sign(&self, user: Uuid, channel: Uuid, now: u64) -> Result<String, AuthError> {
+    fn sign(&self, session: Uuid, channel: Uuid, now: u64) -> Result<String, AuthError> {
         let mut nonce = [0u8; 16];
         OsRng.fill_bytes(&mut nonce);
-        let header = serde_json::json!({"alg": "HS256", "typ": "JWT"});
         let claims = serde_json::json!({
             "iss": self.api_key,
-            "sub": user.to_string(),
+            "sub": participant_identity(session),
             "iat": now,
             "nbf": now.saturating_sub(CLOCK_SKEW_SECONDS),
             "exp": now.checked_add(JOIN_TTL_SECONDS).ok_or(AuthError::Unavailable)?,
@@ -102,6 +121,11 @@ impl LiveKitConfig {
                 "canUpdateOwnMetadata": false,
             }
         });
+        self.sign_claims(claims)
+    }
+
+    pub(crate) fn sign_claims(&self, claims: serde_json::Value) -> Result<String, AuthError> {
+        let header = serde_json::json!({"alg": "HS256", "typ": "JWT"});
         let header = serde_json::to_vec(&header).map_err(|_| AuthError::Unavailable)?;
         let claims = serde_json::to_vec(&claims).map_err(|_| AuthError::Unavailable)?;
         let unsigned = format!(
@@ -131,7 +155,11 @@ fn hex(input: &[u8]) -> String {
     result
 }
 
-fn room_name(channel: Uuid) -> String {
+pub(crate) fn participant_identity(session: Uuid) -> String {
+    format!("gcp-session-{session}")
+}
+
+pub(crate) fn room_name(channel: Uuid) -> String {
     format!("gcp-voice-{channel}")
 }
 
@@ -156,7 +184,7 @@ pub(crate) async fn issue(
     AuthError,
 > {
     let pool = auth::database(&state)?;
-    let (user, _) = auth::authenticated_user(pool, &headers).await?;
+    let (user, session, _) = auth::authenticated_session(pool, &headers).await?;
     let community = Uuid::parse_str(&community_id).map_err(|_| AuthError::InvalidRequest)?;
     let channel = Uuid::parse_str(&channel_id).map_err(|_| AuthError::InvalidRequest)?;
 
@@ -181,11 +209,12 @@ pub(crate) async fn issue(
     }
 
     let config = state.livekit.as_ref().ok_or(AuthError::Unavailable)?;
+    if !config.eviction_healthy() { return Err(AuthError::Unavailable); }
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| AuthError::Unavailable)?
         .as_secs();
-    let token = config.sign(user, channel, now)?;
+    let token = config.sign(session, channel, now)?;
     Ok((
         StatusCode::CREATED,
         [
@@ -253,7 +282,7 @@ mod tests {
             serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).expect("base64 claims"))
                 .expect("claims JSON");
         assert_eq!(body["iss"], "test-livekit-key");
-        assert_eq!(body["sub"], user.to_string());
+        assert_eq!(body["sub"], participant_identity(user));
         assert_eq!(body["video"]["room"], room_name(channel));
         assert_eq!(body["video"]["roomJoin"], true);
         assert_eq!(body["video"]["canPublish"], true);
