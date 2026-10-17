@@ -383,6 +383,13 @@ int join(const Options& o) {
             if (o.desktop_control) {
                 poll_control(control);
                 if (control.stopped(Clock::now())) break;
+                if (control.takeMuteRequest() && mic_track) {
+                    // Acknowledge explicit mute/mode requests even if already
+                    // muted, and only after the SDK mute operation returns.
+                    mic_track->mute();
+                    muted = true;
+                    std::cout << "GCP_VOICE_EVENT:muted" << std::endl;
+                }
                 const auto current_interruption = events.interruptions.load();
                 if (interruption != current_interruption) {
                     control.resetPushToTalk();

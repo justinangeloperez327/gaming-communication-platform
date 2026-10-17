@@ -485,7 +485,7 @@ void VoiceSession::setMuted(bool muted) {
         return;
     }
     muted_ = muted;
-    if (muted && transmitting_) muteWatchdog_.start(1000);
+    if (muted) muteWatchdog_.start(1000);
     emit controlsChanged();
 }
 
@@ -497,7 +497,7 @@ void VoiceSession::setPushToTalk(bool enabled) {
             stopWithReason(QStringLiteral("Voice mode control failed; stopping voice"));
             return;
         }
-        if (transmitting_) muteWatchdog_.start(1000);
+        if (microphoneEnabled_) muteWatchdog_.start(1000);
     }
     pushToTalk_ = enabled;
     muted_ = true; // Explicit Enable mic is required after any mode switch.

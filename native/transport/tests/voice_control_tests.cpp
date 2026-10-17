@@ -20,8 +20,13 @@ int main() {
         voice.receive("te\nping\n", start);
         check(voice.transmit(start, false, true));
         voice.receive("mute\n", start);
+        check(voice.takeMuteRequest());
+        check(!voice.takeMuteRequest());
+        voice.receive("mute\n", start); // repeated mute still needs an SDK acknowledgment
+        check(voice.takeMuteRequest());
         check(!voice.transmit(start, true, true));
         voice.receive("mode_ptt\nunmute\n", start);
+        check(voice.takeMuteRequest());
         check(!voice.transmit(start, true, true)); // held at arming
         check(!voice.transmit(start, false, true));
         check(voice.transmit(start, true, true));

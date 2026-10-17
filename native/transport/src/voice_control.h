@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace gcp::transport {
 
@@ -35,6 +36,9 @@ public:
         }
     }
 
+    [[nodiscard]] bool takeMuteRequest() noexcept {
+        return std::exchange(mute_requested_, false);
+    }
     void resetPushToTalk() noexcept { key_released_ = false; }
     void stop() noexcept { stopped_ = true; muted_ = true; key_released_ = false; }
     [[nodiscard]] bool stopped(TimePoint now) const noexcept {
@@ -57,11 +61,12 @@ private:
     void command(std::string_view value, TimePoint now) {
         if (!managed_) { stop(); return; }
         if (value == "ping") heartbeat_ = now;
-        else if (value == "mute") { muted_ = true; key_released_ = false; }
+        else if (value == "mute") { muted_ = true; key_released_ = false; mute_requested_ = true; }
         else if (value == "unmute") muted_ = false;
         else if (value == "mode_ptt" || value == "mode_open") {
             push_to_talk_ = value == "mode_ptt";
             muted_ = true;
+            mute_requested_ = true;
             key_released_ = false;
         } else if (value == "stop") stop();
         else stop(); // malformed commands never enable capture
@@ -73,6 +78,7 @@ private:
     bool muted_;
     bool key_released_{false};
     bool stopped_{false};
+    bool mute_requested_{false};
     TimePoint heartbeat_;
     std::string pending_;
 };
