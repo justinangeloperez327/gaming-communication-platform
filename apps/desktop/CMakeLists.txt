@@ -43,3 +43,17 @@ if(BUILD_TESTING)
         COMMAND $<TARGET_FILE:gcp-desktop-network-tests>)
     set_tests_properties(desktop_network_limits_and_cancellation PROPERTIES TIMEOUT 15)
 endif()
+
+if(BUILD_TESTING)
+    add_executable(gcp-voice-process-fixture src/voice_process_fixture.cpp)
+    qt_add_executable(gcp-voice-session-tests
+        src/voice_session_tests.cpp
+        src/VoiceSession.cpp src/VoiceSession.h
+        src/AccountSession.cpp src/AccountSession.h
+        src/ChannelDirectory.cpp src/ChannelDirectory.h)
+    target_link_libraries(gcp-voice-session-tests PRIVATE Qt6::Network)
+    add_dependencies(gcp-voice-session-tests gcp-voice-process-fixture)
+    add_test(NAME desktop_voice_control_and_reauthorization
+        COMMAND $<TARGET_FILE:gcp-voice-session-tests>)
+    set_tests_properties(desktop_voice_control_and_reauthorization PROPERTIES TIMEOUT 30)
+endif()

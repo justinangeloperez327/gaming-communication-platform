@@ -6,4 +6,6 @@ The API checks the current bearer session, community membership, matching channe
 
 The desktop accepts HTTPS origins (loopback HTTP for development), refuses redirects and bounds reply buffers while receiving data. It starts the native executable with room credentials in the child environment and checks sanitized SDK room events. Do not put secrets in arguments, logs or screenshots.
 
+Long calls now recheck this endpoint about once per minute and stop on denial, timeout or invalid response. Recheck tokens are discarded; they do not renew the SDK credential or provide server-side SFU eviction. See [long-session voice](long-session-voice.md).
+
 See [desktop voice](desktop-voice.md) for setup and limits, [voice tokens](livekit-tokens.md) for active-SFU revocation limitations, and the [audit](stabilization-audit.md) for verification evidence.
