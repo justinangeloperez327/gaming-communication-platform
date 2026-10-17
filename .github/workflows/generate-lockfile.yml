@@ -8,11 +8,14 @@ permissions:
   contents: write
 jobs:
   lockfile:
+    # Never automatically mutate main when this workflow is merged.
+    if: github.event_name == 'workflow_dispatch' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo generate-lockfile
+      # Resolve only missing/new requirements while retaining existing lock pins.
+      - run: cargo check --workspace
       - name: Commit Cargo lockfile
         run: |
           git add -f Cargo.lock
