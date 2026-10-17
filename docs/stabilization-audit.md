@@ -1,5 +1,7 @@
 # Private Windows stabilization audit — 15 October 2026
 
+This report is the 15 October audit snapshot. Later [long-session voice work](long-session-voice.md) supersedes its five-minute desktop-call, in-call mute and push-to-talk limitations; the physical acceptance and server-side eviction gates remain open.
+
 ## Decision
 
 GCP has real API, Qt account/channel and native media integrations, but remains an experimental private test application. The portable ZIP pipeline exists. An installer should wait for the functional and hardware acceptance gates below; an installer would not resolve them. No service deployment, public release or installer was performed during this audit.
