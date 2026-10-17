@@ -3,8 +3,8 @@ mod communities;
 pub mod database;
 mod direct_messages;
 mod friends;
-pub mod livekit_tokens;
 pub mod livekit_eviction;
+pub mod livekit_tokens;
 mod messages;
 mod realtime;
 
@@ -40,7 +40,11 @@ async fn health() -> Json<HealthResponse> {
 /// Unlike liveness, readiness requires an actual working PostgreSQL pool.
 /// Never disclose connection errors or credentials to HTTP clients.
 async fn ready(State(state): State<AppState>) -> StatusCode {
-    if state.livekit.as_ref().is_some_and(|config| !config.eviction_healthy()) {
+    if state
+        .livekit
+        .as_ref()
+        .is_some_and(|config| !config.eviction_healthy())
+    {
         return StatusCode::SERVICE_UNAVAILABLE;
     }
     let Some(pool) = &state.database else {

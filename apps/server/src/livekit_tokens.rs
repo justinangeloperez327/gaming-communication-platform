@@ -59,14 +59,21 @@ impl LiveKitConfig {
 
     pub fn new(server_url: String, api_key: String, api_secret: String) -> Result<Self, io::Error> {
         // Parse the authority, not just a prefix: cleartext is loopback-only.
-        let url = reqwest::Url::parse(&server_url).map_err(|_| io::Error::new(
-            io::ErrorKind::InvalidInput, "Invalid LiveKit URL configuration"))?;
+        let url = reqwest::Url::parse(&server_url).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid LiveKit URL configuration",
+            )
+        })?;
         let secure = url.scheme() == "wss" && url.host_str().is_some();
-        let local = url.scheme() == "ws" && matches!(url.host_str(), Some("127.0.0.1" | "localhost"));
+        let local =
+            url.scheme() == "ws" && matches!(url.host_str(), Some("127.0.0.1" | "localhost"));
         if (!secure && !local)
             || server_url.len() > 2048
-            || !url.username().is_empty() || url.password().is_some()
-            || url.query().is_some() || url.fragment().is_some()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
             || (url.path() != "/" && !url.path().is_empty())
             || server_url.bytes().any(|b| b.is_ascii_whitespace())
             || server_url.contains(['?', '#', '@'])
@@ -82,7 +89,8 @@ impl LiveKitConfig {
             ));
         }
         let mut control_url = url;
-        control_url.set_scheme(if secure { "https" } else { "http" })
+        control_url
+            .set_scheme(if secure { "https" } else { "http" })
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Invalid LiveKit scheme"))?;
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
@@ -90,7 +98,8 @@ impl LiveKitConfig {
             .connect_timeout(std::time::Duration::from_secs(2))
             .timeout(std::time::Duration::from_secs(3))
             .pool_max_idle_per_host(2)
-            .build().map_err(|_| io::Error::other("Cannot initialize LiveKit HTTP client"))?;
+            .build()
+            .map_err(|_| io::Error::other("Cannot initialize LiveKit HTTP client"))?;
         Ok(Self {
             server_url,
             api_key,
@@ -209,7 +218,9 @@ pub(crate) async fn issue(
     }
 
     let config = state.livekit.as_ref().ok_or(AuthError::Unavailable)?;
-    if !config.eviction_healthy() { return Err(AuthError::Unavailable); }
+    if !config.eviction_healthy() {
+        return Err(AuthError::Unavailable);
+    }
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| AuthError::Unavailable)?

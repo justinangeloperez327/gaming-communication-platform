@@ -28,13 +28,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             _ => std::future::pending::<()>().await,
         }
     };
-    let server = axum::serve(listener, router_with_livekit(database.clone(), livekit.clone()))
-        .with_graceful_shutdown(async {
-            if tokio::signal::ctrl_c().await.is_ok() {
-                tracing::info!("Shutdown signal received");
-            }
-        })
-        .into_future();
+    let server = axum::serve(
+        listener,
+        router_with_livekit(database.clone(), livekit.clone()),
+    )
+    .with_graceful_shutdown(async {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            tracing::info!("Shutdown signal received");
+        }
+    })
+    .into_future();
     tokio::select! {
         result = server => result?,
         () = eviction => {}

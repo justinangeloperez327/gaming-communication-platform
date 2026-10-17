@@ -383,7 +383,9 @@ pub(crate) async fn authenticated_session(
     .map_err(|_| AuthError::Unavailable)?
     .ok_or(AuthError::Unauthorized)?;
     let id = row.try_get("id").map_err(|_| AuthError::Unavailable)?;
-    let session = row.try_get("session_id").map_err(|_| AuthError::Unavailable)?;
+    let session = row
+        .try_get("session_id")
+        .map_err(|_| AuthError::Unavailable)?;
     Ok((id, session, read_user(&row)?))
 }
 

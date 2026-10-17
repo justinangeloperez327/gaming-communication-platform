@@ -89,13 +89,20 @@ async fn tokens_are_issued_only_for_active_voice_channel_members() {
     let Some(db) = connect().await else { return };
     MIGRATOR.run(&db).await.expect("migrations");
     // Empty SFU fixture: exercise the production token-readiness guard without media.
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("fixture listener");
     let address = listener.local_addr().expect("fixture address");
     let control = tokio::spawn(async move {
-        axum::serve(listener, Router::new().route(
-            "/twirp/livekit.RoomService/ListRooms",
-            axum::routing::post(|| async { axum::Json(json!({})) }),
-        )).await.expect("fixture server");
+        axum::serve(
+            listener,
+            Router::new().route(
+                "/twirp/livekit.RoomService/ListRooms",
+                axum::routing::post(|| async { axum::Json(json!({})) }),
+            ),
+        )
+        .await
+        .expect("fixture server");
     });
     let server_url = format!("ws://{address}");
     let config = LiveKitConfig::new(
@@ -104,7 +111,10 @@ async fn tokens_are_issued_only_for_active_voice_channel_members() {
         "test-secret-of-more-than-thirty-two-bytes".into(),
     )
     .expect("valid test credentials");
-    config.reconcile_voice_access(&db).await.expect("initial control-plane check");
+    config
+        .reconcile_voice_access(&db)
+        .await
+        .expect("initial control-plane check");
     let app = router_with_livekit(Some(db.clone()), Some(config));
     let (owner, owner_id) = signup(&app, "lkown").await;
     let (member, member_id) = signup(&app, "lkmem").await;
