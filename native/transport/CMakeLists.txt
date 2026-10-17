@@ -52,7 +52,7 @@ target_compile_definitions(gcp-livekit-voice PRIVATE WIN32_LEAN_AND_MEAN NOMINMA
 if(MSVC)
     target_compile_options(gcp-livekit-voice PRIVATE /W4 /permissive- /EHsc)
 endif()
-target_link_libraries(gcp-livekit-voice PRIVATE LiveKit::livekit psapi ole32 uuid)
+target_link_libraries(gcp-livekit-voice PRIVATE LiveKit::livekit psapi ole32 uuid user32)
 target_link_directories(gcp-livekit-voice PRIVATE "${GCP_LIVEKIT_RESOLVED_PREFIX}/lib")
 foreach(_runtime IN ITEMS livekit.dll livekit_ffi.dll)
     if(EXISTS "${GCP_LIVEKIT_RESOLVED_PREFIX}/bin/${_runtime}")
@@ -68,4 +68,11 @@ if(BUILD_TESTING)
         COMMAND $<TARGET_FILE:gcp-livekit-voice> --self-test)
     add_test(NAME livekit_voice_help
         COMMAND $<TARGET_FILE:gcp-livekit-voice> --help)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(gcp-voice-control-tests tests/voice_control_tests.cpp)
+    target_include_directories(gcp-voice-control-tests PRIVATE src)
+    add_test(NAME voice_control_privacy_and_long_session_policy
+        COMMAND $<TARGET_FILE:gcp-voice-control-tests>)
 endif()

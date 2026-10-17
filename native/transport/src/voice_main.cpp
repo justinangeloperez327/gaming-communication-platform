@@ -2,6 +2,9 @@
 // Uses the SDK's platform Audio Device Module for microphone, echo control,
 // and default speaker playout. No raw audio data is logged or stored.
 #include "telemetry.h"
+#include "voice_control.h"
+#include <Windows.h>
+#include <array>
 
 #include "livekit/livekit.h"
 #include "livekit/local_audio_track.h"
@@ -39,6 +42,8 @@ struct Options {
     int mute_after = -1;
     bool publish_mic = false;
     bool consent = false;
+    bool desktop_control = false;
+    bool push_to_talk = false;
     std::string input_id;
     std::string output_id;
 };
@@ -74,7 +79,13 @@ Options parse(int argc, char** argv) {
     bool consent_seen = false, input_seen = false, output_seen = false;
     for (int i = 2; i < argc; ++i) {
         const std::string_view flag(argv[i]);
-        if (flag == "--publish-mic") {
+        if (flag == "--desktop-control") {
+            if (o.desktop_control) throw std::invalid_argument("Duplicate desktop control");
+            o.desktop_control = true;
+        } else if (flag == "--push-to-talk") {
+            if (o.push_to_talk) throw std::invalid_argument("Duplicate push-to-talk");
+            o.push_to_talk = true;
+        } else if (flag == "--publish-mic") {
             if (mic_seen) throw std::invalid_argument("Duplicate --publish-mic");
             mic_seen = true;
             o.publish_mic = true;
@@ -83,8 +94,8 @@ Options parse(int argc, char** argv) {
             const std::string_view value(argv[++i]);
             if (flag == "--seconds") {
                 if (seconds_seen || !parse_number(value, o.seconds)
-                    || o.seconds < 1 || o.seconds > 300)
-                    throw std::invalid_argument("--seconds must be 1..300");
+                    || o.seconds < 0 || o.seconds > 300)
+                    throw std::invalid_argument("--seconds must be 0..300 (0 requires desktop control)");
                 seconds_seen = true;
             } else if (flag == "--confirm-microphone") {
                 if (consent_seen || value != "yes")
@@ -111,10 +122,14 @@ Options parse(int argc, char** argv) {
             }
         }
     }
+    if (o.seconds == 0 && !o.desktop_control)
+        throw std::invalid_argument("Unbounded calls require desktop control lease");
+    if (o.push_to_talk && (!o.publish_mic || !o.desktop_control))
+        throw std::invalid_argument("Push-to-talk requires managed microphone consent");
     if (o.publish_mic != o.consent)
         throw std::invalid_argument(
             "Microphone requires --publish-mic --confirm-microphone yes");
-    if (mute_seen && (!o.publish_mic || o.mute_after >= o.seconds))
+    if (mute_seen && (!o.publish_mic || o.desktop_control || o.mute_after >= o.seconds))
         throw std::invalid_argument("--mute-after requires mic and must precede end");
     if (input_seen && !o.publish_mic)
         throw std::invalid_argument("--input requires microphone publishing");
@@ -130,6 +145,9 @@ void usage() {
         "  join [--seconds 30] [--output DEVICE_ID]   Listen-only; microphone OFF\n"
         "  join --publish-mic --confirm-microphone yes [--seconds 30]\n"
         "       [--input DEVICE_ID] [--output DEVICE_ID] [--mute-after N]\n"
+        "  Desktop only: --desktop-control --seconds 0 [--push-to-talk]\n"
+        "  Control pipe commands: ping, mute, unmute, mode_ptt, mode_open, stop.\n"
+        "  Five-second heartbeat lease; PTT holds F8 and starts muted.\n"
         "Requires LIVEKIT_URL and LIVEKIT_TOKEN only for join.\n"
         "Use microphone-scoped tokens from the authenticated Rust backend.\n"
         "No screen share, camera, audio file recording or voice activation.\n"
@@ -164,6 +182,19 @@ int self_test() {
         (void)parse(4, duration_invalid);
         return 4;
     } catch (const std::invalid_argument&) {}
+    char zero[] = "0", managed[] = "--desktop-control", ptt[] = "--push-to-talk";
+    char* unbounded[] = {exe, join, seconds, zero};
+    try { (void)parse(4, unbounded); return 6; }
+    catch (const std::invalid_argument&) {}
+    char* controlled[] = {exe, join, managed, seconds, zero, publish, confirm, yes, ptt};
+    const auto desktop = parse(9, controlled);
+    if (!desktop.desktop_control || !desktop.push_to_talk || desktop.seconds != 0) return 7;
+    char* listen_ptt[] = {exe, join, managed, ptt};
+    try { (void)parse(4, listen_ptt); return 8; }
+    catch (const std::invalid_argument&) {}
+    char* duplicate_control[] = {exe, join, managed, managed};
+    try { (void)parse(4, duplicate_control); return 9; }
+    catch (const std::invalid_argument&) {}
     char input[] = "--input";
     char mic[] = "secret-device";
     char* bad_input[] = {exe, join, input, mic};
@@ -208,7 +239,9 @@ struct VoiceEvents final : livekit::RoomDelegate {
     std::atomic<std::uint64_t> unsubscriptions{0};
     std::atomic<bool> network_lost{false};
     std::atomic<bool> reconnecting{false};
+    std::atomic<std::uint64_t> interruptions{0};
     void onReconnecting(livekit::Room&, const livekit::ReconnectingEvent&) override {
+        interruptions.fetch_add(1);
         reconnecting.store(true);
         std::cout << "GCP_VOICE_EVENT:reconnecting" << std::endl;
     }
@@ -233,6 +266,28 @@ struct VoiceEvents final : livekit::RoomDelegate {
             unsubscriptions.fetch_add(1, std::memory_order_relaxed);
     }
 };
+
+// QProcess stdin is a Windows anonymous pipe. Never block the audio/session
+// loop waiting for input; parent EOF, malformed data and a stale lease fail closed.
+void poll_control(gcp::transport::VoiceControl& control) {
+    const HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD available = 0;
+    if (!input || input == INVALID_HANDLE_VALUE ||
+        !PeekNamedPipe(input, nullptr, 0, nullptr, &available, nullptr)) {
+        control.stop();
+        return;
+    }
+    if (available == 0) return;
+    std::array<char, 256> bytes{};
+    DWORD used = 0;
+    if (available > bytes.size() ||
+        !ReadFile(input, bytes.data(), (std::min)(available, static_cast<DWORD>(bytes.size())),
+                  &used, nullptr) || used == 0) {
+        control.stop();
+        return;
+    }
+    control.receive(std::string_view{bytes.data(), used}, Clock::now());
+}
 
 int join(const Options& o) {
     const char* raw_url = std::getenv("LIVEKIT_URL");
@@ -261,32 +316,53 @@ int join(const Options& o) {
     std::shared_ptr<livekit::PlatformAudioSource> mic_source;
     std::shared_ptr<livekit::LocalAudioTrack> mic_track;
     try {
+        bool muted = o.desktop_control;
         if (o.publish_mic) {
             // Only reached after explicit CLI permission; no mic opened in
             // listen-only mode. WebRTC ADM supplies AEC, NS and AGC.
             mic_source = audio.createAudioSource();
             mic_track = livekit::LocalAudioTrack::createLocalAudioTrack(
                 "gcp-voice-microphone", mic_source);
+            if (muted) mic_track->mute(); // before publication: no initial live burst
             livekit::TrackPublishOptions publication;
             publication.source = livekit::TrackSource::SOURCE_MICROPHONE;
             auto participant = room.localParticipant().lock();
             if (!participant)
                 throw std::runtime_error("Local participant is unavailable");
             participant->publishTrack(mic_track, publication);
-            std::cerr << "MICROPHONE LIVE: transmission enabled by explicit consent.\n";
+            std::cout << (muted ? "GCP_VOICE_EVENT:muted" : "GCP_VOICE_EVENT:unmuted") << std::endl;
         } else {
             std::cerr << "LISTEN ONLY: microphone source was NOT created.\n";
         }
         const auto started = Clock::now();
         const auto before = gcp::probe::take_snapshot();
-        bool muted = false;
+        gcp::transport::VoiceControl control{o.publish_mic, o.desktop_control,
+                                              o.push_to_talk, started};
+        auto interruption = events.interruptions.load();
         std::uint64_t peak_private_bytes = before.private_bytes;
         std::uint64_t sample_count = 0;
         auto next_perf_sample = Clock::now() + std::chrono::seconds(2);
         bool device_lost = false;
         auto next_device_check = Clock::now() + std::chrono::seconds(5);
         while (running.load() && !events.network_lost.load() &&
-            Clock::now() - started < std::chrono::seconds(o.seconds)) {
+            (o.seconds == 0 || Clock::now() - started < std::chrono::seconds(o.seconds))) {
+            if (o.desktop_control) {
+                poll_control(control);
+                if (control.stopped(Clock::now())) break;
+                const auto current_interruption = events.interruptions.load();
+                if (interruption != current_interruption) {
+                    control.resetPushToTalk();
+                    interruption = current_interruption;
+                }
+                const bool key_down = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
+                const bool transmit = control.transmit(Clock::now(), key_down,
+                                                       !events.reconnecting.load());
+                if (mic_track && transmit == muted) {
+                    if (transmit) mic_track->unmute(); else mic_track->mute();
+                    muted = !transmit;
+                    std::cout << (muted ? "GCP_VOICE_EVENT:muted" : "GCP_VOICE_EVENT:unmuted") << std::endl;
+                }
+            }
             // Only poll explicitly selected devices, at most once per five seconds.
             // A missing selected device fails closed rather than silently swapping
             // to a different microphone/output during an active voice call.
@@ -340,6 +416,7 @@ int join(const Options& o) {
         gcp::probe::print_metrics("livekit_voice_process_summary", elapsed,
             callbacks, departures, before, after);
         std::cout << "{\"probe\":\"livekit_voice_session\""
+                  << ",\"desktop_managed\":" << (o.desktop_control ? "true" : "false")
                   << ",\"microphone_opted_in\":"
                   << (o.publish_mic ? "true" : "false")
                   << ",\"microphone_muted_at_end\":true"
