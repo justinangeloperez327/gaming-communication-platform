@@ -154,6 +154,8 @@ void usage() {
         "A successful room connection is NOT proof remote audio was heard.\n";
 }
 
+bool control_pipe_self_test();
+
 int self_test() {
     char exe[] = "voice";
     char join[] = "join";
@@ -202,6 +204,7 @@ int self_test() {
         (void)parse(4, bad_input);
         return 5;
     } catch (const std::invalid_argument&) {}
+    if (!control_pipe_self_test()) return 10;
     livekit::initialize(livekit::LogLevel::Warn);
     livekit::shutdown();
     std::cout << "Voice CLI consent and LiveKit SDK self-test passed\n";
@@ -287,6 +290,37 @@ void poll_control(gcp::transport::VoiceControl& control) {
         return;
     }
     control.receive(std::string_view{bytes.data(), used}, Clock::now());
+}
+
+bool control_pipe_self_test() {
+    struct Pipe {
+        HANDLE read = INVALID_HANDLE_VALUE;
+        HANDLE write = INVALID_HANDLE_VALUE;
+        ~Pipe() {
+            if (read != INVALID_HANDLE_VALUE) CloseHandle(read);
+            if (write != INVALID_HANDLE_VALUE) CloseHandle(write);
+        }
+        Pipe() = default;
+        Pipe(const Pipe&) = delete;
+        Pipe& operator=(const Pipe&) = delete;
+    } pipe;
+    if (!CreatePipe(&pipe.read, &pipe.write, nullptr, 0)) return false;
+    struct RestoreInput {
+        HANDLE original;
+        ~RestoreInput() { SetStdHandle(STD_INPUT_HANDLE, original); }
+    } restore{GetStdHandle(STD_INPUT_HANDLE)};
+    if (!SetStdHandle(STD_INPUT_HANDLE, pipe.read)) return false;
+    gcp::transport::VoiceControl control{true, true, false, Clock::now()};
+    constexpr std::string_view commands{"ping\nunmute\n"};
+    DWORD written = 0;
+    if (!WriteFile(pipe.write, commands.data(), static_cast<DWORD>(commands.size()),
+                   &written, nullptr) || written != commands.size()) return false;
+    poll_control(control);
+    if (!control.transmit(Clock::now(), false, true)) return false;
+    CloseHandle(pipe.write);
+    pipe.write = INVALID_HANDLE_VALUE;
+    poll_control(control); // Actual Windows broken parent pipe, no SFU or audio.
+    return control.stopped(Clock::now());
 }
 
 int join(const Options& o) {

@@ -492,8 +492,11 @@ void VoiceSession::setMuted(bool muted) {
 void VoiceSession::setPushToTalk(bool enabled) {
     if (pushToTalk_ == enabled) return;
     if (running()) {
-        if (!connected_ || stopRequested_ ||
-            !sendControl(enabled ? "mode_ptt\n" : "mode_open\n")) return;
+        if (!connected_ || stopRequested_) return;
+        if (!sendControl(enabled ? "mode_ptt\n" : "mode_open\n")) {
+            stopWithReason(QStringLiteral("Voice mode control failed; stopping voice"));
+            return;
+        }
         if (transmitting_) muteWatchdog_.start(1000);
     }
     pushToTalk_ = enabled;
