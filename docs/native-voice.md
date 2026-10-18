@@ -64,3 +64,7 @@ The diagnostic emits a sanitized JSON record with microphone opt-in state and re
 - The backend still does not eject already connected participants from the SFU when community membership is revoked. Group 27 does not add that security control.
 - No push-to-talk, participant mixer, per-user volume, microphone voice activity indicator or E2EE. A Qt control surface, bounded SDK reconnect handling and selected-device loss detection exist; default-device rerouting and physical recovery behavior remain unverified.
 - Native Windows CI compiles the executable, runs CLI consent/SDK self-tests and uploads the DLLs. CI neither joins a real LiveKit room nor verifies physical microphone/speaker operation. No production voice claim should be made from CI alone.
+
+## Managed desktop mode
+
+Desktop calls now use `--desktop-control --seconds 0` with a heartbeat/command pipe, initial mute and optional `--push-to-talk` (F8). Zero duration without desktop control is rejected; `--mute-after` remains a standalone finite diagnostic option. This supersedes the earlier blanket duration/control limitations in this milestone document. See [long-session voice](long-session-voice.md) for setup, failure behavior, tests, and unverified physical limits.

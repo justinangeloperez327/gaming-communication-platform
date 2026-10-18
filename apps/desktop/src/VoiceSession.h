@@ -9,9 +9,18 @@ class ChannelDirectory;
 #include <QVariantList>
 #include <QTimer>
 
+// Runtime dependencies are injectable for subprocess/HTTP integration tests.
+struct VoiceRuntime {
+    QString program;
+    int authorizationIntervalMs = 60000;
+};
+
 class VoiceSession final : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
+    Q_PROPERTY(bool muted READ muted NOTIFY controlsChanged)
+    Q_PROPERTY(bool transmitting READ transmitting NOTIFY controlsChanged)
+    Q_PROPERTY(bool pushToTalk READ pushToTalk NOTIFY controlsChanged)
     Q_PROPERTY(bool connected READ connected NOTIFY statusChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY runningChanged)
     Q_PROPERTY(bool microphoneEnabled READ microphoneEnabled NOTIFY runningChanged)
@@ -21,8 +30,13 @@ class VoiceSession final : public QObject {
     Q_PROPERTY(QVariantList outputs READ outputs NOTIFY devicesChanged)
     Q_PROPERTY(bool scanning READ scanning NOTIFY devicesChanged)
 public:
-    explicit VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent = nullptr);
+    explicit VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent = nullptr, VoiceRuntime runtime = {});
     ~VoiceSession() override;
+    bool muted() const { return muted_; }
+    bool transmitting() const { return transmitting_; }
+    bool pushToTalk() const { return pushToTalk_; }
+    Q_INVOKABLE void setMuted(bool muted);
+    Q_INVOKABLE void setPushToTalk(bool enabled);
     bool connected() const { return connected_; }
     bool running() const { return process_.state() != QProcess::NotRunning; }
     bool busy() const { return pending_ != nullptr || running(); }
@@ -40,14 +54,21 @@ public:
     Q_INVOKABLE void leave();
     Q_INVOKABLE void refreshAvailability() { emit availabilityChanged(); }
 signals:
+    void controlsChanged();
     void runningChanged();
     void statusChanged();
     void availabilityChanged();
     void devicesChanged();
 private:
     void start(bool publishMicrophone);
-    void launch(bool publishMicrophone, const QString &url, const QString &token, int lifetime);
+    void launch(bool publishMicrophone, const QString &url, const QString &token);
+    void requestAuthorization(bool publishMicrophone, bool recheck);
+    bool sendControl(const QByteArray &command);
+    void stopWithReason(const QString &reason);
+    void resetControls();
     void setStatus(const QString &value);
+    VoiceRuntime runtime_;
+    QString nativeProgram() const;
     AccountSession *account_ = nullptr;
     ChannelDirectory *directory_ = nullptr;
     QProcess process_;
@@ -56,6 +77,15 @@ private:
     QString inputId_, outputId_;
     QNetworkAccessManager network_;
     QNetworkReply *pending_ = nullptr;
+    QTimer heartbeatTimer_;
+    QTimer authorizationTimer_;
+    QTimer authorizationWatchdog_;
+    QTimer muteWatchdog_;
+    bool muted_ = true;
+    bool transmitting_ = false;
+    bool pushToTalk_ = false;
+    quint64 generation_ = 0;
+    QString stopReason_;
     QTimer startupWatchdog_;
     QTimer stopWatchdog_;
     QTimer connectWatchdog_;

@@ -50,6 +50,8 @@ jobs:
         run: |
           g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/portable_tests.cpp native/transport/src/h264_access_unit.cpp native/transport/src/annexb_h264.cpp -o /tmp/gcp-parser-tests
           /tmp/gcp-parser-tests
+          g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/voice_control_tests.cpp -o /tmp/gcp-voice-control-tests
+          /tmp/gcp-voice-control-tests
       - name: Offline physical GPU evidence validator tests
         run: python3 -m unittest discover -s scripts -p 'test_validate_hardware_stream.py'
       - name: Frame-time comparison tests
