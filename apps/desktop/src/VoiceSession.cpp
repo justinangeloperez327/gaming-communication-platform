@@ -13,6 +13,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QUuid>
+#include <utility>
 
 namespace {
 bool permittedUrl(const QUrl &url) {
@@ -26,10 +27,28 @@ bool uuidValid(const QString &value) {
 }
 }
 
-VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent) : QObject(parent), account_(account), directory_(directory) {
+VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent, VoiceRuntime runtime) : QObject(parent), runtime_(std::move(runtime)), account_(account), directory_(directory) {
+    heartbeatTimer_.setInterval(1000);
+    authorizationTimer_.setSingleShot(true);
+    authorizationWatchdog_.setSingleShot(true);
+    connect(&authorizationWatchdog_, &QTimer::timeout, this, [this]() {
+        stopWithReason(QStringLiteral("Voice authorization deadline exceeded; join again manually"));
+    });
+    muteWatchdog_.setSingleShot(true);
+    connect(&heartbeatTimer_, &QTimer::timeout, this, [this]() {
+        if (!sendControl("ping\n")) stopWithReason(QStringLiteral("Voice control pipe failed"));
+    });
+    connect(&authorizationTimer_, &QTimer::timeout, this, [this]() {
+        if (running() && !stopRequested_) requestAuthorization(microphoneEnabled_, true);
+    });
+    connect(&muteWatchdog_, &QTimer::timeout, this, [this]() {
+        stopWithReason(QStringLiteral("Microphone mute was not acknowledged; stopping voice"));
+    });
     deviceScanWatchdog_.setSingleShot(true);
     idleDeviceRefresh_.setInterval(30000);
-    connect(&idleDeviceRefresh_, &QTimer::timeout, this, &VoiceSession::scanDevices);
+    connect(&idleDeviceRefresh_, &QTimer::timeout, this, [this]() {
+        if (account_->signedIn()) scanDevices();
+    });
     idleDeviceRefresh_.start();
     connect(&deviceScanWatchdog_, &QTimer::timeout, this, [this]() {
         if (scanning()) devices_.kill();
@@ -111,11 +130,17 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         startupWatchdog_.stop();
         connectWatchdog_.start(22000);
         process_.setProcessEnvironment(QProcessEnvironment());
-        setStatus(microphoneEnabled_ ? QStringLiteral("Native voice process started · microphone enabled")
+        if (!sendControl("ping\n")) {
+            stopWithReason(QStringLiteral("Cannot initialize voice control pipe"));
+            return;
+        }
+        heartbeatTimer_.start();
+        setStatus(microphoneEnabled_ ? QStringLiteral("Native voice process started · microphone starts muted")
                                     : QStringLiteral("Native voice process started · listen only"));
         emit runningChanged();
     });
     connect(&process_, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
+        resetControls();
         startupWatchdog_.stop();
         stopWatchdog_.stop();
         connectWatchdog_.stop();
@@ -129,7 +154,9 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         deviceLost_ = false;
         const bool timedOut = connectionTimedOut_;
         connectionTimedOut_ = false;
-        setStatus(deviceLost ? QStringLiteral("Audio device removed; rescan and join manually") :
+        const auto reason = stopReason_;
+        stopReason_.clear();
+        setStatus(!reason.isEmpty() ? reason : deviceLost ? QStringLiteral("Audio device removed; rescan and join manually") :
                   timedOut ? QStringLiteral("Room connection timed out; retry manually") :
                   intentional ? QStringLiteral("Disconnected") :
                   exitStatus == QProcess::NormalExit && exitCode == 0
@@ -139,6 +166,7 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
     });
     connect(&process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
+            resetControls();
             startupWatchdog_.stop();
             connectWatchdog_.stop();
             process_.setProcessEnvironment(QProcessEnvironment());
@@ -164,9 +192,17 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
             if (newline < 0) break;
             const QByteArray line = outputBuffer_.left(newline).trimmed();
             outputBuffer_.remove(0, newline + 1);
-            if (line == "GCP_VOICE_EVENT:connected" && running() && !stopRequested_) {
+            if (line == "GCP_VOICE_EVENT:muted") {
+                transmitting_ = false;
+                muteWatchdog_.stop();
+                emit controlsChanged();
+            } else if (line == "GCP_VOICE_EVENT:unmuted" && !stopRequested_) {
+                transmitting_ = true;
+                emit controlsChanged();
+            } else if (line == "GCP_VOICE_EVENT:connected" && running() && !stopRequested_) {
                 connected_ = true;
                 connectWatchdog_.stop();
+                if (!authorizationTimer_.isActive() && !pending_) authorizationTimer_.start(qMax(100, runtime_.authorizationIntervalMs));
                 setStatus(QStringLiteral("Connected to LiveKit room (audio not verified)"));
             } else if (line == "GCP_VOICE_EVENT:reconnecting" && connected_ && !stopRequested_) {
                 connected_ = false;
@@ -175,6 +211,7 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
             } else if (line == "GCP_VOICE_EVENT:reconnected" && !stopRequested_ && running()) {
                 connected_ = true;
                 connectWatchdog_.stop();
+                if (!authorizationTimer_.isActive() && !pending_) authorizationTimer_.start(qMax(100, runtime_.authorizationIntervalMs));
                 setStatus(QStringLiteral("LiveKit reconnected (audio not verified)"));
             } else if (line == "GCP_VOICE_EVENT:device_lost" && !stopRequested_) {
                 connected_ = false;
@@ -212,9 +249,15 @@ VoiceSession::~VoiceSession() {
     }
 }
 
+QString VoiceSession::nativeProgram() const {
+    if (!runtime_.program.isEmpty()) return runtime_.program;
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-livekit-voice.exe"));
+}
+
 bool VoiceSession::available() const {
+    if (!runtime_.program.isEmpty()) return QFileInfo::exists(runtime_.program);
 #ifdef Q_OS_WIN
-    return QFileInfo::exists(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-livekit-voice.exe")));
+    return QFileInfo::exists(nativeProgram());
 #else
     return false;
 #endif
@@ -222,7 +265,7 @@ bool VoiceSession::available() const {
 
 void VoiceSession::scanDevices() {
     if (busy() || scanning() || !available()) return;
-    devices_.setProgram(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-livekit-voice.exe")));
+    devices_.setProgram(nativeProgram());
     devices_.setArguments({QStringLiteral("devices")});
     devices_.start();
 
@@ -251,24 +294,36 @@ void VoiceSession::setStatus(const QString &value) {
 void VoiceSession::start(bool publishMicrophone) {
     if (busy() || scanning()) return;
     if (!available()) { setStatus(QStringLiteral("Native voice executable is missing")); return; }
+    requestAuthorization(publishMicrophone, false);
+}
+
+void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck) {
+    if (pending_ || (recheck && (!running() || stopRequested_))) return;
+    if (!account_->signedIn()) {
+        stopWithReason(QStringLiteral("Sign-in required for voice"));
+        return;
+    }
     const QUrl api = account_->apiOrigin();
     const auto access = account_->accessToken();
     const auto community = directory_->communityId();
     const auto channel = directory_->channelId();
     if (!permittedUrl(api) || access.size() != 64 || !uuidValid(community) || !uuidValid(channel)) {
-        setStatus(QStringLiteral("Sign in and select an authorized voice channel"));
+        if (recheck) stopWithReason(QStringLiteral("Voice access recheck failed; join again manually"));
+        else setStatus(QStringLiteral("Sign in and select an authorized voice channel"));
         return;
     }
     for (const QChar c : access) {
         if (!c.isDigit() && (c < QChar('a') || c > QChar('f'))) {
-            setStatus(QStringLiteral("Invalid application access token"));
+            if (recheck) stopWithReason(QStringLiteral("Voice access recheck failed; join again manually"));
+            else setStatus(QStringLiteral("Invalid application access token"));
             return;
         }
     }
     QUrl endpoint = api;
     QString base = endpoint.path();
     if (!base.isEmpty() && base != QStringLiteral("/")) {
-        setStatus(QStringLiteral("API server origin must not contain a path"));
+        if (recheck) stopWithReason(QStringLiteral("Voice access recheck failed; join again manually"));
+        else setStatus(QStringLiteral("API server origin must not contain a path"));
         return;
     }
     endpoint.setPath(QStringLiteral("/v1/communities/%1/channels/%2/livekit-token").arg(community, channel));
@@ -277,29 +332,35 @@ void VoiceSession::start(bool publishMicrophone) {
     request.setRawHeader("Authorization", QByteArray("Bearer ") + access.toUtf8());
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setTransferTimeout(10000);
-    setStatus(QStringLiteral("Requesting authorized voice room…"));
+    if (!recheck) setStatus(QStringLiteral("Requesting authorized voice room…"));
     pending_ = network_.post(request, QByteArray("{}"));
     boundReply(pending_, 16384);
+    authorizationWatchdog_.start(10000);
     emit runningChanged();
     QNetworkReply *reply = pending_;
-    connect(reply, &QNetworkReply::finished, this, [this, reply, publishMicrophone]() {
+    const auto generation = generation_;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, publishMicrophone, recheck, generation]() {
         // Cancellation takes precedence over completed replies.
-        if (pending_ != reply) { reply->deleteLater(); return; }
+        if (pending_ != reply || generation != generation_) { reply->deleteLater(); return; }
         pending_ = nullptr;
-        emit runningChanged();
+        authorizationWatchdog_.stop();
         const auto status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         const auto error = reply->error();
         QByteArray response = reply->readAll();
         reply->deleteLater();
         if (error != QNetworkReply::NoError || status != 201 || response.size() > 16384) {
-            setStatus(QStringLiteral("Voice authorization failed or expired"));
+            if (recheck) stopWithReason(QStringLiteral("Voice access recheck failed; join again manually"));
+            else setStatus(QStringLiteral("Voice authorization failed or expired"));
+            emit runningChanged();
             return;
         }
         QJsonParseError parse;
         const auto doc = QJsonDocument::fromJson(response, &parse);
         response.fill(0);
         if (parse.error != QJsonParseError::NoError || !doc.isObject()) {
-            setStatus(QStringLiteral("Invalid voice authorization response"));
+            if (recheck) stopWithReason(QStringLiteral("Voice access recheck failed; join again manually"));
+            else setStatus(QStringLiteral("Invalid voice authorization response"));
+            emit runningChanged();
             return;
         }
         const auto obj = doc.object();
@@ -312,20 +373,33 @@ void VoiceSession::start(bool publishMicrophone) {
                (voiceUrl.host() == QStringLiteral("localhost") || voiceUrl.host() == QStringLiteral("127.0.0.1"))))
             || !voiceUrl.userInfo().isEmpty() || !voiceUrl.isValid() ||
             token.size() < 50 || token.size() > 8192 || ttl < 15 || ttl > 300) {
-            setStatus(QStringLiteral("Rejected unsafe voice room credentials"));
+            if (recheck) stopWithReason(QStringLiteral("Voice access recheck failed; join again manually"));
+            else setStatus(QStringLiteral("Rejected unsafe voice room credentials"));
+            emit runningChanged();
             return;
         }
-        launch(publishMicrophone, server, token, ttl);
+        if (recheck) {
+            // Revalidate membership/session only. This JWT is not an SDK token
+            // renewal and is never used to silently rejoin or enable a mic.
+            authorizationTimer_.start(qMax(100, runtime_.authorizationIntervalMs));
+        } else {
+            launch(publishMicrophone, server, token);
+        }
+        emit runningChanged();
     });
 }
 
-void VoiceSession::launch(bool publishMicrophone, const QString &url, const QString &token, int lifetime) {
+void VoiceSession::launch(bool publishMicrophone, const QString &url, const QString &token) {
     if (running()) return;
     auto env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("LIVEKIT_URL"), url);
     env.insert(QStringLiteral("LIVEKIT_TOKEN"), token);
     env.remove(QStringLiteral("GCP_ACCESS_TOKEN"));
     env.remove(QStringLiteral("GCP_REFRESH_TOKEN"));
+    stopReason_.clear();
+    muted_ = true;
+    transmitting_ = false;
+    emit controlsChanged();
     stopRequested_ = false;
     connectionTimedOut_ = false;
     deviceLost_ = false;
@@ -333,8 +407,10 @@ void VoiceSession::launch(bool publishMicrophone, const QString &url, const QStr
     outputBuffer_.clear();
     microphoneEnabled_ = publishMicrophone;
     process_.setProcessEnvironment(env);
-    process_.setProgram(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-livekit-voice.exe")));
-    QStringList args{QStringLiteral("join"), QStringLiteral("--seconds"), QString::number(qMin(lifetime, 300))};
+    process_.setProgram(nativeProgram());
+    QStringList args{QStringLiteral("join"), QStringLiteral("--desktop-control"),
+                     QStringLiteral("--seconds"), QStringLiteral("0")};
+    if (publishMicrophone && pushToTalk_) args << QStringLiteral("--push-to-talk");
     if (!outputId_.isEmpty()) args << QStringLiteral("--output") << outputId_;
     if (publishMicrophone && !inputId_.isEmpty()) args << QStringLiteral("--input") << inputId_;
     if (publishMicrophone) {
@@ -353,6 +429,11 @@ void VoiceSession::joinWithMicrophone(bool consent) {
     start(true);
 }
 void VoiceSession::leave() {
+    ++generation_;
+    heartbeatTimer_.stop();
+    authorizationTimer_.stop();
+    authorizationWatchdog_.stop();
+    muteWatchdog_.stop();
     if (pending_) {
         auto *reply = pending_;
         pending_ = nullptr;
@@ -365,6 +446,60 @@ void VoiceSession::leave() {
     startupWatchdog_.stop();
     connectWatchdog_.stop();
     setStatus(QStringLiteral("Disconnecting…"));
-    process_.terminate();
+    // Native stop mutes and disconnects orderly; watchdog handles a stuck SDK.
+    if (!sendControl("stop\n")) process_.kill();
+    process_.closeWriteChannel();
     stopWatchdog_.start(2000);
+}
+
+void VoiceSession::resetControls() {
+    heartbeatTimer_.stop();
+    authorizationTimer_.stop();
+    authorizationWatchdog_.stop();
+    muteWatchdog_.stop();
+    if (pending_) {
+        auto *reply = pending_;
+        pending_ = nullptr;
+        reply->abort();
+    }
+    muted_ = true;
+    transmitting_ = false;
+    emit controlsChanged();
+}
+
+bool VoiceSession::sendControl(const QByteArray &command) {
+    if (process_.state() != QProcess::Running || process_.bytesToWrite() > 1024) return false;
+    return process_.write(command) == command.size();
+}
+
+void VoiceSession::stopWithReason(const QString &reason) {
+    stopReason_ = reason;
+    leave();
+    setStatus(reason);
+}
+
+void VoiceSession::setMuted(bool muted) {
+    if (!microphoneEnabled_ || !connected_ || stopRequested_) return;
+    if (!sendControl(muted ? "mute\n" : "unmute\n")) {
+        stopWithReason(QStringLiteral("Voice control failed; stopped for microphone safety"));
+        return;
+    }
+    muted_ = muted;
+    if (muted) muteWatchdog_.start(1000);
+    emit controlsChanged();
+}
+
+void VoiceSession::setPushToTalk(bool enabled) {
+    if (pushToTalk_ == enabled) return;
+    if (running()) {
+        if (!connected_ || stopRequested_) return;
+        if (!sendControl(enabled ? "mode_ptt\n" : "mode_open\n")) {
+            stopWithReason(QStringLiteral("Voice mode control failed; stopping voice"));
+            return;
+        }
+        if (microphoneEnabled_) muteWatchdog_.start(1000);
+    }
+    pushToTalk_ = enabled;
+    muted_ = true; // Explicit Enable mic is required after any mode switch.
+    emit controlsChanged();
 }

@@ -1,6 +1,6 @@
 # Private Windows stabilization audit — 15 October 2026
 
-Follow-up: server-side voice eviction is now implemented in [PR #65](https://github.com/justinangeloperez327/gaming-communication-platform/pull/65). See the [operating guide](server-voice-eviction.md) and that PR for current CI evidence; the dated evidence below describes the original audit revision.
+This report is the 15 October audit snapshot. Later [long-session voice work](long-session-voice.md) supersedes its five-minute desktop-call, in-call mute and push-to-talk limitations. Server-side voice eviction is implemented in [PR #65](https://github.com/justinangeloperez327/gaming-communication-platform/pull/65); see the [operating guide](server-voice-eviction.md) and that PR for current CI evidence. Physical acceptance, including real-server eviction testing, remains required. The dated evidence below describes the original audit revision.
 
 ## Decision
 

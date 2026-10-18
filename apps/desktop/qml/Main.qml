@@ -234,7 +234,7 @@ ApplicationWindow {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Sign in to select a community and join experimental voice calls of up to five minutes. Desktop messaging and screen sharing are not connected yet."
+                        text: "Sign in to select a community and join experimental voice calls until you leave. Desktop messaging and screen sharing are not connected yet."
                         font.pixelSize: 14
                         color: root.mutedTone
                         wrapMode: Text.WordWrap
@@ -269,7 +269,7 @@ ApplicationWindow {
                     }
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 340
+                        Layout.preferredHeight: 440
                         radius: 6
                         color: root.panel
                         border.color: root.borderTone
@@ -315,6 +315,32 @@ ApplicationWindow {
                                 textRole: "name"
                                 valueRole: "id"
                                 onActivated: voiceSession.selectOutput(currentValue)
+                            }
+                            CheckBox {
+                                text: "Push-to-talk · hold F8 (works outside this window)"
+                                checked: voiceSession.pushToTalk
+                                enabled: !voiceSession.busy || voiceSession.connected
+                                onToggled: voiceSession.setPushToTalk(checked)
+                            }
+                            RowLayout {
+                                Button {
+                                    text: voiceSession.muted ? "Enable mic" : "Mute mic"
+                                    enabled: voiceSession.connected && voiceSession.microphoneEnabled
+                                    onClicked: voiceSession.setMuted(!voiceSession.muted)
+                                }
+                                Text {
+                                    text: !voiceSession.microphoneEnabled ? "Listen only" :
+                                          voiceSession.transmitting ? "Microphone transmitting" :
+                                          voiceSession.muted ? "Microphone muted" : "PTT armed · hold F8"
+                                    color: root.mutedTone
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Mic calls start muted. Enable mic after joining. Muting stops transmission; the audio device may remain open until Leave."
+                                color: root.mutedTone
+                                wrapMode: Text.Wrap
+                                font.pixelSize: 11
                             }
                             CheckBox {
                                 id: micPermission

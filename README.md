@@ -9,11 +9,13 @@ GCP is an experimental Windows x64 communication application for private gaming 
 | Desktop accounts | Sign-in, in-memory access/refresh tokens, timed rotation, local sign-out and best-effort remote logout | Automated API tests and Qt networking tests; no persistent desktop login |
 | Communities | API roles, invitations, channels and membership; desktop community/voice-channel selection | PostgreSQL integration tests; creation/invitation administration is API-only |
 | Text and friends | Authorized channel messages, friendships, blocks, DMs and text-channel WebSocket events | Backend integration tests; desktop message composer remains disabled |
-| Voice | Listen-only, explicit microphone opt-in, device selection, LiveKit room events, bounded recovery and Leave | Real SDK integration; each call is capped at 300 seconds; physical audibility unverified |
+| Voice | Listen-only, explicit microphone opt-in, mute/F8 push-to-talk, device selection, room events, bounded recovery and Leave | Real SDK integration; managed desktop calls continue until Leave; mute/F8 PTT and periodic access checks; physical audibility unverified |
 | Screen sharing | Separate consent-gated monitor diagnostics: CPU-readback publishing and GPU BGRA→NV12→hardware-class H.264→LiveKit bridge | No desktop sharing/viewing UI; hardware, remote playback and driver compatibility unverified |
 | Test video | Synthetic RGBA/NV12/BGRA patterns and externally encoded H.264 file publishing | Diagnostic fixtures; not evidence of screen capture or gaming performance |
 | Windows ZIP | Qt/QML + voice executable + LiveKit DLL staging, SHA-256 inventory, extracted-ZIP startup checks | Unsigned private test artifact; clean consumer Windows PC still untested |
 | Performance | Process CPU/private memory samples, capture/encoder timing, exported game frame-time analysis | No measured gaming resource budget or advantage over other apps established |
+
+See [long-session voice and controls](docs/long-session-voice.md) for the latest voice behavior and tests.
 
 See the [stabilization audit](docs/stabilization-audit.md) for fixes, evidence and remaining gates. Older numbered group documents describe incremental development; use this README and current subsystem guides for present capability boundaries.
 
