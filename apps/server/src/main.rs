@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, future::IntoFuture};
 
 use gaming_comms_server::{database, livekit_tokens::LiveKitConfig, router_with_livekit};
 use tokio::net::TcpListener;
@@ -22,13 +22,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::info!(address = %bind_address, "HTTP server listening");
 
     let livekit = LiveKitConfig::from_env()?;
-    axum::serve(listener, router_with_livekit(database, livekit))
-        .with_graceful_shutdown(async {
-            if tokio::signal::ctrl_c().await.is_ok() {
-                tracing::info!("Shutdown signal received");
-            }
-        })
-        .await?;
+    let eviction = async {
+        match (&database, &livekit) {
+            (Some(pool), Some(config)) => config.run_eviction_loop(pool).await,
+            _ => std::future::pending::<()>().await,
+        }
+    };
+    let server = axum::serve(
+        listener,
+        router_with_livekit(database.clone(), livekit.clone()),
+    )
+    .with_graceful_shutdown(async {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            tracing::info!("Shutdown signal received");
+        }
+    })
+    .into_future();
+    tokio::select! {
+        result = server => result?,
+        () = eviction => {}
+    }
 
     Ok(())
 }

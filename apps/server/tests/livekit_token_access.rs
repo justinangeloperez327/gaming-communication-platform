@@ -88,12 +88,33 @@ async fn signup(app: &Router, prefix: &str) -> (String, String) {
 async fn tokens_are_issued_only_for_active_voice_channel_members() {
     let Some(db) = connect().await else { return };
     MIGRATOR.run(&db).await.expect("migrations");
+    // Empty SFU fixture: exercise the production token-readiness guard without media.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("fixture listener");
+    let address = listener.local_addr().expect("fixture address");
+    let control = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().route(
+                "/twirp/livekit.RoomService/ListRooms",
+                axum::routing::post(|| async { axum::Json(json!({})) }),
+            ),
+        )
+        .await
+        .expect("fixture server");
+    });
+    let server_url = format!("ws://{address}");
     let config = LiveKitConfig::new(
-        "wss://voice.example.test".into(),
+        server_url.clone(),
         "test-issuer-key".into(),
         "test-secret-of-more-than-thirty-two-bytes".into(),
     )
     .expect("valid test credentials");
+    config
+        .reconcile_voice_access(&db)
+        .await
+        .expect("initial control-plane check");
     let app = router_with_livekit(Some(db.clone()), Some(config));
     let (owner, owner_id) = signup(&app, "lkown").await;
     let (member, member_id) = signup(&app, "lkmem").await;
@@ -152,7 +173,7 @@ async fn tokens_are_issued_only_for_active_voice_channel_members() {
     let (code, token, no_store) = call(&app, Method::POST, &voice_path, None, Some(&owner)).await;
     assert_eq!(code, StatusCode::CREATED);
     assert!(no_store);
-    assert_eq!(token["server_url"], "wss://voice.example.test");
+    assert_eq!(token["server_url"], server_url);
     assert_eq!(token["room"], format!("gcp-voice-{voice_id}"));
     assert_eq!(token["expires_in"], 300);
     let jwt = token["participant_token"].as_str().expect("JWT");
@@ -212,6 +233,8 @@ async fn tokens_are_issued_only_for_active_voice_channel_members() {
     assert_eq!(code, StatusCode::NO_CONTENT);
     let (code, _, _) = call(&app, Method::POST, &voice_path, None, Some(&owner)).await;
     assert_eq!(code, StatusCode::UNAUTHORIZED);
+
+    control.abort();
 
     // Test fixtures are isolated from concurrent integration tests.
     sqlx::query("DELETE FROM communities WHERE id=$1")

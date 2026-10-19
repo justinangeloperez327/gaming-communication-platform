@@ -362,9 +362,17 @@ pub(crate) async fn authenticated_user(
     pool: &PgPool,
     headers: &HeaderMap,
 ) -> Result<(Uuid, UserView), AuthError> {
+    let (user, _, view) = authenticated_session(pool, headers).await?;
+    Ok((user, view))
+}
+
+pub(crate) async fn authenticated_session(
+    pool: &PgPool,
+    headers: &HeaderMap,
+) -> Result<(Uuid, Uuid, UserView), AuthError> {
     let digest = bearer_digest(headers)?;
     let row = sqlx::query(
-        "SELECT u.id, u.handle, u.display_name, u.email
+        "SELECT u.id, u.handle, u.display_name, u.email, s.id AS session_id
          FROM user_sessions s JOIN users u ON u.id = s.user_id
          WHERE s.access_hash = $1 AND s.revoked_at IS NULL
            AND s.access_expires_at > now() AND s.refresh_expires_at > now()",
@@ -375,7 +383,10 @@ pub(crate) async fn authenticated_user(
     .map_err(|_| AuthError::Unavailable)?
     .ok_or(AuthError::Unauthorized)?;
     let id = row.try_get("id").map_err(|_| AuthError::Unavailable)?;
-    Ok((id, read_user(&row)?))
+    let session = row
+        .try_get("session_id")
+        .map_err(|_| AuthError::Unavailable)?;
+    Ok((id, session, read_user(&row)?))
 }
 
 pub(crate) async fn me(
