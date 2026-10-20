@@ -299,6 +299,10 @@ impl LiveKitConfig {
 }
 
 #[cfg(test)]
+#[path = "livekit_control_contract.rs"]
+mod control_contract;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     #[test]

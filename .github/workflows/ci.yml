@@ -46,6 +46,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit tests
         run: cargo test --workspace --locked
+      - name: Real LiveKit control API contract (no media peers)
+        run: python3 scripts/test_livekit_control_contract.py
       - name: Sanitized portable H.264 parser and timing tests
         run: |
           g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/portable_tests.cpp native/transport/src/h264_access_unit.cpp native/transport/src/annexb_h264.cpp -o /tmp/gcp-parser-tests
