@@ -5,7 +5,12 @@ const KEY: &str = "gcp-contract-key";
 const SECRET: &str = "disposable-loopback-contract-secret-32bytes";
 const URL: &str = "ws://127.0.0.1:17880";
 
-async fn request(config: &LiveKitConfig, method: &str, video: Value, body: Value) -> reqwest::Response {
+async fn request(
+    config: &LiveKitConfig,
+    method: &str,
+    video: Value,
+    body: Value,
+) -> reqwest::Response {
     let now = unix_seconds().expect("clock");
     let token = config
         .sign_claims(json!({"iss": KEY, "nbf": now - 2, "exp": now + 30, "video": video}))
@@ -34,8 +39,15 @@ async fn real_roomservice_contract() {
         json!({"name": room, "empty_timeout": 60}),
     )
     .await;
-    assert!(created.status().is_success(), "create: {}", created.status());
-    let rooms: Rooms = config.rpc("ListRooms", None, json!({})).await.expect("list");
+    assert!(
+        created.status().is_success(),
+        "create: {}",
+        created.status()
+    );
+    let rooms: Rooms = config
+        .rpc("ListRooms", None, json!({}))
+        .await
+        .expect("list");
     assert!(rooms.rooms.iter().any(|item| item.name == room));
     let participants: Participants = config
         .rpc("ListParticipants", Some(&room), json!({"room": room}))
@@ -68,14 +80,26 @@ async fn real_roomservice_contract() {
     )
     .await;
     assert!(matches!(list_only.status().as_u16(), 401 | 403));
-    let invalid = LiveKitConfig::new(URL.into(), KEY.into(), "wrong-secret-longer-than-32-bytes!!".into())
-        .expect("invalid signing key fixture");
-    assert!(invalid.rpc::<Rooms>("ListRooms", None, json!({})).await.is_err());
+    let invalid = LiveKitConfig::new(
+        URL.into(),
+        KEY.into(),
+        "wrong-secret-longer-than-32-bytes!!".into(),
+    )
+    .expect("invalid signing key fixture");
+    assert!(
+        invalid
+            .rpc::<Rooms>("ListRooms", None, json!({}))
+            .await
+            .is_err()
+    );
     // Empty rooms exercise the production snapshot without requiring SQL access.
     let pool = sqlx::postgres::PgPoolOptions::new()
         .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
         .expect("lazy pool");
-    let report = config.reconcile_voice_access(&pool).await.expect("snapshot");
+    let report = config
+        .reconcile_voice_access(&pool)
+        .await
+        .expect("snapshot");
     assert_eq!(report.rooms_checked, 1);
     assert_eq!(report.participants_checked, 0);
     assert!(config.eviction_healthy());

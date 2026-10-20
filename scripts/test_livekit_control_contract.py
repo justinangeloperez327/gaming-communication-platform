@@ -80,9 +80,14 @@ logging:
                         if time.monotonic() >= deadline:
                             raise RuntimeError("LiveKit startup timed out") from None
                         time.sleep(0.2)
-                subprocess.run(["cargo", "test", "-p", "gaming-comms-server", "--lib",
-                                "--locked", TEST, "--", "--ignored", "--exact"],
-                               check=True, timeout=300)
+                result = subprocess.run(
+                    ["cargo", "test", "-p", "gaming-comms-server", "--lib", "--locked",
+                     TEST, "--", "--ignored", "--exact"],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=300)
+                print(result.stdout)
+                result.check_returncode()
+                if "test result: ok. 1 passed; 0 failed; 0 ignored;" not in result.stdout:
+                    raise RuntimeError("The selected contract test did not run exactly once")
                 if server.poll() is not None:
                     raise RuntimeError("LiveKit exited during the contract test")
             except BaseException:
