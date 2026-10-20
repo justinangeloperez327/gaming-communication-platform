@@ -7,6 +7,23 @@
 #include <thread>
 
 int main(int argc, char **argv) {
+    if (std::getenv("GCP_FIXTURE_VALIDATE_ENV")) {
+        for (const auto *name : {"DATABASE_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET",
+                                 "GCP_ACCESS_TOKEN", "GCP_REFRESH_TOKEN"}) {
+            if (std::getenv(name)) return 10;
+        }
+        const auto *runtime = std::getenv("GCP_FIXTURE_RUNTIME_VALUE");
+        if (!runtime || std::string_view{runtime} != "preserved") return 11;
+#ifdef _WIN32
+        if (!std::getenv("SystemRoot") || !std::getenv("PATH")) return 12;
+#endif
+        const auto *url = std::getenv("LIVEKIT_URL");
+        const auto *token = std::getenv("LIVEKIT_TOKEN");
+        if (argc == 2 && std::string_view{argv[1]} == "devices") {
+            if (url || token) return 13;
+        } else if (!url || !token || std::string_view{url} != "wss://fixture.invalid" ||
+                   std::string_view{token} != std::string(64, 'x')) return 14;
+    }
     if (argc == 2 && std::string_view{argv[1]} == "devices") {
         const auto *mode = std::getenv("GCP_FIXTURE_DEVICE_SCAN");
         if (mode && std::string_view{mode} == "oversized") {

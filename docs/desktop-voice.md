@@ -19,3 +19,9 @@ Sign-out stops local media and attempts API logout; offline logout can fail remo
 ### Device-scan output limits
 
 The Qt scanner consumes stdout incrementally, retains at most 64 KiB of device-list output and terminates an oversized scan. Unused stderr goes directly to the OS null device. Failed scans preserve the previous device list and selection; the next scan starts with a fresh buffer. Offline subprocess fixtures cover oversized output, retry and a 4 MiB stderr stream. This bounds retained application scan output; it is not a measured whole-process memory budget or hardware device acceptance result.
+
+### Native child environment
+
+Before every voice or device-scan launch, the desktop removes `DATABASE_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `GCP_ACCESS_TOKEN`, `GCP_REFRESH_TOKEN`, and inherited `LIVEKIT_URL`/`LIVEKIT_TOKEN` variables using case-insensitive matching. A voice launch then supplies only its newly authorized LiveKit URL and room token; device scans receive neither. OS/runtime environment settings remain available and the parent environment is unchanged. Stored QProcess launch environments are cleared after startup, completion or failed startup.
+
+Offline subprocess tests inject dummy credentials, including a mixed-case signing-secret name, and verify the actual scan/voice child environment, replacement room credentials and preserved runtime settings. This is filtering of known GCP credential variables, not a sandbox or an arbitrary-secret allowlist. Environment strings and SDK allocations are not guaranteed to be securely zeroized, and this does not protect against an administrator inspecting process memory.
