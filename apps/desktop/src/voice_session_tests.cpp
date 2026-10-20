@@ -135,12 +135,27 @@ int main(int argc, char **argv) {
         require(api.joins >= 2 && voice.status().contains("recheck failed"), "periodic backend authorization");
 
         api.revoke = false;
+        qputenv("GCP_FIXTURE_VOICE_OUTPUT", "burst");
         voice.joinListenOnly();
-        require(waitFor([&]() { return voice.connected(); }), "listen-only join");
+        require(waitFor([&]() { return voice.connected(); }), "listen-only join after diagnostic burst");
+        qunsetenv("GCP_FIXTURE_VOICE_OUTPUT");
         voice.setMuted(false);
         require(!voice.microphoneEnabled() && !voice.transmitting(), "listen-only cannot publish mic");
         voice.leave();
         require(waitFor([&]() { return !voice.busy(); }), "orderly Leave");
+
+        qputenv("GCP_FIXTURE_VOICE_OUTPUT", "oversized");
+        voice.joinWithMicrophone(true);
+        require(waitFor([&]() { return voice.connected(); }), "join before status overflow");
+        qunsetenv("GCP_FIXTURE_VOICE_OUTPUT");
+        voice.setMuted(false);
+        require(waitFor([&]() { return !voice.busy(); }), "status overflow must stop voice");
+        require(voice.status().contains("exceeded limit") && !voice.transmitting(),
+                "status overflow leaves microphone state safe");
+        voice.joinListenOnly();
+        require(waitFor([&]() { return voice.connected(); }), "rejoin after status overflow");
+        voice.leave();
+        require(waitFor([&]() { return !voice.busy(); }), "Leave after overflow retry");
 
         api.hold = true;
         const auto previous = api.joins;

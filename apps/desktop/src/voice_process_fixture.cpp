@@ -32,14 +32,23 @@ int main(int argc, char **argv) {
             std::string_view{argv[index + 1]} == "0") unlimited = true;
     }
     if (!managed || !unlimited) return 2;
+    const auto *outputMode = std::getenv("GCP_FIXTURE_VOICE_OUTPUT");
+    if (outputMode && std::string_view{outputMode} == "burst") {
+        const std::string line(128, 'd');
+        for (int index = 0; index < 256; ++index) std::cout << line << '\n';
+    }
     std::cout << "GCP_VOICE_EVENT:connected\nGCP_VOICE_EVENT:muted" << std::endl;
     std::string command;
     while (std::getline(std::cin, command)) {
         if (command == "stop") break;
         if (command == "mute" || command == "mode_ptt" || command == "mode_open")
             std::cout << "GCP_VOICE_EVENT:muted" << std::endl;
-        else if (command == "unmute" && microphone)
+        else if (command == "unmute" && microphone) {
             std::cout << "GCP_VOICE_EVENT:unmuted" << std::endl;
+            const auto *mode = std::getenv("GCP_FIXTURE_VOICE_OUTPUT");
+            if (mode && std::string_view{mode} == "oversized")
+                std::cout << std::string(16384, 'x') << std::flush;
+        }
     }
     std::cout << "GCP_VOICE_EVENT:disconnected" << std::endl;
 }

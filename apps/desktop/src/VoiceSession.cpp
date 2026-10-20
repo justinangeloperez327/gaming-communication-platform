@@ -181,64 +181,74 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
             emit runningChanged();
         }
     });
+    // Unused native diagnostics must not accumulate in an internal buffer.
+    process_.setStandardErrorFile(QProcess::nullDevice());
     // Never log child output or backend tokens.
     connect(&process_, &QProcess::readyReadStandardOutput, this, [this]() {
-        const QByteArray chunk = process_.readAllStandardOutput();
-        // Never print stdout: it may include diagnostic information. Parse only
-        // complete fixed-format status lines; bound buffered memory.
-        if (chunk.size() > 8192 || outputBuffer_.size() + chunk.size() > 8192) {
-            outputBuffer_.clear();
-            return;
-        }
-        outputBuffer_.append(chunk);
-        while (true) {
-            const auto newline = outputBuffer_.indexOf('\n');
-            if (newline < 0) break;
-            const QByteArray line = outputBuffer_.left(newline).trimmed();
-            outputBuffer_.remove(0, newline + 1);
-            if (line == "GCP_VOICE_EVENT:muted") {
-                transmitting_ = false;
-                muteWatchdog_.stop();
-                emit controlsChanged();
-            } else if (line == "GCP_VOICE_EVENT:unmuted" && !stopRequested_) {
-                transmitting_ = true;
-                emit controlsChanged();
-            } else if (line == "GCP_VOICE_EVENT:connected" && running() && !stopRequested_) {
-                connected_ = true;
-                connectWatchdog_.stop();
-                if (!authorizationTimer_.isActive() && !pending_) authorizationTimer_.start(qMax(100, runtime_.authorizationIntervalMs));
-                setStatus(QStringLiteral("Connected to LiveKit room (audio not verified)"));
-            } else if (line == "GCP_VOICE_EVENT:reconnecting" && connected_ && !stopRequested_) {
-                connected_ = false;
-                setStatus(QStringLiteral("Network interrupted · SDK reconnecting"));
-                connectWatchdog_.start(15000);
-            } else if (line == "GCP_VOICE_EVENT:reconnected" && !stopRequested_ && running()) {
-                connected_ = true;
-                connectWatchdog_.stop();
-                if (!authorizationTimer_.isActive() && !pending_) authorizationTimer_.start(qMax(100, runtime_.authorizationIntervalMs));
-                setStatus(QStringLiteral("LiveKit reconnected (audio not verified)"));
-            } else if (line == "GCP_VOICE_EVENT:device_lost" && !stopRequested_) {
-                connected_ = false;
-                deviceLost_ = true;
-                stopRequested_ = true;
-                setStatus(QStringLiteral("Selected audio device disconnected; stopping voice"));
-                connectWatchdog_.stop();
-                process_.terminate();
-                stopWatchdog_.start(2000);
-            } else if (line == "GCP_VOICE_EVENT:connection_lost" && !stopRequested_) {
-                connected_ = false;
-                setStatus(QStringLiteral("LiveKit connection lost · stopping voice"));
-                stopRequested_ = true;
-                connectWatchdog_.stop();
-                process_.terminate();
-                stopWatchdog_.start(2000);
-            } else if (line == "GCP_VOICE_EVENT:disconnected") {
-                connected_ = false;
-                setStatus(QStringLiteral("Disconnected from LiveKit room"));
+        while (process_.bytesAvailable() > 0 && !stopRequested_) {
+            const QByteArray chunk = process_.read(4096);
+            if (chunk.isEmpty()) break;
+            outputBuffer_.append(chunk);
+            while (true) {
+                const auto newline = outputBuffer_.indexOf('\n');
+                if (newline < 0) break;
+                if (newline > 8192) {
+                    outputBuffer_.clear();
+                    process_.closeReadChannel(QProcess::StandardOutput);
+                    stopWithReason(QStringLiteral("Voice status output exceeded limit; stopping voice"));
+                    return;
+                }
+                const QByteArray line = outputBuffer_.left(newline).trimmed();
+                outputBuffer_.remove(0, newline + 1);
+                if (line == "GCP_VOICE_EVENT:muted") {
+                    transmitting_ = false;
+                    muteWatchdog_.stop();
+                    emit controlsChanged();
+                } else if (line == "GCP_VOICE_EVENT:unmuted" && !stopRequested_) {
+                    transmitting_ = true;
+                    emit controlsChanged();
+                } else if (line == "GCP_VOICE_EVENT:connected" && running() && !stopRequested_) {
+                    connected_ = true;
+                    connectWatchdog_.stop();
+                    if (!authorizationTimer_.isActive() && !pending_) authorizationTimer_.start(qMax(100, runtime_.authorizationIntervalMs));
+                    setStatus(QStringLiteral("Connected to LiveKit room (audio not verified)"));
+                } else if (line == "GCP_VOICE_EVENT:reconnecting" && connected_ && !stopRequested_) {
+                    connected_ = false;
+                    setStatus(QStringLiteral("Network interrupted · SDK reconnecting"));
+                    connectWatchdog_.start(15000);
+                } else if (line == "GCP_VOICE_EVENT:reconnected" && !stopRequested_ && running()) {
+                    connected_ = true;
+                    connectWatchdog_.stop();
+                    if (!authorizationTimer_.isActive() && !pending_) authorizationTimer_.start(qMax(100, runtime_.authorizationIntervalMs));
+                    setStatus(QStringLiteral("LiveKit reconnected (audio not verified)"));
+                } else if (line == "GCP_VOICE_EVENT:device_lost" && !stopRequested_) {
+                    connected_ = false;
+                    deviceLost_ = true;
+                    stopRequested_ = true;
+                    setStatus(QStringLiteral("Selected audio device disconnected; stopping voice"));
+                    connectWatchdog_.stop();
+                    process_.terminate();
+                    stopWatchdog_.start(2000);
+                } else if (line == "GCP_VOICE_EVENT:connection_lost" && !stopRequested_) {
+                    connected_ = false;
+                    setStatus(QStringLiteral("LiveKit connection lost · stopping voice"));
+                    stopRequested_ = true;
+                    connectWatchdog_.stop();
+                    process_.terminate();
+                    stopWatchdog_.start(2000);
+                } else if (line == "GCP_VOICE_EVENT:disconnected") {
+                    connected_ = false;
+                    setStatus(QStringLiteral("Disconnected from LiveKit room"));
+                }
+            }
+            if (outputBuffer_.size() > 8192) {
+                outputBuffer_.clear();
+                process_.closeReadChannel(QProcess::StandardOutput);
+                stopWithReason(QStringLiteral("Voice status output exceeded limit; stopping voice"));
+                return;
             }
         }
     });
-    connect(&process_, &QProcess::readyReadStandardError, this, [this]() { process_.readAllStandardError(); });
 }
 
 VoiceSession::~VoiceSession() {
