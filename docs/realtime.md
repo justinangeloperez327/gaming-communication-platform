@@ -41,7 +41,7 @@ The server sends a `typing` event with the authenticated sender's user ID and `a
 ## Bounded resource use and session revocation
 
 - Maximum 200 WebSocket connections per text channel and four per user/channel per server process.
-- Broadcast ring buffer: 256 identifier-only events. A lagged client receives `resync_required` and is disconnected; events are **not** silently replayed.
+- Each subscribed channel has its own broadcast ring buffer of 256 identifier-only events. Traffic in other channels does not consume that buffer. The last subscription dropping removes the channel queue immediately; publishing without subscribers creates no queue or retained history. A lagged client receives `resync_required` and is disconnected; events are **not** silently replayed.
 - Outbound write deadline: three seconds. Incoming frames are restricted to 2 KiB.
 - Every forwarded event and a periodic ten-second check reverify **both** the PostgreSQL login session and current channel membership. A removed member or logged-out/expired session is disconnected.
 - A ping occurs during periodic checks; no client activity for 75 seconds closes the session.
@@ -60,3 +60,5 @@ The next production-hardening steps are distributed event propagation, durable r
 ## Automated acceptance
 
 `apps/server/tests/realtime_socket.rs` uses an actual loopback WebSocket server and temporary PostgreSQL user sessions to exercise authentication denial, nonmember denial, authorized subscription, message create/edit/delete notification, identifier-only payloads, typing, removal of a member while connected, and denial of subsequent connections. Remaining physical-device tests are unrelated to the backend event transport.
+
+Queue regression tests flood one channel while another subscriber remains unread, verify that only the flooded channel lags, confirm cleanup after the last listener drops (including concurrent drops), and check that a new subscription has no historical replay. These are deterministic in-process queue tests; the PostgreSQL/WebSocket integration tests continue to validate authorization and event delivery. There is no global connection cap or cross-instance event transport.
