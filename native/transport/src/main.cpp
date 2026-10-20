@@ -1,3 +1,4 @@
+#include "livekit_url.h"
 #include "telemetry.h"
 #include "frame_arrival_metrics.h"
 #include "screen_capture.h"
@@ -482,9 +483,7 @@ int run(const Options& options) {
         throw std::invalid_argument("Set LIVEKIT_URL and LIVEKIT_TOKEN first");
 
     const std::string_view endpoint(url);
-    if (!endpoint.starts_with("wss://") &&
-        !endpoint.starts_with("ws://localhost:") &&
-        !endpoint.starts_with("ws://127.0.0.1:")) {
+    if (!gcp::transport::permitted_livekit_url(endpoint)) {
         throw std::invalid_argument(
             "Use wss:// for remote hosts (ws:// allowed for local dev only)");
     }

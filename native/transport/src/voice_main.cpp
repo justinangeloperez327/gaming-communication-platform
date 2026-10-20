@@ -1,3 +1,4 @@
+#include "livekit_url.h"
 // Group 27: explicit-consent LiveKit native Windows voice diagnostic.
 // Uses the SDK's platform Audio Device Module for microphone, echo control,
 // and default speaker playout. No raw audio data is logged or stored.
@@ -329,9 +330,7 @@ int join(const Options& o) {
     if (!raw_url || !*raw_url || !raw_token || !*raw_token)
         throw std::invalid_argument("LIVEKIT_URL and LIVEKIT_TOKEN required");
     const std::string_view url(raw_url);
-    if (!url.starts_with("wss://") &&
-        !url.starts_with("ws://127.0.0.1:") &&
-        !url.starts_with("ws://localhost:"))
+    if (!gcp::transport::permitted_livekit_url(url))
         throw std::invalid_argument("Only wss:// or loopback ws:// allowed");
 
     livekit::PlatformAudio audio;
