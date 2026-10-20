@@ -2,8 +2,27 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <cstdlib>
+#include <chrono>
+#include <thread>
 
 int main(int argc, char **argv) {
+    if (argc == 2 && std::string_view{argv[1]} == "devices") {
+        const auto *mode = std::getenv("GCP_FIXTURE_DEVICE_SCAN");
+        if (mode && std::string_view{mode} == "oversized") {
+            const std::string chunk(4096, 'x');
+            for (int index = 0; index < 64; ++index) std::cout << chunk << std::flush;
+            // A bounded reader must terminate this child before its scan watchdog.
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+        } else if (mode && std::string_view{mode} == "stderr") {
+            const std::string chunk(4096, 'x');
+            for (int index = 0; index < 1024; ++index) std::cerr << chunk;
+        }
+        const bool recovered = mode && std::string_view{mode} == "stderr";
+        std::cout << "input [0] " << (recovered ? "Recovered microphone" : "Fixture microphone")
+                  << " | id=fixture-input\noutput [0] Fixture speaker | id=fixture-output\n";
+        return 0;
+    }
     bool managed = false, unlimited = false, microphone = false;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument{argv[index]};

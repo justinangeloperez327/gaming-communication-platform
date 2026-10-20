@@ -15,3 +15,7 @@ The UI distinguishes running process, SDK connected acknowledgment, reconnecting
 Desktop calls now continue until Leave using a leased native control pipe and periodic backend authorization. Microphone calls start muted; Enable mic permits transmission, and the optional F8 push-to-talk mode works outside the Qt window. Switching modes mutes the call and requires Enable mic again. Standalone diagnostics keep their bounded duration defaults. Read [long-session voice](long-session-voice.md) for control safety, token/reconnect boundaries and tests.
 
 Sign-out stops local media and attempts API logout; offline logout can fail remotely. Active SFU eviction after revoked membership/session is not implemented; periodic checks only constrain this cooperative desktop client. Physical two-user voice, permissions, headset behavior, gaming PTT and multi-hour calls still need manual Windows acceptance.
+
+### Device-scan output limits
+
+The Qt scanner consumes stdout incrementally, retains at most 64 KiB of device-list output and terminates an oversized scan. Unused stderr goes directly to the OS null device. Failed scans preserve the previous device list and selection; the next scan starts with a fresh buffer. Offline subprocess fixtures cover oversized output, retry and a 4 MiB stderr stream. This bounds retained application scan output; it is not a measured whole-process memory budget or hardware device acceptance result.

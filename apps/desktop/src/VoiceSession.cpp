@@ -16,6 +16,7 @@
 #include <utility>
 
 namespace {
+constexpr qsizetype deviceScanOutputLimit = 64 * 1024;
 bool permittedUrl(const QUrl &url) {
     if (!url.isValid() || url.userInfo().size() || url.hasFragment() || url.hasQuery()) return false;
     const QString host = url.host().toLower();
@@ -45,6 +46,9 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         stopWithReason(QStringLiteral("Microphone mute was not acknowledged; stopping voice"));
     });
     deviceScanWatchdog_.setSingleShot(true);
+    // Scan diagnostics are unused; do not retain them in QProcess buffers.
+    devices_.setStandardErrorFile(QProcess::nullDevice());
+    connect(&devices_, &QProcess::readyReadStandardOutput, this, &VoiceSession::readDeviceScanOutput);
     idleDeviceRefresh_.setInterval(30000);
     connect(&idleDeviceRefresh_, &QTimer::timeout, this, [this]() {
         if (account_->signedIn()) scanDevices();
@@ -55,11 +59,11 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
     });
     connect(&devices_, &QProcess::finished, this, [this](int code, QProcess::ExitStatus exit) {
         deviceScanWatchdog_.stop();
-        const QByteArray data = devices_.readAllStandardOutput();
-        const QByteArray err = devices_.readAllStandardError();
-        Q_UNUSED(err);
+        readDeviceScanOutput();
+        devices_.closeReadChannel(QProcess::StandardOutput);
+        const QByteArray data = std::exchange(deviceScanOutput_, QByteArray{});
         QVariantList inputs, outputs;
-        if (code == 0 && exit == QProcess::NormalExit && data.size() <= 65536) {
+        if (code == 0 && exit == QProcess::NormalExit && !deviceScanOverflow_) {
             for (const QByteArray &line : data.split('\n')) {
                 const bool input = line.startsWith("input [");
                 if (!input && !line.startsWith("output [")) continue;
@@ -73,7 +77,7 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
                 if (input) inputs.append(item); else outputs.append(item);
             }
         }
-        if (code != 0 || exit != QProcess::NormalExit || data.size() > 65536) {
+        if (code != 0 || exit != QProcess::NormalExit || deviceScanOverflow_) {
             // Failed scans must not erase a previously selected device.
             setStatus(QStringLiteral("Audio device scan failed; retry manually"));
             emit devicesChanged();
@@ -265,10 +269,26 @@ bool VoiceSession::available() const {
 
 void VoiceSession::scanDevices() {
     if (busy() || scanning() || !available()) return;
+    deviceScanOutput_.clear();
+    deviceScanOverflow_ = false;
     devices_.setProgram(nativeProgram());
     devices_.setArguments({QStringLiteral("devices")});
     devices_.start();
 
+}
+void VoiceSession::readDeviceScanOutput() {
+    if (deviceScanOverflow_) return;
+    while (devices_.bytesAvailable() > 0) {
+        const QByteArray chunk = devices_.read(4096);
+        if (chunk.isEmpty()) break;
+        if (chunk.size() > deviceScanOutputLimit - deviceScanOutput_.size()) {
+            deviceScanOverflow_ = true;
+            deviceScanOutput_.clear();
+            devices_.kill();
+            return;
+        }
+        deviceScanOutput_.append(chunk);
+    }
 }
 void VoiceSession::selectInput(const QString &id) {
     if (busy()) return;

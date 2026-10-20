@@ -95,6 +95,25 @@ int main(int argc, char **argv) {
         const auto executable = QDir(QCoreApplication::applicationDirPath())
             .filePath(QStringLiteral("gcp-voice-process-fixture.exe"));
         VoiceSession voice{&account, &directory, nullptr, VoiceRuntime{executable, 500}};
+        voice.scanDevices();
+        require(waitFor([&]() { return !voice.scanning(); }), "normal scan completion");
+        require(voice.inputs().size() == 1 && voice.outputs().size() == 1, "device scan parsing");
+        const auto previousInputs = voice.inputs();
+        const auto previousOutputs = voice.outputs();
+        qputenv("GCP_FIXTURE_DEVICE_SCAN", "oversized");
+        voice.scanDevices();
+        require(waitFor([&]() { return !voice.scanning(); }), "oversized scan stops before watchdog");
+        qunsetenv("GCP_FIXTURE_DEVICE_SCAN");
+        require(voice.status().contains("scan failed"), "oversized scan fails closed");
+        require(voice.inputs() == previousInputs && voice.outputs() == previousOutputs,
+                "failed scan preserves previous device list");
+        qputenv("GCP_FIXTURE_DEVICE_SCAN", "stderr");
+        voice.scanDevices();
+        require(waitFor([&]() { return !voice.scanning(); }), "stderr flood scan completion");
+        qunsetenv("GCP_FIXTURE_DEVICE_SCAN");
+        require(voice.inputs().size() == 1 && voice.outputs() == previousOutputs &&
+                voice.inputs().first().toMap().value("name").toString() == "Recovered microphone",
+                "scan retries after overflow and discards stderr");
         account.signIn(api.origin(), QStringLiteral("test@example.test"), QStringLiteral("test password"));
         require(waitFor([&]() { return !directory.communities().isEmpty(); }), "community listing");
         directory.chooseCommunity(community);
