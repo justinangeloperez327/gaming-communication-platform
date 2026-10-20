@@ -17,6 +17,8 @@ GCP is an experimental Windows x64 communication application for private gaming 
 
 See [long-session voice and controls](docs/long-session-voice.md) for the latest voice behavior and tests.
 
+The ZIP includes a [versioned notice baseline](docs/windows-third-party-notices.md); complete transitive attribution review remains pending.
+
 See the [stabilization audit](docs/stabilization-audit.md) for fixes, evidence and remaining gates. Older numbered group documents describe incremental development; use this README and current subsystem guides for present capability boundaries.
 
 ## Build Windows desktop

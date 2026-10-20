@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "qt_version": "6.8.3",
+  "livekit_sdk_version": "1.12.2",
+  "coverage": "baseline_only_transitive_attributions_pending",
+  "files": [
+    {
+      "path": "qt/LGPL-3.0-only.txt",
+      "source_url": "https://raw.githubusercontent.com/qt/qtbase/c07c2d5a527a644d36e7853d55132ae38921682f/LICENSES/LGPL-3.0-only.txt",
+      "upstream_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768",
+      "bytes": 7651
+    },
+    {
+      "path": "qt/GPL-3.0-only.txt",
+      "source_url": "https://raw.githubusercontent.com/qt/qtbase/c07c2d5a527a644d36e7853d55132ae38921682f/LICENSES/GPL-3.0-only.txt",
+      "upstream_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "bytes": 35147
+    },
+    {
+      "path": "qt/Qt-GPL-exception-1.0.txt",
+      "source_url": "https://raw.githubusercontent.com/qt/qtbase/c07c2d5a527a644d36e7853d55132ae38921682f/LICENSES/Qt-GPL-exception-1.0.txt",
+      "upstream_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "sha256": "40678d338ce53cd93f8b22b281a2ecbcaa3ee65ce60b25ffb0c462b0530846b2",
+      "bytes": 965
+    },
+    {
+      "path": "livekit/LICENSE",
+      "source_url": "https://raw.githubusercontent.com/livekit/client-sdk-cpp/5a34a65c3bfcd699bcb80261cb5f178f2fcf6174/LICENSE",
+      "upstream_commit": "5a34a65c3bfcd699bcb80261cb5f178f2fcf6174",
+      "sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b",
+      "bytes": 10142
+    },
+    {
+      "path": "livekit/NOTICE",
+      "source_url": "https://raw.githubusercontent.com/livekit/client-sdk-cpp/5a34a65c3bfcd699bcb80261cb5f178f2fcf6174/NOTICE",
+      "upstream_commit": "5a34a65c3bfcd699bcb80261cb5f178f2fcf6174",
+      "sha256": "6d0f7c5e0deb284362296c5da110dd353831da2e67ca77cb5abc051b951b0fac",
+      "bytes": 553
+    }
+  ]
+}
