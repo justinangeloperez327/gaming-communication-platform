@@ -10,12 +10,28 @@
 #include <QJsonObject>
 #include <QNetworkRequest>
 #include <QProcessEnvironment>
+#include <QStringList>
 #include <QTimer>
 #include <QUrl>
 #include <QUuid>
 #include <utility>
 
 namespace {
+QProcessEnvironment nativeProcessEnvironment() {
+    auto env = QProcessEnvironment::systemEnvironment();
+    const QStringList credentials{
+        QStringLiteral("DATABASE_URL"), QStringLiteral("LIVEKIT_API_KEY"),
+        QStringLiteral("LIVEKIT_API_SECRET"), QStringLiteral("GCP_ACCESS_TOKEN"),
+        QStringLiteral("GCP_REFRESH_TOKEN"), QStringLiteral("LIVEKIT_URL"),
+        QStringLiteral("LIVEKIT_TOKEN")
+    };
+    // Windows environment names are case-insensitive. Remove the actual key
+    // spelling, including mixed-case values inherited from a developer shell.
+    for (const auto &key : env.keys()) {
+        if (credentials.contains(key, Qt::CaseInsensitive)) env.remove(key);
+    }
+    return env;
+}
 constexpr qsizetype deviceScanOutputLimit = 64 * 1024;
 bool permittedUrl(const QUrl &url) {
     if (!url.isValid() || url.userInfo().size() || url.hasFragment() || url.hasQuery()) return false;
@@ -58,6 +74,7 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         if (scanning()) devices_.kill();
     });
     connect(&devices_, &QProcess::finished, this, [this](int code, QProcess::ExitStatus exit) {
+        devices_.setProcessEnvironment(QProcessEnvironment());
         deviceScanWatchdog_.stop();
         readDeviceScanOutput();
         devices_.closeReadChannel(QProcess::StandardOutput);
@@ -95,11 +112,13 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         emit devicesChanged();
     });
     connect(&devices_, &QProcess::started, this, [this]() {
+        devices_.setProcessEnvironment(QProcessEnvironment());
         deviceScanWatchdog_.start(6000);
         emit devicesChanged();
     });
     connect(&devices_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
+            devices_.setProcessEnvironment(QProcessEnvironment());
             deviceScanWatchdog_.stop();
             setStatus(QStringLiteral("Cannot start audio device scan; retry manually"));
             emit devicesChanged();
@@ -283,6 +302,7 @@ void VoiceSession::scanDevices() {
     deviceScanOverflow_ = false;
     devices_.setProgram(nativeProgram());
     devices_.setArguments({QStringLiteral("devices")});
+    devices_.setProcessEnvironment(nativeProcessEnvironment());
     devices_.start();
 
 }
@@ -421,11 +441,9 @@ void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck) {
 
 void VoiceSession::launch(bool publishMicrophone, const QString &url, const QString &token) {
     if (running()) return;
-    auto env = QProcessEnvironment::systemEnvironment();
+    auto env = nativeProcessEnvironment();
     env.insert(QStringLiteral("LIVEKIT_URL"), url);
     env.insert(QStringLiteral("LIVEKIT_TOKEN"), token);
-    env.remove(QStringLiteral("GCP_ACCESS_TOKEN"));
-    env.remove(QStringLiteral("GCP_REFRESH_TOKEN"));
     stopReason_.clear();
     muted_ = true;
     transmitting_ = false;

@@ -89,6 +89,17 @@ struct ApiFixture {
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     try {
+        // The actual child fixture refuses to start if these dummy credentials
+        // survive inheritance. No test prints environment values or secrets.
+        qputenv("DATABASE_URL", "dummy-database-credential");
+        qputenv("LIVEKIT_API_KEY", "dummy-admin-key");
+        qputenv("LiVeKiT_ApI_SeCrEt", "dummy-admin-secret");
+        qputenv("GCP_ACCESS_TOKEN", "dummy-access");
+        qputenv("GCP_REFRESH_TOKEN", "dummy-refresh");
+        qputenv("LIVEKIT_URL", "wss://inherited.invalid");
+        qputenv("LIVEKIT_TOKEN", "dummy-inherited-room-token");
+        qputenv("GCP_FIXTURE_VALIDATE_ENV", "1");
+        qputenv("GCP_FIXTURE_RUNTIME_VALUE", "preserved");
         ApiFixture api;
         AccountSession account;
         ChannelDirectory directory{&account};
@@ -170,6 +181,9 @@ int main(int argc, char **argv) {
         require(waitFor([&]() { return voice.connected(); }), "rejoin after cancellation");
         account.signOut();
         require(waitFor([&]() { return !voice.busy(); }), "logout stops voice");
+        require(qgetenv("DATABASE_URL") == "dummy-database-credential" &&
+                qgetenv("LIVEKIT_TOKEN") == "dummy-inherited-room-token",
+                "child filtering must not mutate the parent environment");
         std::cout << "Offline Qt voice subprocess and authorization tests passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
