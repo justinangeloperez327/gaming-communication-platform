@@ -66,6 +66,7 @@ private:
     bool sendControl(const QByteArray &command);
     void stopWithReason(const QString &reason);
     void resetControls();
+    void readDeviceScanOutput();
     void setStatus(const QString &value);
     VoiceRuntime runtime_;
     QString nativeProgram() const;
@@ -73,6 +74,8 @@ private:
     ChannelDirectory *directory_ = nullptr;
     QProcess process_;
     QProcess devices_;
+    QByteArray deviceScanOutput_;
+    bool deviceScanOverflow_ = false;
     QVariantList inputs_, outputs_;
     QString inputId_, outputId_;
     QNetworkAccessManager network_;
