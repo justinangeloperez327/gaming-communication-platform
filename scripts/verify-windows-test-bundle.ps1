@@ -45,4 +45,5 @@ foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -Force -File) {
     if ($file.FullName -eq $manifestPath) { continue }
     if (-not $expected.ContainsKey($file.FullName)) { throw "Unmanifested file: $($file.Name)" }
 }
+& (Join-Path $PSScriptRoot 'verify-windows-notices.ps1') -BundleDirectory $root
 Write-Host "Package file sizes and SHA-256 hashes verified ($($expected.Count) files)."
