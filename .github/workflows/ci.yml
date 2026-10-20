@@ -54,6 +54,8 @@ jobs:
           /tmp/gcp-parser-tests
           g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/voice_control_tests.cpp -o /tmp/gcp-voice-control-tests
           /tmp/gcp-voice-control-tests
+          g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/livekit_url_tests.cpp -o /tmp/gcp-livekit-url-tests
+          /tmp/gcp-livekit-url-tests
       - name: Offline physical GPU evidence validator tests
         run: python3 -m unittest discover -s scripts -p 'test_validate_hardware_stream.py'
       - name: Frame-time comparison tests

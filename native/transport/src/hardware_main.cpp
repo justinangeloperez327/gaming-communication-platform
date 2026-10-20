@@ -1,3 +1,4 @@
+#include "livekit_url.h"
 #include "hardware_h264_bridge.h"
 #include "h264_access_unit.h"
 #include "frame_arrival_metrics.h"
@@ -165,9 +166,7 @@ int publish(const Options& options) {
     if (!endpoint || !*endpoint || !token || !*token)
         throw std::invalid_argument("Set LIVEKIT_URL and LIVEKIT_TOKEN");
     const std::string_view endpoint_view(endpoint);
-    if (!endpoint_view.starts_with("wss://") &&
-        !endpoint_view.starts_with("ws://localhost:") &&
-        !endpoint_view.starts_with("ws://127.0.0.1:"))
+    if (!gcp::transport::permitted_livekit_url(endpoint_view))
         throw std::invalid_argument("Use wss:// for non-loopback LiveKit servers");
 
     livekit::initialize(livekit::LogLevel::Warn);

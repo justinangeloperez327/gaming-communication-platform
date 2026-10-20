@@ -32,6 +32,10 @@ foreach(_sdk_runtime IN ITEMS livekit.dll livekit_ffi.dll)
 endforeach()
 
 if(BUILD_TESTING)
+    add_executable(gcp-livekit-url-tests tests/livekit_url_tests.cpp)
+    target_include_directories(gcp-livekit-url-tests PRIVATE src)
+    target_compile_features(gcp-livekit-url-tests PRIVATE cxx_std_20)
+    add_test(NAME livekit_url_authority_policy COMMAND $<TARGET_FILE:gcp-livekit-url-tests>)
     add_test(NAME livekit_smoke_args
         COMMAND $<TARGET_FILE:gcp-livekit-smoke> --self-test)
     add_test(NAME livekit_smoke_help

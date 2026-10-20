@@ -53,3 +53,9 @@ Do not send the API secret to desktop clients or put credentials in URLs, analyt
 The Rust unit test **verifies the real HS256 signature** and decodes the issued claims, including restricted media sources and token expiry. PostgreSQL integration tests create actual community membership, voice and text channels; test nonmember, wrong-community, wrong-channel-type, removed-member and revoked-session denial; ensure only a valid user can obtain a token with noncacheable headers. CI does not contact a LiveKit server, test microphone hardware, or confirm actual room join/playback.
 
 The native C++ voice process connects to authorized rooms; see [desktop voice](desktop-voice.md). Physical Windows two-participant audio tests remain mandatory before claiming voice is working end to end.
+
+## Native endpoint policy
+
+All three native LiveKit executables use the same endpoint policy before initializing media or connecting. Configure a server origin such as `wss://voice.example.com:443` or loopback development `ws://127.0.0.1:7880`; a trailing root slash is allowed. Cleartext is restricted to the exact `localhost` or `127.0.0.1` host. Secure IPv6 literals must be bracketed, for example `wss://[2001:db8::1]:443`.
+
+Embedded credentials, non-root paths, queries, fragments, percent escapes, backslashes, control/non-ASCII bytes and invalid ports are rejected. Use an ASCII/Punycode hostname when needed; IPv6 zone identifiers are not accepted. A misleading prefix such as `ws://127.0.0.1:7880@example.invalid` is rejected because its authority is not loopback. URL validation does not replace TLS certificate verification, room authorization, or explicit microphone/screen consent.
