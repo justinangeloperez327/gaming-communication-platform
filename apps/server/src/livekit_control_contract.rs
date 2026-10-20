@@ -103,8 +103,12 @@ async fn real_roomservice_contract() {
     assert_eq!(report.rooms_checked, 1);
     assert_eq!(report.participants_checked, 0);
     assert!(config.eviction_healthy());
-    let _: Value = config
-        .rpc("DeleteRoom", Some(&room), json!({"room": room}))
-        .await
-        .expect("cleanup room");
+    let deleted = request(
+        &config,
+        "DeleteRoom",
+        json!({"roomCreate": true}),
+        json!({"room": room}),
+    )
+    .await;
+    assert!(deleted.status().is_success(), "cleanup room");
 }
