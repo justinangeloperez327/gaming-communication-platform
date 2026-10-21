@@ -19,7 +19,7 @@ See [long-session voice and controls](docs/long-session-voice.md) for the latest
 
 The ZIP includes a [versioned notice baseline](docs/windows-third-party-notices.md); complete transitive attribution review remains pending.
 
-See the [stabilization audit](docs/stabilization-audit.md) for fixes, evidence and remaining gates. Older numbered group documents describe incremental development; use this README and current subsystem guides for present capability boundaries.
+See the [current stabilization audit](docs/stabilization-status.md) for completed fixes, verified functionality, CI evidence and remaining installer blockers. The [15 October audit](docs/stabilization-audit.md) and older numbered group documents are historical; use this README and current subsystem guides for present capability boundaries.
 
 ## Build Windows desktop
 
@@ -60,4 +60,4 @@ CI additionally tests staged and extracted Qt/QML startup, native SDK initializa
 
 ## Verification boundaries
 
-CI builds Windows media code and tests offline logic. It does not join a live SFU, hear a friend's audio, exercise physical capture/headsets, test a clean consumer PC, or measure gaming CPU/GPU/RAM/FPS. Those acceptance checks remain outstanding. See [physical GPU acceptance](docs/physical-gpu-acceptance.md) and [gaming benchmark](docs/gaming-voice-benchmark.md).
+CI builds Windows media code, tests offline logic, and checks the actual pinned LiveKit server's control API on loopback with no media peers. It does not verify an active media-room join, hear a friend's audio, exercise physical capture/headsets, test a clean consumer PC, or measure gaming CPU/GPU/RAM/FPS. Those acceptance checks remain outstanding. See [physical GPU acceptance](docs/physical-gpu-acceptance.md) and [gaming benchmark](docs/gaming-voice-benchmark.md).
