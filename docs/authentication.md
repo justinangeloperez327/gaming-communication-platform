@@ -26,6 +26,13 @@ Register handle: 3–32 lowercase alphanumeric/underscore; trimmed display name 
 
 Register/login/refresh return JSON with user, access_token, refresh_token, token_type, expires_in. Logout returns HTTP 204. Keep tokens private and use HTTPS for anything outside loopback.
 
+The desktop clears its local session before best-effort remote logout. Logout
+responses are capped at 16 KiB, including error/proxy bodies with no declared
+length, and retain the five-second transfer timeout. Oversized replies are
+aborted without restoring the local session. Real loopback Qt tests cover
+advertised and streamed oversized logout replies; they do not prove remote
+revocation during network failure.
+
 ## Local setup
 
 Run the versioned sessions migration with GCP_RUN_MIGRATIONS=1 using the PostgreSQL setup described in [postgresql.md](postgresql.md), then unset that flag on ordinary server instances.

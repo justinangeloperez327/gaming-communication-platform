@@ -117,5 +117,7 @@ void AccountSession::signOut() {
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setTransferTimeout(5000);
     auto *reply = network_.post(request, QByteArray());
+    // Logout has no useful response body; still bound error/proxy responses.
+    boundReply(reply, 16384);
     connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
 }
