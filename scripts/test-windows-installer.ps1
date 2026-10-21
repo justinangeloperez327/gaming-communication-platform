@@ -40,6 +40,12 @@ try {
     $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Gaming Communication Platform Alpha/Gaming Communication Platform Alpha.lnk'
     if (-not (Test-Path -LiteralPath $shortcut)) { throw 'Start menu shortcut missing' }
     $payload = @(Get-Content -LiteralPath (Join-Path $appDir 'SHA256-MANIFEST.json') -Raw | ConvertFrom-Json)
+    foreach ($runtime in @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $appDir $runtime) -PathType Leaf)) { throw "App-local CRT missing: $runtime" }
+    }
+    # Avoid resolving Qt imports/plugins or compiler DLLs through build-tool paths.
+    $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+    Remove-Item Env:QT_PLUGIN_PATH, Env:QML2_IMPORT_PATH, Env:QML_IMPORT_PATH -ErrorAction SilentlyContinue
     $env:QT_QPA_PLATFORM = 'offscreen'
     Invoke-CheckedProcess (Join-Path $appDir 'gcp-desktop.exe') @('--smoke-qml') 20
     Invoke-CheckedProcess (Join-Path $appDir 'gcp-livekit-voice.exe') @('--self-test') 20

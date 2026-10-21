@@ -34,6 +34,12 @@ the normal Qt/LiveKit bundle, it runs:
 The smoke test installs into a temporary directory and changes the current user's
 uninstall registration. Run it only on a disposable Windows test account/runner.
 The installer wraps every manifest-listed runtime and baseline notice file.
+The bundle includes VS 2022 x64 CRT DLLs app-locally, discovered from the installed
+toolchain's redistributable directory. Windows 10/11 provides the system UCRT.
+Installed smoke checks clear developer Qt import/plugin and PATH entries; hosted
+Windows still does not substitute for a clean consumer-PC test.
+App-local CRT security updates require a rebuilt application package; this alpha
+has no automatic updater.
 Installed payload checks allow only Inno's exact uninstall metadata pair beyond
 the original manifest. Unsigned installer and portable hashes accompany the
 release; checksums are integrity evidence, not publisher authentication.
