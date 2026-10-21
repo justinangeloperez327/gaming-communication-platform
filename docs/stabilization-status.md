@@ -1,5 +1,10 @@
 # Current stabilization audit — 21 October 2026
 
+On 22 October the owner requested a release and installer despite the remaining
+acceptance gaps. See the [alpha installer guide](windows-installer.md) for that
+subsequent work. The evidence and physical limitations in this dated audit remain
+unchanged; availability of an installer does not close them.
+
 GCP remains an experimental private Windows communication application. Automated
 checks cover real backend logic, desktop HTTP/QProcess behavior, native policy
 logic and portable packaging. They do not establish stable two-user audio,
