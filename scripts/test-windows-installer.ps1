@@ -7,11 +7,17 @@ $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('gcp-installer-' + [Guid]::New
 $appDir = Join-Path $testRoot 'Application With Spaces'
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 function Invoke-CheckedProcess([string]$Program, [string[]]$Arguments, [int]$Timeout = 90) {
-    $child = Start-Process -FilePath $Program -ArgumentList $Arguments -PassThru
+    $logBase = Join-Path $testRoot ([Guid]::NewGuid().ToString('N'))
+    $child = Start-Process -FilePath $Program -ArgumentList $Arguments -WorkingDirectory (Split-Path $Program) -RedirectStandardOutput "$logBase.stdout" -RedirectStandardError "$logBase.stderr" -PassThru
     try {
         $child | Wait-Process -Timeout $Timeout -ErrorAction Stop
         $child.Refresh()
         if ($null -eq $child.ExitCode -or $child.ExitCode -ne 0) { throw "Process failed: $Program ($($child.ExitCode))" }
+    } catch {
+        foreach ($log in @("$logBase.stdout", "$logBase.stderr")) {
+            if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 80 | Write-Host }
+        }
+        throw
     } finally {
         if (-not $child.HasExited) { Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue }
         $child.Dispose()
@@ -47,6 +53,8 @@ try {
     $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
     Remove-Item Env:QT_PLUGIN_PATH, Env:QML2_IMPORT_PATH, Env:QML_IMPORT_PATH -ErrorAction SilentlyContinue
     $env:QT_QPA_PLATFORM = 'offscreen'
+    $env:QT_FORCE_STDERR_LOGGING = '1'
+    $env:QT_DEBUG_PLUGINS = '1'
     Invoke-CheckedProcess (Join-Path $appDir 'gcp-desktop.exe') @('--smoke-qml') 20
     Invoke-CheckedProcess (Join-Path $appDir 'gcp-livekit-voice.exe') @('--self-test') 20
     # User-created files must survive uninstall; remove only installed payload files.

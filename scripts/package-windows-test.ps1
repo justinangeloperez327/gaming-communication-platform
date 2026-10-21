@@ -30,6 +30,19 @@ New-Item -ItemType Directory -Path $output -Force | Out-Null
 foreach ($file in $required) { Copy-Item -LiteralPath (Join-Path $build $file) -Destination $output }
 & $deploy.Source --release --qmldir (Join-Path $PSScriptRoot '..\apps\desktop\qml') (Join-Path $output 'gcp-desktop.exe')
 if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE" }
+# The regular Windows platform plugin is deployed by windeployqt. Our no-display
+# startup check also needs the offscreen plugin, without a developer Qt fallback.
+$qtRoot = Split-Path (Split-Path $deploy.Source -Parent) -Parent
+$offscreen = Join-Path $qtRoot 'plugins/platforms/qoffscreen.dll'
+if (-not (Test-Path -LiteralPath $offscreen -PathType Leaf)) { throw 'Qt offscreen startup-test plugin missing' }
+Copy-Item -LiteralPath $offscreen -Destination (Join-Path $output 'platforms/qoffscreen.dll')
+@'
+[Paths]
+Prefix=.
+Plugins=.
+QmlImports=qml
+Translations=translations
+'@ | Set-Content -LiteralPath (Join-Path $output 'qt.conf') -Encoding ascii
 # Hosted builds do not necessarily export VCINSTALLDIR for windeployqt. Include
 # the VS 2022 x64 CRT app-locally instead of depending on the host's global runtime.
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
