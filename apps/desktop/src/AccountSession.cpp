@@ -54,7 +54,7 @@ void AccountSession::sendAuth(const QString &path, const QByteArray &payload, bo
     request.setTransferTimeout(10000);
     status_ = isRefresh ? QStringLiteral("Refreshing session") : QStringLiteral("Signing in");
     pending_ = network_.post(request, payload);
-    boundReply(pending_, 16384);
+    boundReply(pending_, 16384, 10000);
     emit changed();
     auto *reply = pending_;
     const quint64 id = generation_;
@@ -118,6 +118,6 @@ void AccountSession::signOut() {
     request.setTransferTimeout(5000);
     auto *reply = network_.post(request, QByteArray());
     // Logout has no useful response body; still bound error/proxy responses.
-    boundReply(reply, 16384);
+    boundReply(reply, 16384, 5000);
     connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
 }

@@ -33,6 +33,14 @@ aborted without restoring the local session. Real loopback Qt tests cover
 advertised and streamed oversized logout replies; they do not prove remote
 revocation during network failure.
 
+Desktop HTTP replies also have an absolute event-loop deadline: ten seconds for
+login, refresh, channel lists and voice authorization; five seconds for logout.
+Receiving more data does not restart that deadline. The existing inactivity
+timeouts and response-size caps still apply. Timers belong to their replies and
+stop on completion; cancellation/destruction also releases them. Loopback tests
+exercise both silent peers and continuously trickling bodies. These are Qt
+event-loop deadlines, not guarantees while the desktop thread is blocked.
+
 ## Local setup
 
 Run the versioned sessions migration with GCP_RUN_MIGRATIONS=1 using the PostgreSQL setup described in [postgresql.md](postgresql.md), then unset that flag on ordinary server instances.
