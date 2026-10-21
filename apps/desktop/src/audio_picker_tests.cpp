@@ -38,5 +38,32 @@ int main(int argc, char **argv) {
     if (!selected(1, QStringLiteral("first"))) return 6;
     picker->setProperty("selectedDeviceId", QString{});
     if (!selected(0, {})) return 7;
+    QQmlComponent directoryComponent(&engine, QUrl::fromLocalFile(QStringLiteral(GCP_ID_PICKER_PATH)));
+    const std::unique_ptr<QObject> directory(directoryComponent.create());
+    if (!directory) {
+        std::cerr << directoryComponent.errorString().toStdString();
+        return 8;
+    }
+    const auto directorySelected = [&](int index, const QString &id) {
+        QCoreApplication::processEvents();
+        return directory->property("currentIndex").toInt() == index
+            && directory->property("currentValue").toString() == id;
+    };
+    directory->setProperty("emptyLabel", QStringLiteral("Choose a voice channel"));
+    directory->setProperty("options", QVariantList{first, second});
+    if (!directorySelected(-1, {}) ||
+        directory->property("displayText").toString() != QStringLiteral("Choose a voice channel")) return 9;
+    directory->setProperty("selectedId", QStringLiteral("second"));
+    if (!directorySelected(1, QStringLiteral("second"))) return 10;
+    directory->setProperty("options", QVariantList{second, first});
+    if (!directorySelected(0, QStringLiteral("second"))) return 11;
+    directory->setProperty("selectedId", QString{});
+    if (!directorySelected(-1, {})) return 12;
+    directory->setProperty("options", QVariantList{});
+    if (!directorySelected(-1, {})) return 13;
+    directory->setProperty("options", QVariantList{first, second});
+    if (!directorySelected(-1, {})) return 14;
+    directory->setProperty("selectedId", QStringLiteral("missing"));
+    if (!directorySelected(-1, {})) return 15;
     std::cout << "QML audio picker identity and fallback tests passed\n";
 }

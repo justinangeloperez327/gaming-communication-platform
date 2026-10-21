@@ -94,26 +94,24 @@ ApplicationWindow {
                     font.weight: Font.DemiBold
                 }
 
-                ComboBox {
+                IdPicker {
                     id: communityPicker
                     Layout.fillWidth: true
                     enabled: accountSession.signedIn && !channelDirectory.busy && !voiceSession.busy
-                    model: channelDirectory.communities
-                    textRole: "name"
-                    valueRole: "id"
+                    options: channelDirectory.communities
+                    selectedId: channelDirectory.communityId
+                    emptyLabel: "Choose a community"
                     onActivated: channelDirectory.chooseCommunity(currentValue)
-                    Component.onCompleted: currentIndex = -1
                 }
                 Text { text: "VOICE CHANNELS"; color: root.mutedTone; font.pixelSize: 11 }
-                ComboBox {
+                IdPicker {
                     id: voicePicker
                     Layout.fillWidth: true
                     enabled: accountSession.signedIn && channelDirectory.communityId.length > 0 && !channelDirectory.busy && !voiceSession.busy
-                    model: channelDirectory.channels
-                    textRole: "name"
-                    valueRole: "id"
+                    options: channelDirectory.channels
+                    selectedId: channelDirectory.channelId
+                    emptyLabel: "Choose a voice channel"
                     onActivated: channelDirectory.chooseVoiceChannel(currentValue)
-                    Component.onCompleted: currentIndex = -1
                 }
                 Text {
                     Layout.fillWidth: true

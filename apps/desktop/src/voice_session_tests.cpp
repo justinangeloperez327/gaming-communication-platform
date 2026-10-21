@@ -37,6 +37,9 @@ struct ApiFixture {
     QTcpServer server;
     bool revoke = false;
     bool hold = false;
+    bool holdChannels = false;
+    int channelLists = 0;
+    int closedHeldChannels = 0;
     int joins = 0;
     ApiFixture() {
         require(server.listen(QHostAddress::LocalHost), "HTTP fixture listen");
@@ -65,6 +68,12 @@ struct ApiFixture {
                 } else if (path == "/v1/communities") {
                     body = "[{\"id\":\"" + community.toUtf8() + "\",\"name\":\"Test\"}]";
                 } else if (path.endsWith("/channels")) {
+                    ++channelLists;
+                    if (holdChannels) {
+                        QObject::connect(socket, &QTcpSocket::disconnected, &server,
+                                         [this]() { ++closedHeldChannels; });
+                        return;
+                    }
                     body = "[{\"id\":\"" + channel.toUtf8() + "\",\"name\":\"Voice\",\"channel_kind\":\"voice\"}]";
                 } else if (path.endsWith("/livekit-token")) {
                     ++joins;
@@ -149,8 +158,11 @@ int main(int argc, char **argv) {
         qputenv("GCP_FIXTURE_EXPECT_DEVICE_ARGS", "1");
         account.signIn(api.origin(), QStringLiteral("test@example.test"), QStringLiteral("test password"));
         require(waitFor([&]() { return !directory.communities().isEmpty(); }), "community listing");
+        require(directory.communityId().isEmpty() && directory.channelId().isEmpty(),
+                "listing communities does not select one");
         directory.chooseCommunity(community);
         require(waitFor([&]() { return !directory.channels().isEmpty(); }), "channel listing");
+        require(directory.channelId().isEmpty(), "listing voice channels does not select one");
         directory.chooseVoiceChannel(channel);
         voice.joinWithMicrophone(false);
         require(!voice.busy() && api.joins == 0, "consent required before authorization");
@@ -203,6 +215,32 @@ int main(int argc, char **argv) {
         require(waitFor([&]() { return voice.connected(); }), "rejoin after cancellation");
         account.signOut();
         require(waitFor([&]() { return !voice.busy(); }), "logout stops voice");
+        account.signIn(api.origin(), QStringLiteral("test@example.test"), QStringLiteral("test password"));
+        require(waitFor([&]() { return !directory.communities().isEmpty(); }), "directory reload after login");
+        api.holdChannels = true;
+        const auto previousChannelLists = api.channelLists;
+        directory.chooseCommunity(community);
+        require(waitFor([&]() { return api.channelLists > previousChannelLists; }), "held channel list request");
+        require(directory.busy(), "held channel list stays pending");
+        account.signOut();
+        require(waitFor([&]() { return api.closedHeldChannels == 1 && !directory.busy(); }),
+                "logout aborts pending channel request at peer");
+        require(directory.communities().isEmpty() && directory.channels().isEmpty() &&
+                directory.communityId().isEmpty() && directory.channelId().isEmpty(),
+                "logout clears directory and selection");
+        api.holdChannels = false;
+        account.signIn(api.origin(), QStringLiteral("test@example.test"), QStringLiteral("test password"));
+        require(waitFor([&]() { return !directory.communities().isEmpty(); }), "retry after cancelled directory request");
+        directory.chooseCommunity(community);
+        require(waitFor([&]() { return !directory.channels().isEmpty(); }), "channel reload after cancellation");
+        directory.chooseVoiceChannel(channel);
+        directory.refresh();
+        require(directory.communityId().isEmpty() && directory.channelId().isEmpty() && directory.channels().isEmpty(),
+                "refresh clears selected community and channel");
+        require(waitFor([&]() { return !directory.busy(); }), "directory refresh completion");
+        require(directory.communityId().isEmpty() && directory.channelId().isEmpty(),
+                "refresh does not silently restore selection");
+        account.signOut();
         require(qgetenv("DATABASE_URL") == "dummy-database-credential" &&
                 qgetenv("LIVEKIT_TOKEN") == "dummy-inherited-room-token",
                 "child filtering must not mutate the parent environment");

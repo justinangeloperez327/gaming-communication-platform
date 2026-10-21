@@ -14,6 +14,9 @@ set_source_files_properties(qml/Main.qml PROPERTIES
 set_source_files_properties(qml/AudioDevicePicker.qml PROPERTIES
     QT_RESOURCE_ALIAS AudioDevicePicker.qml
 )
+set_source_files_properties(qml/IdPicker.qml PROPERTIES
+    QT_RESOURCE_ALIAS IdPicker.qml
+)
 
 qt_add_qml_module(gcp-desktop
     URI Gcp.Desktop
@@ -21,6 +24,7 @@ qt_add_qml_module(gcp-desktop
     QML_FILES
         qml/Main.qml
         qml/AudioDevicePicker.qml
+        qml/IdPicker.qml
 )
 
 target_link_libraries(gcp-desktop PRIVATE
@@ -37,7 +41,8 @@ if(BUILD_TESTING)
     qt_add_executable(gcp-audio-picker-tests src/audio_picker_tests.cpp)
     target_link_libraries(gcp-audio-picker-tests PRIVATE Qt6::Quick Qt6::QuickControls2)
     target_compile_definitions(gcp-audio-picker-tests PRIVATE
-        GCP_AUDIO_PICKER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/qml/AudioDevicePicker.qml")
+        GCP_AUDIO_PICKER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/qml/AudioDevicePicker.qml"
+        GCP_ID_PICKER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/qml/IdPicker.qml")
     add_test(NAME desktop_audio_picker_selection COMMAND $<TARGET_FILE:gcp-audio-picker-tests>)
     set_tests_properties(desktop_audio_picker_selection PROPERTIES
         TIMEOUT 15 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
