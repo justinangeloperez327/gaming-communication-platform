@@ -384,7 +384,7 @@ void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck) {
     request.setTransferTimeout(10000);
     if (!recheck) setStatus(QStringLiteral("Requesting authorized voice room…"));
     pending_ = network_.post(request, QByteArray("{}"));
-    boundReply(pending_, 16384);
+    boundReply(pending_, 16384, 10000);
     authorizationWatchdog_.start(10000);
     emit runningChanged();
     QNetworkReply *reply = pending_;

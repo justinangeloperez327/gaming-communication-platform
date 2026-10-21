@@ -32,7 +32,7 @@ bool boundedResponse(bool advertised) {
     QNetworkAccessManager network;
     auto *reply = network.get(QNetworkRequest(QUrl(
         QStringLiteral("http://127.0.0.1:%1/").arg(server.serverPort()))));
-    boundReply(reply, 1024);
+    boundReply(reply, 1024, 3000);
     QEventLoop loop;
     bool finished = false;
     QObject::connect(reply, &QNetworkReply::finished, &loop, [&]() { finished = true; loop.quit(); });
@@ -40,6 +40,39 @@ bool boundedResponse(bool advertised) {
     loop.exec();
     const bool ok = finished && reply->error() == QNetworkReply::OperationCanceledError
         && reply->bytesAvailable() <= 1025;
+    reply->deleteLater();
+    return ok;
+}
+
+bool responseDeadline(bool trickle) {
+    QTcpServer server;
+    if (!server.listen(QHostAddress::LocalHost)) return false;
+    QObject::connect(&server, &QTcpServer::newConnection, &server, [&]() {
+        auto *socket = server.nextPendingConnection();
+        QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, trickle]() {
+            socket->readAll();
+            if (socket->property("answered").toBool()) return;
+            socket->setProperty("answered", true);
+            if (!trickle) return; // No headers, not even an initial response byte.
+            socket->write("HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n");
+            auto *timer = new QTimer(socket);
+            QObject::connect(timer, &QTimer::timeout, socket, [socket]() { socket->write("x"); });
+            timer->start(20);
+        });
+    });
+    QNetworkAccessManager network;
+    QNetworkRequest request(QUrl(QStringLiteral("http://127.0.0.1:%1/").arg(server.serverPort())));
+    request.setTransferTimeout(2000); // Must not be the cause of cancellation.
+    auto *reply = network.get(request);
+    boundReply(reply, 1024, 500);
+    QEventLoop loop;
+    bool finished = false;
+    QObject::connect(reply, &QNetworkReply::finished, &loop, [&]() { finished = true; loop.quit(); });
+    QTimer::singleShot(1500, &loop, &QEventLoop::quit);
+    loop.exec();
+    const bool ok = finished && reply->error() == QNetworkReply::OperationCanceledError
+        && (!trickle || reply->bytesAvailable() > 1);
     reply->deleteLater();
     return ok;
 }
@@ -116,7 +149,8 @@ bool cancelledLogin() {
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     if (!boundedResponse(true) || !boundedResponse(false) || !cancelledLogin()
-        || !boundedLogout(true) || !boundedLogout(false)) {
+        || !boundedLogout(true) || !boundedLogout(false)
+        || !responseDeadline(false) || !responseDeadline(true)) {
         std::cerr << "Network response bounds or cancelled login regression\n";
         return 1;
     }
