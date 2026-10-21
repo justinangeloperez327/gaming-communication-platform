@@ -1,5 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$Installer)
 $ErrorActionPreference = 'Stop'
+$registry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{F6CA3831-848C-4148-831E-804B1F6DC06B}_is1'
+if (Test-Path -LiteralPath $registry) { throw 'Use a disposable account without an existing GCP Alpha install' }
 $installerPath = (Resolve-Path -LiteralPath $Installer).Path
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('gcp-installer-' + [Guid]::NewGuid().ToString('N'))
 $appDir = Join-Path $testRoot 'Application With Spaces'
@@ -31,11 +33,13 @@ function Test-InstalledPayload([string]$Snapshot) {
 try {
     # Fresh install and same-version repair must preserve the exact packaged payload.
     foreach ($iteration in 1..2) {
-        Invoke-CheckedProcess $installerPath @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/NOICONS', "/DIR=`"$appDir`"", "/LOG=`"$testRoot/install-$iteration.log`"")
+        Invoke-CheckedProcess $installerPath @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=`"$appDir`"", "/LOG=`"$testRoot/install-$iteration.log`"")
         Test-InstalledPayload (Join-Path $testRoot "snapshot-$iteration")
     }
-    $registry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{F6CA3831-848C-4148-831E-804B1F6DC06B}_is1'
     if (-not (Test-Path -LiteralPath $registry)) { throw 'Per-user uninstall registration missing' }
+    $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Gaming Communication Platform Alpha/Gaming Communication Platform Alpha.lnk'
+    if (-not (Test-Path -LiteralPath $shortcut)) { throw 'Start menu shortcut missing' }
+    $payload = @(Get-Content -LiteralPath (Join-Path $appDir 'SHA256-MANIFEST.json') -Raw | ConvertFrom-Json)
     $env:QT_QPA_PLATFORM = 'offscreen'
     Invoke-CheckedProcess (Join-Path $appDir 'gcp-desktop.exe') @('--smoke-qml') 20
     Invoke-CheckedProcess (Join-Path $appDir 'gcp-livekit-voice.exe') @('--self-test') 20
@@ -43,6 +47,10 @@ try {
     Set-Content -LiteralPath (Join-Path $appDir 'user-keep.txt') -Value 'preserve'
     Invoke-CheckedProcess (Join-Path $appDir 'unins000.exe') @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$testRoot/uninstall.log`"")
     if (Test-Path -LiteralPath (Join-Path $appDir 'gcp-desktop.exe')) { throw 'Installed executable remains after uninstall' }
+    foreach ($entry in $payload) {
+        if (Test-Path -LiteralPath (Join-Path $appDir $entry.path)) { throw "Payload remains after uninstall: $($entry.path)" }
+    }
+    if (Test-Path -LiteralPath $shortcut) { throw 'Start menu shortcut remains after uninstall' }
     if (Test-Path -LiteralPath $registry) { throw 'Uninstall registration remains' }
     if (-not (Test-Path -LiteralPath (Join-Path $appDir 'user-keep.txt'))) { throw 'Uninstaller removed user file' }
     Write-Host 'Installer install, repair, payload, runtime and uninstall checks passed on hosted Windows.'
