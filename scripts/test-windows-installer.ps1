@@ -57,7 +57,9 @@ try {
 } finally {
     # Retry cleanup after test failures; never install on the developer machine by default.
     $uninstaller = Join-Path $appDir 'unins000.exe'
-    if (Test-Path -LiteralPath $uninstaller) {
+    # Inno can leave its executable briefly while arranging self-deletion.
+    # Only retry while registration still says an installation exists.
+    if ((Test-Path -LiteralPath $registry) -and (Test-Path -LiteralPath $uninstaller)) {
         Invoke-CheckedProcess $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
     }
     Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
