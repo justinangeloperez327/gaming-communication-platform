@@ -298,22 +298,22 @@ ApplicationWindow {
                                 }
                                 Text { text: "Device choices apply on next join"; color: root.mutedTone; font.pixelSize: 11 }
                             }
-                            ComboBox {
+                            AudioDevicePicker {
                                 id: microphoneDevice
                                 Layout.fillWidth: true
                                 enabled: !voiceSession.busy && !voiceSession.scanning
-                                model: [{ "name": "Default microphone", "id": "" }].concat(voiceSession.inputs)
-                                textRole: "name"
-                                valueRole: "id"
+                                devices: voiceSession.inputs
+                                selectedDeviceId: voiceSession.inputId
+                                defaultLabel: "Default microphone"
                                 onActivated: voiceSession.selectInput(currentValue)
                             }
-                            ComboBox {
+                            AudioDevicePicker {
                                 id: speakerDevice
                                 Layout.fillWidth: true
                                 enabled: !voiceSession.busy && !voiceSession.scanning
-                                model: [{ "name": "Default speaker", "id": "" }].concat(voiceSession.outputs)
-                                textRole: "name"
-                                valueRole: "id"
+                                devices: voiceSession.outputs
+                                selectedDeviceId: voiceSession.outputId
+                                defaultLabel: "Default speaker"
                                 onActivated: voiceSession.selectOutput(currentValue)
                             }
                             CheckBox {

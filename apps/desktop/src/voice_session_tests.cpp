@@ -109,6 +109,12 @@ int main(int argc, char **argv) {
         voice.scanDevices();
         require(waitFor([&]() { return !voice.scanning(); }), "normal scan completion");
         require(voice.inputs().size() == 1 && voice.outputs().size() == 1, "device scan parsing");
+        voice.selectInput(QStringLiteral("fixture-input"));
+        voice.selectOutput(QStringLiteral("fixture-output"));
+        voice.selectInput(QStringLiteral("unknown-input"));
+        voice.selectOutput(QStringLiteral("unknown-output"));
+        require(voice.inputId() == QStringLiteral("fixture-input") &&
+                voice.outputId() == QStringLiteral("fixture-output"), "unknown device IDs rejected");
         const auto previousInputs = voice.inputs();
         const auto previousOutputs = voice.outputs();
         qputenv("GCP_FIXTURE_DEVICE_SCAN", "oversized");
@@ -118,6 +124,8 @@ int main(int argc, char **argv) {
         require(voice.status().contains("scan failed"), "oversized scan fails closed");
         require(voice.inputs() == previousInputs && voice.outputs() == previousOutputs,
                 "failed scan preserves previous device list");
+        require(voice.inputId() == QStringLiteral("fixture-input") &&
+                voice.outputId() == QStringLiteral("fixture-output"), "failed scan preserves selection");
         qputenv("GCP_FIXTURE_DEVICE_SCAN", "stderr");
         voice.scanDevices();
         require(waitFor([&]() { return !voice.scanning(); }), "stderr flood scan completion");
@@ -125,6 +133,20 @@ int main(int argc, char **argv) {
         require(voice.inputs().size() == 1 && voice.outputs() == previousOutputs &&
                 voice.inputs().first().toMap().value("name").toString() == "Recovered microphone",
                 "scan retries after overflow and discards stderr");
+        require(voice.inputId() == QStringLiteral("fixture-input") &&
+                voice.outputId() == QStringLiteral("fixture-output"), "successful rescan preserves device identity");
+        qputenv("GCP_FIXTURE_DEVICE_SCAN", "empty");
+        voice.scanDevices();
+        require(waitFor([&]() { return !voice.scanning(); }), "removed device scan completion");
+        qunsetenv("GCP_FIXTURE_DEVICE_SCAN");
+        require(voice.inputId().isEmpty() && voice.outputId().isEmpty() &&
+                voice.inputs().isEmpty() && voice.outputs().isEmpty(), "removed devices revert to default");
+        voice.scanDevices();
+        require(waitFor([&]() { return !voice.scanning(); }), "devices return after removal");
+        require(voice.inputId().isEmpty() && voice.outputId().isEmpty(), "returned devices do not silently reselect");
+        voice.selectInput(QStringLiteral("fixture-input"));
+        voice.selectOutput(QStringLiteral("fixture-output"));
+        qputenv("GCP_FIXTURE_EXPECT_DEVICE_ARGS", "1");
         account.signIn(api.origin(), QStringLiteral("test@example.test"), QStringLiteral("test password"));
         require(waitFor([&]() { return !directory.communities().isEmpty(); }), "community listing");
         directory.chooseCommunity(community);
