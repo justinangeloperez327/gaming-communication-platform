@@ -179,6 +179,22 @@ jobs:
             build/gcp-private-windows-x64.sha256
           if-no-files-found: error
           retention-days: 7
+      - name: Build unsigned per-user preview installer
+        shell: pwsh
+        run: ./scripts/package-windows-installer.ps1 -BundleDirectory build/gcp-windows-test -OutputDirectory build/installer
+      - name: Exercise installed application and uninstall
+        shell: pwsh
+        run: |
+          $installer = @(Get-ChildItem -LiteralPath build/installer -Filter '*-setup.exe')
+          if ($installer.Count -ne 1) { throw 'Expected exactly one installer' }
+          ./scripts/test-windows-installer.ps1 -Installer $installer[0].FullName
+      - name: Upload verified preview installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcp-windows-installer
+          path: build/installer/
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload verified unsigned desktop test bundle
         uses: actions/upload-artifact@v4
         with:
@@ -230,3 +246,28 @@ jobs:
             build/desktop/Release/livekit_ffi.dll
           if-no-files-found: error
           retention-days: 7
+
+  preview-release:
+    name: Publish requested alpha preview
+    needs: [rust, desktop]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: gcp-preview-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: gcp-private-windows-x64
+          path: build/release-artifacts/portable
+      - uses: actions/download-artifact@v4
+        with:
+          name: gcp-windows-installer
+          path: build/release-artifacts/installer
+      - name: Publish configured preview once after all checks pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish_windows_preview.py --artifact-dir build/release-artifacts

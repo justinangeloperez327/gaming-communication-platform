@@ -12,7 +12,7 @@ GCP is an experimental Windows x64 communication application for private gaming 
 | Voice | Listen-only, explicit microphone opt-in, mute/F8 push-to-talk, device selection, room events, bounded recovery and Leave | Real SDK integration; managed desktop calls continue until Leave; mute/F8 PTT and periodic access checks; physical audibility unverified |
 | Screen sharing | Separate consent-gated monitor diagnostics: CPU-readback publishing and GPU BGRA→NV12→hardware-class H.264→LiveKit bridge | No desktop sharing/viewing UI; hardware, remote playback and driver compatibility unverified |
 | Test video | Synthetic RGBA/NV12/BGRA patterns and externally encoded H.264 file publishing | Diagnostic fixtures; not evidence of screen capture or gaming performance |
-| Windows ZIP | Qt/QML + voice executable + LiveKit DLL staging, SHA-256 inventory, extracted-ZIP startup checks | Unsigned private test artifact; clean consumer Windows PC still untested |
+| Windows distribution | Qt/QML + voice executable + LiveKit DLL staging, portable ZIP, per-user alpha installer, SHA-256 inventory and installed/extracted startup checks | Unsigned preview; clean consumer Windows PC still untested |
 | Performance | Process CPU/private memory samples, capture/encoder timing, exported game frame-time analysis | No measured gaming resource budget or advantage over other apps established |
 
 See [long-session voice and controls](docs/long-session-voice.md) for the latest voice behavior and tests.
@@ -56,7 +56,7 @@ After a Release build, put `windeployqt` in PATH:
 ./scripts/package-private-windows-zip.ps1 -BundleDirectory dist/gcp-windows-test -OutputZip dist/gcp-private-windows-x64.zip
 ```
 
-CI additionally tests staged and extracted Qt/QML startup, native SDK initialization, package corruption rejection and signature inventory consistency. SHA-256 proves consistency with an inventory, not publisher authenticity. No installer, automatic deployment or public release is produced. Publisher signing remains the owner's decision for private distribution. Third-party notices and Qt/SDK licensing need review before sharing binaries; no project license is currently declared.
+CI additionally tests staged and extracted Qt/QML startup, native SDK initialization, package corruption rejection and signature inventory consistency. The owner-requested [alpha installer and prerelease](docs/windows-installer.md) add per-user installation, repair/uninstall tests and CI-gated publication of the configured version. Downloads include the desktop runtime; backend/PostgreSQL/LiveKit services remain separate. SHA-256 proves consistency, not publisher authenticity. Publisher signing remains the owner's responsibility. Complete third-party attribution review remains open; no project license is currently declared.
 
 ## Verification boundaries
 

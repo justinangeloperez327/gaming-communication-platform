@@ -1,0 +1,13 @@
+GCP is an experimental private-use preview.
+
+This installer includes the Windows desktop, Qt runtime and LiveKit native voice
+process. A separately configured GCP backend, database and LiveKit server are
+required. It does not install or deploy those services.
+
+Desktop screen sharing and messaging are not connected yet. Physical two-user
+voice, clean consumer-PC compatibility and gaming performance remain unverified.
+The included third-party notices are a baseline; transitive attribution review
+is incomplete. This preview is unsigned. Publisher signing is managed by the owner.
+
+No microphone or screen capture starts during installation. Launch the app from
+the Start menu, sign in, select a channel and grant microphone consent per call.

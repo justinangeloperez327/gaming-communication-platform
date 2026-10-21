@@ -1,4 +1,4 @@
-# Package an unsigned Windows desktop test bundle, never a production installer.
+# Package the verified unsigned desktop payload used by ZIP and alpha installer.
 param(
     [Parameter(Mandatory=$true)][string]$BuildDirectory,
     [Parameter(Mandatory=$true)][string]$OutputDirectory
