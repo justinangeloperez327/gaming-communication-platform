@@ -26,6 +26,7 @@ int main(int argc, char **argv) {
     }
     if (argc == 2 && std::string_view{argv[1]} == "devices") {
         const auto *mode = std::getenv("GCP_FIXTURE_DEVICE_SCAN");
+        if (mode && std::string_view{mode} == "empty") return 0;
         if (mode && std::string_view{mode} == "oversized") {
             const std::string chunk(4096, 'x');
             for (int index = 0; index < 64; ++index) std::cout << chunk << std::flush;
@@ -41,14 +42,19 @@ int main(int argc, char **argv) {
         return 0;
     }
     bool managed = false, unlimited = false, microphone = false;
+    std::string_view input, output;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument{argv[index]};
         if (argument == "--desktop-control") managed = true;
         if (argument == "--publish-mic") microphone = true;
+        if (argument == "--input" && index + 1 < argc) input = argv[index + 1];
+        if (argument == "--output" && index + 1 < argc) output = argv[index + 1];
         if (argument == "--seconds" && index + 1 < argc &&
             std::string_view{argv[index + 1]} == "0") unlimited = true;
     }
     if (!managed || !unlimited) return 2;
+    if (std::getenv("GCP_FIXTURE_EXPECT_DEVICE_ARGS") &&
+        (output != "fixture-output" || (microphone ? input != "fixture-input" : !input.empty()))) return 15;
     const auto *outputMode = std::getenv("GCP_FIXTURE_VOICE_OUTPUT");
     if (outputMode && std::string_view{outputMode} == "burst") {
         const std::string line(128, 'd');

@@ -28,6 +28,8 @@ class VoiceSession final : public QObject {
     Q_PROPERTY(bool available READ available NOTIFY availabilityChanged)
     Q_PROPERTY(QVariantList inputs READ inputs NOTIFY devicesChanged)
     Q_PROPERTY(QVariantList outputs READ outputs NOTIFY devicesChanged)
+    Q_PROPERTY(QString inputId READ inputId NOTIFY devicesChanged)
+    Q_PROPERTY(QString outputId READ outputId NOTIFY devicesChanged)
     Q_PROPERTY(bool scanning READ scanning NOTIFY devicesChanged)
 public:
     explicit VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent = nullptr, VoiceRuntime runtime = {});
@@ -45,6 +47,8 @@ public:
     bool available() const;
     QVariantList inputs() const { return inputs_; }
     QVariantList outputs() const { return outputs_; }
+    QString inputId() const { return inputId_; }
+    QString outputId() const { return outputId_; }
     bool scanning() const { return devices_.state() != QProcess::NotRunning; }
     Q_INVOKABLE void scanDevices();
     Q_INVOKABLE void selectInput(const QString &id);
