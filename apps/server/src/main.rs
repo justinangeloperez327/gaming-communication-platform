@@ -1,4 +1,4 @@
-use std::{env, future::IntoFuture, io, time::Duration};
+use std::{env, future::IntoFuture, io::{self, Read}, time::Duration};
 
 use gaming_comms_server::{database, livekit_tokens::LiveKitConfig, router_with_livekit};
 use tokio::net::TcpListener;
@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Health probes and migrations do not need a worker thread per host CPU.
     let maintenance = matches!(
         env::args().nth(1).as_deref(),
-        Some("--check-ready" | "--migrate-only")
+        Some("--check-ready" | "--migrate-only" | "--bootstrap-owner")
     );
     let mut runtime = if maintenance {
         tokio::runtime::Builder::new_current_thread()
@@ -50,10 +50,30 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             tracing::info!("Database migrations completed");
             return Ok(());
         }
+        [argument] if argument == "--bootstrap-owner" => {
+            // Read bounded JSON from stdin so passwords never enter argv or logs.
+            let mut bytes = tokio::task::spawn_blocking(|| {
+                let mut bytes = Vec::new();
+                io::stdin().take(8193).read_to_end(&mut bytes)?;
+                Ok::<_, io::Error>(bytes)
+            }).await??;
+            if bytes.len() > 8192 { return Err(io::Error::other("Owner input exceeds size limit").into()); }
+            let input = serde_json::from_slice::<gaming_comms_server::onboarding::OwnerInput>(&bytes)
+                .map_err(|_| io::Error::other("Owner input must be a valid JSON account object"));
+            bytes.fill(0);
+            let input = input?;
+            let pool = database::connect_from_env().await?
+                .ok_or_else(|| io::Error::other("Owner bootstrap requires DATABASE_URL"))?;
+            gaming_comms_server::onboarding::bootstrap_owner(&pool, input).await
+                .map_err(|error| io::Error::other(format!("Owner bootstrap refused: {error:?}; check account details and existing ownership")))?;
+            pool.close().await;
+            tracing::info!("Server owner configured; sign in using the desktop");
+            return Ok(());
+        }
         [] => {}
         _ => {
             return Err(io::Error::other(
-                "Expected --migrate-only, --check-ready, or no arguments",
+                "Expected --migrate-only, --check-ready, --bootstrap-owner, or no arguments",
             )
             .into());
         }

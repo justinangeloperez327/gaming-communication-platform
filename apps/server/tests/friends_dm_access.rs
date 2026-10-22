@@ -1,5 +1,7 @@
 //! PostgreSQL-backed friend/DM privacy integration. All fixtures are isolated
 //! by random account IDs. No tokens or DM content are printed to test logs.
+mod support;
+
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -60,16 +62,17 @@ async fn call(
     )
 }
 
-async fn create_user(app: &Router, prefix: &str) -> (String, String, String) {
+async fn create_user(app: &Router, pool: &PgPool, prefix: &str) -> (String, String, String) {
     let random = format!("{:016x}", rand::random::<u64>());
     let handle = format!("{prefix}_{random}");
+    let invitation = support::invitation(pool, &format!("{handle}@example.test")).await;
     let (status, json) = call(
         app,
         Method::POST,
         "/v1/auth/register",
         Some(json!({
             "handle":handle,"email":format!("{handle}@example.test"),
-            "display_name":"DM Test Player","password":"long random testing password 2026"
+            "display_name":"DM Test Player","invitation_token": invitation, "password":"long random testing password 2026"
         })),
         None,
     )
@@ -87,9 +90,9 @@ async fn friendships_blocking_and_private_messages() {
     let Some(db) = pool().await else { return };
     MIGRATOR.run(&db).await.expect("migrations");
     let app = router_with_database(Some(db.clone()));
-    let (a, aid, ah) = create_user(&app, "fma").await;
-    let (b, bid, bh) = create_user(&app, "fmb").await;
-    let (c, cid, _) = create_user(&app, "fmc").await;
+    let (a, aid, ah) = create_user(&app, &db, "fma").await;
+    let (b, bid, bh) = create_user(&app, &db, "fmb").await;
+    let (c, cid, _) = create_user(&app, &db, "fmc").await;
 
     let (status, _) = call(
         &app,

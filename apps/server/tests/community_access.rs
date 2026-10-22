@@ -1,5 +1,7 @@
 //! End-to-end community authorization and one-use invitation checks.
 //! Uses the disposable GCP_TEST_DATABASE_URL database provided by CI.
+mod support;
+
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -58,9 +60,10 @@ async fn request(
     (status, data)
 }
 
-async fn register(app: &Router, prefix: &str) -> (String, String) {
+async fn register(app: &Router, pool: &PgPool, prefix: &str) -> (String, String) {
     let random = format!("{:016x}", rand::random::<u64>());
     let handle = format!("{prefix}_{random}");
+    let invitation = support::invitation(pool, &format!("{handle}@example.test")).await;
     let (status, response) = request(
         app,
         Method::POST,
@@ -69,7 +72,7 @@ async fn register(app: &Router, prefix: &str) -> (String, String) {
             "handle": handle,
             "display_name": "CI Player",
             "email": format!("{handle}@example.test"),
-            "password": "strong unique test passphrase 2026"
+            "invitation_token": invitation, "password": "strong unique test passphrase 2026"
         })),
         None,
     )
@@ -91,9 +94,9 @@ async fn owner_admin_member_and_invitation_permission_boundaries() {
     };
     MIGRATOR.run(&pool).await.expect("run migrations");
     let app = router_with_database(Some(pool.clone()));
-    let (owner_token, owner_id) = register(&app, "o").await;
-    let (member_token, member_id) = register(&app, "m").await;
-    let (outsider_token, outsider_id) = register(&app, "x").await;
+    let (owner_token, owner_id) = register(&app, &pool, "o").await;
+    let (member_token, member_id) = register(&app, &pool, "m").await;
+    let (outsider_token, outsider_id) = register(&app, &pool, "x").await;
 
     let (status, _) = request(
         &app,
