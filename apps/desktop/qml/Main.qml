@@ -343,12 +343,12 @@ ApplicationWindow {
                                 spacing: 8
                                 Button {
                                     text: "Listen only"
-                                    enabled: voiceSession.available && accountSession.signedIn && channelDirectory.channelId.length > 0 && !voiceSession.busy
+                                    enabled: voiceSession.available && accountSession.signedIn && channelDirectory.channelId.length > 0 && !channelDirectory.busy && !voiceSession.busy
                                     onClicked: voiceSession.joinListenOnly()
                                 }
                                 Button {
                                     text: "Join with mic"
-                                    enabled: voiceSession.available && accountSession.signedIn && channelDirectory.channelId.length > 0 && !voiceSession.busy && root.microphoneConsent
+                                    enabled: voiceSession.available && accountSession.signedIn && channelDirectory.channelId.length > 0 && !channelDirectory.busy && !voiceSession.busy && root.microphoneConsent
                                     onClicked: {
                                         voiceSession.joinWithMicrophone(root.microphoneConsent)
                                         root.microphoneConsent = false

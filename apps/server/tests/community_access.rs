@@ -556,7 +556,20 @@ async fn pending_invitation_revocation_limits_and_self_leave() {
     let (status, pending) = request(&app, Method::GET, &invites, None, Some(&owner)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(pending.as_array().expect("bounded list").len(), 200);
-    // Community/owner deletion cascades all data created by this isolated scenario.
+    // Delete owned communities before users: owner_id intentionally restricts user deletion.
+    assert_eq!(
+        request(&app, Method::DELETE, &path, None, Some(&owner))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let second_path = format!("/v1/communities/{}", second["id"].as_str().expect("id"));
+    assert_eq!(
+        request(&app, Method::DELETE, &second_path, None, Some(&other))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
     for user in [owner_id, member_id, other_id] {
         sqlx::query("DELETE FROM users WHERE id = $1")
             .bind(user.parse::<sqlx::types::Uuid>().expect("UUID"))

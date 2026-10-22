@@ -117,7 +117,7 @@ Rectangle {
         }
         TextField {
             id: newCommunity; objectName: "newCommunityName"
-            Layout.fillWidth: true; maximumLength: 100; enabled: !panel.directory.busy
+            Layout.fillWidth: true; maximumLength: 200; enabled: !panel.directory.busy
             placeholderText: "New community name"; Accessible.name: "New community name"
             onAccepted: panel.submitCreate()
         }
@@ -141,7 +141,7 @@ Rectangle {
             visible: panel.directory.communityId.length > 0
             text: checked ? "Hide community details" : "Community details and management"
             checkable: true; enabled: !panel.directory.busy
-            onToggled: {
+            onCheckedChanged: {
                 if (checked) {
                     rename.text = panel.directory.communityName
                     panel.directory.loadManagement()
@@ -163,7 +163,7 @@ Rectangle {
                 Layout.fillWidth: true; spacing: 8
                 TextField {
                     id: rename; objectName: "renameCommunityName"
-                    Layout.fillWidth: true; maximumLength: 100; enabled: !panel.directory.busy
+                    Layout.fillWidth: true; maximumLength: 200; enabled: !panel.directory.busy
                     placeholderText: "Community name"; Accessible.name: "Rename community"
                 }
                 Button { text: "Rename community"; objectName: "renameCommunity"; enabled: !panel.directory.busy; onClicked: panel.directory.renameCommunity(rename.text.trim()) }
@@ -280,7 +280,7 @@ Rectangle {
                       panel.pendingAction === "role" ? "Change " + panel.pendingName + " to " + panel.pendingRole + "? Admins can manage channels, invitations and ordinary members." :
                       "Remove " + panel.pendingName + " from this community?"
             }
-            TextField { id: confirmName; objectName: "confirmCommunityName"; Layout.fillWidth: true; visible: panel.pendingAction === "deleteCommunity"; maximumLength: 100; placeholderText: "Community name"; Accessible.name: "Confirm community name" }
+            TextField { id: confirmName; objectName: "confirmCommunityName"; Layout.fillWidth: true; visible: panel.pendingAction === "deleteCommunity"; maximumLength: 200; placeholderText: "Community name"; Accessible.name: "Confirm community name" }
         }
     }
 }

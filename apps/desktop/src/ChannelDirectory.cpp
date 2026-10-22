@@ -86,7 +86,7 @@ QString ChannelDirectory::channelName() const { return find(channels_, channelId
 QString ChannelDirectory::selectedPath() const { return QStringLiteral("/v1/communities/") + communityId_; }
 bool ChannelDirectory::validName(const QString &name, int limit) {
     if (printableName(name, limit)) return true;
-    status_ = QStringLiteral("Enter a trimmed, printable name within the length limit.");
+    status_ = QStringLiteral("Enter a trimmed, printable name of 1-%1 characters.").arg(limit);
     emit changed(); return false;
 }
 bool ChannelDirectory::validChannel(const QString &name, const QString &kind, int position) {
