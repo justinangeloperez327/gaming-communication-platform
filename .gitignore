@@ -32,3 +32,7 @@ Thumbs.db
 
 __pycache__/
 *.py[cod]
+
+# Generated self-hosted secrets and database backups
+/deploy/self-hosted/.local/
+*.pgdump

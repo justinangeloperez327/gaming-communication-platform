@@ -1,0 +1,108 @@
+# Linux Docker Engine only. Host networking keeps media off Docker's NAT path.
+# PostgreSQL, the API and LiveKit signaling explicitly bind to loopback.
+x-logging: &logging
+  driver: local
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-api: &api
+  image: gcp-server-local:${GCP_STACK_PROJECT:?Run server_stack.py init first}
+  build:
+    context: ../..
+    dockerfile: deploy/self-hosted/Dockerfile
+  network_mode: host
+  env_file: ${GCP_CONFIG_DIR:?Use server_stack.py}/api.env
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 128
+  logging: *logging
+
+services:
+  postgres:
+    image: postgres:16.15-alpine3.23
+    network_mode: host
+    environment:
+      POSTGRES_USER: gcp_admin
+      POSTGRES_DB: gcp
+      POSTGRES_PASSWORD: ${GCP_POSTGRES_ADMIN_PASSWORD:?Missing database secret}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    command: [postgres, -c, listen_addresses=127.0.0.1, -c, "port=${GCP_DB_PORT}", -c, max_connections=32]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ${GCP_CONFIG_DIR}/init.sql:/docker-entrypoint-initdb.d/10-gcp.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U gcp_admin -d gcp -p ${GCP_DB_PORT}"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 30s
+    shm_size: 128m
+    pids_limit: 128
+    logging: *logging
+
+  migrate:
+    <<: *api
+    command: [--migrate-only]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  livekit:
+    image: livekit/livekit-server:v1.13.10
+    user: "10001:10001"
+    network_mode: host
+    command: [--config, /etc/livekit.yaml]
+    volumes:
+      - ${GCP_CONFIG_DIR}/livekit.yaml:/etc/livekit.yaml:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *logging
+
+  api:
+    <<: *api
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      livekit:
+        condition: service_started
+    healthcheck:
+      test: [CMD, /usr/local/bin/gaming-comms-server, --check-ready]
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    profiles: [tls]
+    network_mode: host
+    volumes:
+      - ${GCP_CONFIG_DIR}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 10s
+    pids_limit: 128
+    logging: *logging
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:
