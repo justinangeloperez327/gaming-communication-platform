@@ -9,6 +9,7 @@
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQmlError>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTcpServer>
@@ -212,6 +213,8 @@ int main(int argc, char **argv) {
         require(waitFor([&]() { return account.signedIn() && !directory.busy(); }), "sign in and load empty directory");
         require(directory.communities().isEmpty() && !account.serverOwner(), "community creation is independent of server ownership");
         QQmlEngine engine;
+        int qmlWarnings = 0;
+        QObject::connect(&engine, &QQmlEngine::warnings, &engine, [&](const QList<QQmlError> &) { ++qmlWarnings; });
         engine.rootContext()->setContextProperty("directoryController", &directory);
         engine.rootContext()->setContextProperty("accountController", &account);
         QQmlComponent component(&engine);
@@ -232,9 +235,11 @@ int main(int argc, char **argv) {
         const auto idle = [&]() { return !directory.busy(); };
         const auto settled = [&]() { require(waitFor(idle), "directory workflow finished"); };
         const auto confirm = [&](const QString &action, const QString &id, const QString &name, const QString &role = {}) {
-            panel->setProperty("pendingAction", action); panel->setProperty("pendingCommunity", directory.communityId());
-            panel->setProperty("pendingId", id); panel->setProperty("pendingName", name); panel->setProperty("pendingRole", role);
-            require(QMetaObject::invokeMethod(panel.get(), "confirmAction"), "QML confirmation action");
+            const auto entered = field("confirmCommunityName")->property("text");
+            require(QMetaObject::invokeMethod(panel.get(), "ask", Q_ARG(QVariant, QVariant(action)),
+                Q_ARG(QVariant, QVariant(id)), Q_ARG(QVariant, QVariant(name)), Q_ARG(QVariant, QVariant(role))), "open actual confirmation dialog");
+            if (action == "deleteCommunity") field("confirmCommunityName")->setProperty("text", entered);
+            require(QMetaObject::invokeMethod(field("communityConfirmation"), "accept"), "accept actual QML confirmation");
         };
         field("newCommunityName")->setProperty("text", "My friends"); click("createCommunity"); settled();
         const auto community = directory.communityId();
@@ -289,6 +294,7 @@ int main(int argc, char **argv) {
         api.holdChannels = true; const int beforeLogout = api.held;
         directory.refresh(); require(waitFor([&]() { return api.held > beforeLogout; }), "held request before logout");
         account.signOut();
+        require(qmlWarnings == 0, "community workflows produced QML warnings");
         require(directory.communities().isEmpty() && directory.members().isEmpty() && directory.invitationToken().isEmpty() && directory.communityId().isEmpty(), "logout clears directory and privileged data");
         require(field("communityJoinCode")->property("text").toString().isEmpty(), "QML clears undispatched join code at logout");
         api.holdChannels = false;
@@ -311,9 +317,17 @@ int main(int argc, char **argv) {
         require(directory.communityRole() == "admin" && directory.canManage(), "fresh role enables admin actions");
         directory.setMemberRole(uuid(701), "member"); directory.removeMember(uuid(701));
         require(!directory.busy() && api.mutations == memberMutations, "admin cannot demote or remove another admin");
+        directory.createInvitation(); settled();
+        require(!directory.invitationToken().isEmpty() && directory.invitations().size() == 1, "admin invitation state exists before demotion");
+        const int beforeDemotion = api.mutations;
         api.overrideRole = "member"; directory.renameCommunity("stale admin"); settled();
         require(directory.communityRole() == "member" && !directory.canManage() && directory.status().contains("role"), "403 revalidates stale role without retrying mutation");
-        require(api.mutations == memberMutations + 1 && directory.invitations().isEmpty(), "permission failure performs only one mutation and clears privileged state");
+        require(api.mutations == beforeDemotion + 1 && directory.invitations().isEmpty() && directory.invitationToken().isEmpty(), "permission failure performs only one mutation and clears privileged state");
+        const auto joinedCommunity = directory.communityId();
+        api.denyCommunity = true; directory.refresh(); settled();
+        require(directory.communityId().isEmpty() && directory.communityRole().isEmpty() && directory.members().isEmpty(), "missing membership clears selection and role data");
+        api.denyCommunity = false; directory.refresh(); settled();
+        directory.chooseCommunity(joinedCommunity); settled();
         confirm("leave", "", directory.communityName()); settled();
         require(directory.communityId().isEmpty() && directory.communities().isEmpty(), "member leaves without deleting other accounts");
         api.overrideRole.clear(); const auto retained = api.addSpace("Destructor fixture", "owner");
