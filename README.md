@@ -35,6 +35,12 @@ LiveKit v1.12.2 is opt-in and its downloaded archive is pinned by SHA-256. Witho
 
 ## Backend
 
+For the shared Linux host, use the [server stack package](docs/server-stack.md):
+generated credentials, PostgreSQL + API + LiveKit, migrations, optional restricted
+HTTPS/WSS, persistence and backup/restore. Friends only need the Windows desktop.
+See the [completion roadmap](docs/completion-roadmap.md) for the remaining product
+groups and acceptance requirements.
+
 ```powershell
 cargo test --workspace --locked
 cargo run -p gaming-comms-server
