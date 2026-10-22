@@ -1,4 +1,4 @@
-# Authentication API — Group 21
+# Authentication API
 
 The Rust/Axum server supports account registration, login, rotating refresh tokens, logout and the current user's profile. Sessions are stored in PostgreSQL. This is an integration-tested security foundation, **not suitable for public exposure without TLS, distributed rate limiting, monitoring and further hardening**.
 
@@ -10,12 +10,14 @@ The Rust/Axum server supports account registration, login, rotating refresh toke
 - Bearer access token required to read/update own profile or revoke a session. No credentials in URLs or application logs.
 - Axum limits incoming bodies to 8 KiB. Generic error responses do not expose passwords, tokens or SQL errors.
 - Missing database makes authentication endpoints unavailable rather than unauthenticated.
+- New accounts require an owner-issued, email-bound, one-use invitation. See
+  [private onboarding](account-onboarding.md) for operator bootstrap and code management.
 
 ## Endpoints
 
 | Method | Route | Requirements |
 | --- | --- | --- |
-| POST | /v1/auth/register | handle, display_name, email, password |
+| POST | /v1/auth/register | handle, display_name, email, password, invitation_token |
 | POST | /v1/auth/login | email, password |
 | POST | /v1/auth/refresh | refresh_token |
 | POST | /v1/auth/logout | Authorization: Bearer ACCESS_TOKEN |
@@ -24,7 +26,10 @@ The Rust/Axum server supports account registration, login, rotating refresh toke
 
 Register handle: 3–32 lowercase alphanumeric/underscore; trimmed display name 1–80 characters; basic ASCII email with case-insensitive uniqueness; password 12–128 bytes. Email verification is **not** implemented.
 
-Register/login/refresh return JSON with user, access_token, refresh_token, token_type, expires_in. Logout returns HTTP 204. Keep tokens private and use HTTPS for anything outside loopback.
+Register returns HTTP 201; login/refresh return HTTP 200. Their JSON contains user,
+access_token, refresh_token, token_type, expires_in and server_owner. The owner flag
+is presentation data; invitation endpoints independently enforce database ownership.
+Logout returns HTTP 204. Keep tokens private and use HTTPS outside loopback.
 
 The desktop clears its local session before best-effort remote logout. Logout
 responses are capped at 16 KiB, including error/proxy bodies with no declared
@@ -54,7 +59,11 @@ $env:GCP_RUN_MIGRATIONS = '1'
 cargo run -p gaming-comms-server
 ```
 
-To register, POST JSON to http://127.0.0.1:8080/v1/auth/register with fields handle, display_name, email, password. Send the returned access token in the Authorization Bearer header for GET or PATCH /v1/me, and the refresh token in the POST /v1/auth/refresh JSON body.
+After configuring the owner and obtaining an invitation, POST JSON to
+http://127.0.0.1:8080/v1/auth/register with fields handle, display_name, email,
+password and invitation_token. Missing/invalid codes receive HTTP 403. Send the
+returned access token in the Authorization Bearer header for GET or PATCH /v1/me,
+and the refresh token in the POST /v1/auth/refresh JSON body.
 
 Do not print or commit real credentials. Windows desktop applications should use Windows Credential Manager/DPAPI for token storage, not plaintext configuration.
 

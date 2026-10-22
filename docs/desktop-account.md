@@ -1,11 +1,30 @@
-# Group 30 — Desktop account sign-in (experimental)
+# Desktop accounts (experimental)
 
-The Qt desktop now accepts a GCP server origin, email and password, and exchanges them against the Rust backend `POST /v1/auth/login`. Account access and refresh tokens are held only in process memory. A single-shot timer refreshes the session through `POST /v1/auth/refresh` approximately one minute before access expiry, replacing both rotated tokens. Sign-out clears local credentials immediately, cancels pending requests, attempts server revocation through the bearer-authenticated `POST /v1/auth/logout`, and disconnects voice.
+The account panel supports sign-in and invited account creation against the
+Rust API. The [onboarding guide](account-onboarding.md) describes owner bootstrap,
+invitation creation/revocation and the friend registration flow. Registration
+signs in on HTTP 201; login/refresh require HTTP 200. Status messages distinguish
+invitation, credential, conflict, service and transport failures.
 
-Voice token requests now use the signed-in account's in-memory bearer token, instead of `GCP_ACCESS_TOKEN` or `GCP_API_URL` environment values. The development-only `GCP_COMMUNITY_ID` and `GCP_VOICE_CHANNEL_ID` remain required for room selection; these are not account secrets.
+Access and refresh tokens remain in memory. A single-shot timer refreshes about
+one minute before expiry, replacing both rotated tokens. Sign-out clears local
+credentials and invitation data, cancels requests, attempts bearer-authenticated
+remote logout and disconnects voice. Closing the application releases local
+state; it does not guarantee revocation of a still-valid server session.
 
-## Limits
+Voice authorization uses the signed-in account's bearer token. The desktop lists
+authorized communities and voice channels; server ownership alone does not grant
+membership. Backend reconciliation periodically removes unauthorized SFU
+participants; [eviction limits](server-voice-eviction.md) still apply.
 
-No persistent login or OS credential vault. Closing the client signs out; server logout is best effort if offline. The app does not yet list communities/channels, recover interrupted refreshes, or support account registration. Username/password fields are not persisted; do not collect credentials through logs. Only HTTPS origins and loopback HTTP are accepted; redirects are not followed. Authenticated account status is not a verified media connection indicator. Active SFU participant revocation is still outstanding.
+Password/code fields clear after dispatch; no credentials are persisted. Only
+HTTPS origins or loopback HTTP are accepted, redirects are blocked, and replies
+have size caps and deadlines. Owner invitation requests are independent from
+session refresh and are cancelled at sign-out. Explicit code copying uses the OS
+clipboard; the application does not erase clipboard history or guarantee secure
+memory zeroization.
 
-CI build and runtime validation required before merge. Do not deploy as production login.
+There is no persistent login, OS credential vault, password recovery or automatic
+retry after a failed refresh. A failed refresh clears the session and requires
+sign-in. Qt loopback tests and API/stack tests are automated evidence; physical
+desktop-to-deployed-host onboarding and media audibility are still unverified.
