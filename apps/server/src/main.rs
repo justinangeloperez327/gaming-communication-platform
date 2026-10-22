@@ -6,7 +6,10 @@ use tracing_subscriber::EnvFilter;
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Health probes and migrations do not need a worker thread per host CPU.
-    let maintenance = matches!(env::args().nth(1).as_deref(), Some("--check-ready" | "--migrate-only"));
+    let maintenance = matches!(
+        env::args().nth(1).as_deref(),
+        Some("--check-ready" | "--migrate-only")
+    );
     let mut runtime = if maintenance {
         tokio::runtime::Builder::new_current_thread()
     } else {
@@ -23,8 +26,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let arguments: Vec<_> = env::args().skip(1).collect();
     match arguments.as_slice() {
         [argument] if argument == "--check-ready" => {
-            let address = env::var("GCP_BIND_ADDRESS")
-                .unwrap_or_else(|_| "127.0.0.1:8080".to_string());
+            let address =
+                env::var("GCP_BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
             let response = reqwest::Client::builder()
                 .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
@@ -49,7 +52,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         [] => {}
         _ => {
-            return Err(io::Error::other("Expected --migrate-only, --check-ready, or no arguments").into());
+            return Err(io::Error::other(
+                "Expected --migrate-only, --check-ready, or no arguments",
+            )
+            .into());
         }
     }
 

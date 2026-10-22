@@ -1,6 +1,7 @@
 """Offline checks for credential generation and destructive-operation guards."""
 
 from pathlib import Path
+import os
 import stat
 import tempfile
 import unittest
@@ -21,9 +22,10 @@ class StackTests(unittest.TestCase):
         first = (self.config / "api.env").read_text()
         self.assertIn("LIVEKIT_URL=ws://127.0.0.1:7880", first)
         self.assertIn("GCP_RUN_MIGRATIONS=0", first)
-        self.assertEqual(stat.S_IMODE(self.config.stat().st_mode), 0o700)
-        self.assertEqual(stat.S_IMODE((self.config / "api.env").stat().st_mode), 0o600)
-        self.assertEqual(stat.S_IMODE((self.config / "stack.env").stat().st_mode), 0o600)
+        if os.name == "posix":  # Deployment is Linux-only; Windows has no POSIX mode bits.
+            self.assertEqual(stat.S_IMODE(self.config.stat().st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE((self.config / "api.env").stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE((self.config / "stack.env").stat().st_mode), 0o600)
         with self.assertRaises(FileExistsError):
             initialize(self.config)
         self.assertEqual(first, (self.config / "api.env").read_text())

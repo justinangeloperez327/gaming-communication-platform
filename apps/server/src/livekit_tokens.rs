@@ -70,8 +70,8 @@ impl LiveKitConfig {
         let invalid = || io::Error::new(io::ErrorKind::InvalidInput, "Invalid LiveKit control URL");
         let url = reqwest::Url::parse(raw).map_err(|_| invalid())?;
         let secure = url.scheme() == "https" && url.host_str().is_some();
-        let local = url.scheme() == "http"
-            && matches!(url.host_str(), Some("127.0.0.1" | "localhost"));
+        let local =
+            url.scheme() == "http" && matches!(url.host_str(), Some("127.0.0.1" | "localhost"));
         if (!secure && !local)
             || raw.len() > 2048
             || !url.username().is_empty()
@@ -292,11 +292,19 @@ mod tests {
             .expect("loopback control");
         assert_eq!(configured.server_url, "wss://voice.example.test");
         assert_eq!(configured.control_url.as_str(), "http://127.0.0.1:7880/");
-        assert!(config().with_control_url("https://control.example.test").is_ok());
+        assert!(
+            config()
+                .with_control_url("https://control.example.test")
+                .is_ok()
+        );
         for invalid in [
-            "http://livekit:7880", "http://localhost.evil.test", "ws://127.0.0.1:7880",
-            "https://user:secret@control.example.test", "https://control.example.test/path",
-            "http://127.0.0.1:7880?x=1", "https://control.example.test/#fragment",
+            "http://livekit:7880",
+            "http://localhost.evil.test",
+            "ws://127.0.0.1:7880",
+            "https://user:secret@control.example.test",
+            "https://control.example.test/path",
+            "http://127.0.0.1:7880?x=1",
+            "https://control.example.test/#fragment",
         ] {
             assert!(config().with_control_url(invalid).is_err());
         }

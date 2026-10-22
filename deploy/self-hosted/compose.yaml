@@ -33,7 +33,9 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ${GCP_CONFIG_DIR}/init.sql:/docker-entrypoint-initdb.d/10-gcp.sql:ro
     healthcheck:
-      test: [CMD-SHELL, "pg_isready -U gcp_admin -d gcp -p ${GCP_DB_PORT}"]
+      # The entrypoint's temporary init server only accepts Unix sockets.
+      # Probe TCP so migrations cannot race initialization of the app role.
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U gcp_admin -d gcp -p ${GCP_DB_PORT}"]
       interval: 3s
       timeout: 3s
       retries: 30
