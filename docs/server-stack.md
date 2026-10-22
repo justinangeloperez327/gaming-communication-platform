@@ -190,9 +190,11 @@ protected API operations, signed microphone grants against the configured SFU
 keys, real LiveKit room-control authentication, dependency loss/recovery,
 SIGTERM exit, public-WSS/private-control separation, persistence across container
 recreation, refusal to overwrite a populated database, restoration into a fresh
-volume with new service credentials, and Caddy configuration validation. It
+volume with new service credentials, Caddy configuration validation, actual TLS
+proxy requests using an explicitly trusted disposable local CA, and source-IP
+access denial. Public certificate issuance is not exercised. It
 deletes only its generated test projects and volumes. Ports 18080, 15432, 17880,
-17881 and UDP 17900–17920 must be free; use a dedicated test host/CI runner.
+17881, 18443, 18444 and UDP 17900–17920 must be free; use a dedicated test host/CI runner.
 
 The `Self-hosted stack acceptance` CI job runs this contract alongside Rust and
 Windows checks and gates future configured preview publication. It does not

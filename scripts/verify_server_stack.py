@@ -7,10 +7,12 @@ accepts an operator configuration. No microphone, media peers or deployed host.
 import base64
 import hashlib
 import hmac
+import http.client
 import json
 from pathlib import Path
 import secrets
 import socket
+import ssl
 import subprocess
 import tempfile
 import time
@@ -20,14 +22,25 @@ import urllib.request
 from server_stack import Stack, initialize
 
 
-def request(url, *, data=None, token=None, expected=200):
+def request(url, *, data=None, token=None, expected=200, ssl_context=None, source_ip=None):
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = "Bearer " + token
     body = None if data is None else json.dumps(data).encode()
     query = urllib.request.Request(url, data=body, headers=headers)
     # Loopback acceptance must not inherit a runner's HTTP proxy.
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    handlers = [urllib.request.ProxyHandler({})]
+    if ssl_context:
+        class Connection(http.client.HTTPSConnection):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, source_address=(source_ip or "127.0.0.1", 0), **kwargs)
+
+        class Handler(urllib.request.HTTPSHandler):
+            def https_open(self, query):
+                return self.do_open(Connection, query, context=self._context)
+
+        handlers.append(Handler(context=ssl_context))
+    opener = urllib.request.build_opener(*handlers)
     try:
         response = opener.open(query, timeout=12)
     except urllib.error.HTTPError as error:
@@ -38,14 +51,16 @@ def request(url, *, data=None, token=None, expected=200):
         payload = response.read(65537)
         if len(payload) > 65536:
             raise AssertionError("Acceptance response exceeded its size bound")
-        return json.loads(payload) if payload else None
+        if payload and "json" in response.headers.get("Content-Type", ""):
+            return json.loads(payload)
+        return payload or None
 
 
-def wait_status(url, expected, seconds=90):
+def wait_status(url, expected, seconds=90, **kwargs):
     deadline = time.monotonic() + seconds
     while True:
         try:
-            request(url, expected=expected)
+            request(url, expected=expected, **kwargs)
             return
         except (AssertionError, OSError):
             if time.monotonic() >= deadline:
@@ -109,7 +124,7 @@ def exercise(stack, base, email, password, *, create=False):
 
 def main():
     # Fail before creating containers if fixed acceptance ports are occupied.
-    for port in (18080, 15432, 17880, 17881):
+    for port in (18080, 15432, 17880, 17881, 18443, 18444):
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", port))
     stacks = []
@@ -190,17 +205,45 @@ def main():
             restored.run("up", "-d", "--wait", "--wait-timeout", "180")
             exercise(restored, base, email, password)
 
-            # Check the public reverse-proxy configuration without issuing certs.
+            # Validate the actual public template without requesting certificates.
             remote = root / "remote"
             initialize(remote, project="gcp-config-" + secrets.token_hex(6),
+                       api_port=18080, db_port=15432, signal_port=17880, media_tcp_port=17881,
                        api_domain="api.example.test", voice_domain="voice.example.test",
-                       media_ip="192.0.2.5", allow_cidrs=["198.51.100.10/32"])
+                       media_ip="192.0.2.5", allow_cidrs=["127.0.0.1/32"])
             remote_stack = Stack(remote)
             stacks.append(remote_stack)
             remote_stack.run("run", "--rm", "--no-deps", "caddy", "caddy", "validate",
                              "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile")
+            # Exercise that proxy policy over real TLS using a disposable local
+            # CA. Trust that CA explicitly; never disable certificate validation.
+            caddy = remote / "Caddyfile"
+            caddy.write_text(caddy.read_text()
+                             .replace("admin off", "admin off\n  auto_https disable_redirects")
+                             .replace("api.example.test {", "https://localhost:18443 {\n  tls internal")
+                             .replace("voice.example.test {", "https://localhost:18444 {\n  tls internal"))
+            remote_stack.run("up", "-d", "--no-deps", "caddy")
+            deadline = time.monotonic() + 30
+            while True:
+                try:
+                    certificate = remote_stack.run(
+                        "exec", "-T", "caddy", "cat", "/data/caddy/pki/authorities/local/root.crt",
+                        capture_output=True, text=True).stdout
+                    context = ssl.create_default_context(cadata=certificate)
+                    break
+                except (subprocess.SubprocessError, ssl.SSLError):
+                    if time.monotonic() >= deadline:
+                        raise AssertionError("Local TLS fixture did not initialize") from None
+                    time.sleep(0.5)
+            wait_status("https://localhost:18443/ready", 204, ssl_context=context)
+            request("https://localhost:18443/ready", expected=403,
+                    ssl_context=context, source_ip="127.0.0.2")
+            request("https://localhost:18444/twirp/livekit.RoomService/ListRooms", data={},
+                    token=control_token(credentials(restored.config), {"roomList": True}),
+                    ssl_context=context)
             print("PASS: fresh migrations, real API/SFU credentials, dependency outages, SIGTERM, "
-                  "WSS/control separation, restart persistence, empty-target restore and TLS config.")
+                  "WSS/control separation, restart persistence, empty-target restore, TLS proxy "
+                  "and source-IP access denial.")
             print("No media peers, physical audio, external TLS issuance or deployed host verified.")
         except BaseException:
             # Bound and redact diagnostics; never upload generated configuration.

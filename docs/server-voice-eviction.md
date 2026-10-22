@@ -6,6 +6,11 @@ The Rust server polls LiveKit active rooms and checks participants against curre
 
 Use the existing `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`. The control API uses the same origin: WSS becomes HTTPS and loopback WS becomes HTTP. URLs with credentials, query strings, fragments or non-root paths are rejected. The server must reach LiveKit's `/twirp/livekit.RoomService/` endpoints with credentials authorized for room listing and participant administration. Redirects and ambient HTTP proxies are disabled so admin credentials stay on the configured origin. Admin JWTs expire after 30 seconds and never reach the desktop.
 
+`LIVEKIT_CONTROL_URL` optionally selects a separate server-only HTTPS origin or
+literal-loopback HTTP origin. It follows the same root-path and credential-free
+URL restrictions and does not alter `LIVEKIT_URL` in issued desktop grants. See
+the [single-host stack](server-stack.md) for its loopback control configuration.
+
 Reserve `gcp-voice-{canonical channel UUID}` rooms exclusively for this GCP deployment. Other rooms are untouched. Participants in reserved rooms must use `gcp-session-{canonical login session UUID}`; legacy user-only identities are removed and must rejoin with a new grant. Do not share this namespace between deployments.
 
 The binary drives one reconciliation loop alongside the HTTP server. Embedders using `router_with_livekit` must also drive `run_eviction_loop`. Configuration begins unready: `/ready` and new voice grants return 503 until a complete pass succeeds. Any failed pass or a successful pass older than 30 seconds blocks new grants. Other API functions remain available.
@@ -18,7 +23,7 @@ Removal is periodic, not instantaneous. Database or SFU outages can delay remova
 
 RemoveParticipant sends an explicit `revoke_token_ts` cutoff. LiveKit Cloud supports token revocation; self-hosted removal does not invalidate an already issued JWT. A modified client can temporarily rejoin with a cached valid token and is removed on a later pass. This is not a zero-gap denylist. Keep clocks synchronized and restrict service access to the intended private group. See LiveKit's [token revocation reference](https://docs.livekit.io/frontends/reference/tokens-grants/) and [RoomService API](https://docs.livekit.io/reference/other/roomservice-api/).
 
-Tests use an HTTP LiveKit control fixture with real HS256 admin signatures and PostgreSQL. They cover two independent logins, refresh, logout, expired/deleted sessions, removed membership, deleted channels/communities, retry, restart, unauthorized rejoin, readiness, malformed/oversized responses and redirect rejection. They do not run a real SFU or prove physical two-user voice, screen sharing, or gaming performance. A real Windows/LiveKit test remains required before installer work.
+Tests use an HTTP LiveKit control fixture with real HS256 admin signatures and PostgreSQL. They cover two independent logins, refresh, logout, expired/deleted sessions, removed membership, deleted channels/communities, retry, restart, unauthorized rejoin, readiness, malformed/oversized responses and redirect rejection. Those fixture tests do not run a real SFU; the dedicated contract below and stack acceptance do. Physical two-user voice, screen sharing and gaming performance remain unverified. The alpha installer is available, with those product acceptance gaps still open.
 
 ## Real control API compatibility check
 
