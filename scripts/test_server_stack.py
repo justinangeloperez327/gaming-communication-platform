@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import os
+import json
 import stat
 import tempfile
 import unittest
@@ -32,6 +33,18 @@ class StackTests(unittest.TestCase):
         other = self.root / "other"
         initialize(other)
         self.assertNotEqual(first, (other / "api.env").read_text())
+
+    def test_owner_password_is_passed_only_on_stdin(self):
+        initialize(self.config)
+        stack = Stack(self.config)
+        stack.run = Mock()
+        account = dict(handle="owner", display_name="Owner", email="owner@example.test",
+                       password="a-private-long-passphrase")
+        stack.bootstrap_owner(account)
+        args, kwargs = stack.run.call_args
+        self.assertIn("--bootstrap-owner", args)
+        self.assertNotIn(account["password"], " ".join(args))
+        self.assertEqual(json.loads(kwargs["input"]), account)
 
     def test_remote_configuration_separates_public_and_private_origins(self):
         initialize(self.config, api_domain="api.example.test", voice_domain="voice.example.test",

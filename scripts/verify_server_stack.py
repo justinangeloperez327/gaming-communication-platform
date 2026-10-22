@@ -144,8 +144,20 @@ def main():
             request(base + "/health")
             wait_status(base + "/ready", 204)
             email, password = "stack@example.test", secrets.token_hex(16)
+            owner_email, owner_password = "owner@example.test", secrets.token_hex(16)
+            # Public traffic cannot claim ownership or register without a code.
             request(base + "/v1/auth/register", data={"email": email, "password": password,
-                    "handle": "stack_owner", "display_name": "Stack owner"}, expected=201)
+                    "handle": "stack_owner", "display_name": "Stack owner"}, expected=403)
+            source.bootstrap_owner(dict(email=owner_email, password=owner_password,
+                                        handle="host_owner", display_name="Host owner"))
+            owner = request(base + "/v1/auth/login",
+                            data={"email": owner_email, "password": owner_password})
+            assert owner["server_owner"] is True
+            invitation = request(base + "/v1/account-invitations", data={"email": email},
+                                 token=owner["access_token"], expected=201)
+            request(base + "/v1/auth/register", data={"email": email, "password": password,
+                    "handle": "stack_owner", "display_name": "Stack owner",
+                    "invitation_token": invitation["token"]}, expected=201)
             token, grant_path, room = exercise(source, base, email, password, create=True)
 
             # Authenticate against the real SFU with the same keys as API grants.
@@ -204,6 +216,9 @@ def main():
             restored.run("build", "api")
             restored.run("up", "-d", "--wait", "--wait-timeout", "180")
             exercise(restored, base, email, password)
+            restored_owner = request(base + "/v1/auth/login",
+                                     data={"email": owner_email, "password": owner_password})
+            assert restored_owner["server_owner"] is True
 
             # Validate the actual public template without requesting certificates.
             remote = root / "remote"
