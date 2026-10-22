@@ -1,5 +1,7 @@
 //! End-to-end voice-room token authorization with disposable PostgreSQL.
 //! No real LiveKit server is contacted; JWT structure/signature is unit-tested.
+mod support;
+
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -60,16 +62,17 @@ async fn call(
     };
     (status, body, no_store)
 }
-async fn signup(app: &Router, prefix: &str) -> (String, String) {
+async fn signup(app: &Router, pool: &PgPool, prefix: &str) -> (String, String) {
     let rnd = format!("{:016x}", rand::random::<u64>());
     let handle = format!("{prefix}_{rnd}");
+    let invitation = support::invitation(pool, &format!("{handle}@example.test")).await;
     let (status, body, _) = call(
         app,
         Method::POST,
         "/v1/auth/register",
         Some(
             json!({"handle":handle,"email":format!("{handle}@example.test"),
-            "display_name":"Room Player","password":"strong-testing-password-2026"}),
+            "display_name":"Room Player","invitation_token": invitation, "password":"strong-testing-password-2026"}),
         ),
         None,
     )
@@ -116,9 +119,9 @@ async fn tokens_are_issued_only_for_active_voice_channel_members() {
         .await
         .expect("initial control-plane check");
     let app = router_with_livekit(Some(db.clone()), Some(config));
-    let (owner, owner_id) = signup(&app, "lkown").await;
-    let (member, member_id) = signup(&app, "lkmem").await;
-    let (outsider, outsider_id) = signup(&app, "lkout").await;
+    let (owner, owner_id) = signup(&app, &db, "lkown").await;
+    let (member, member_id) = signup(&app, &db, "lkmem").await;
+    let (outsider, outsider_id) = signup(&app, &db, "lkout").await;
     let (status, community, _) = call(
         &app,
         Method::POST,

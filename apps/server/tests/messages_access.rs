@@ -1,5 +1,7 @@
 //! PostgreSQL integration tests for text-channel message access and pagination.
 //! Fixtures use distinct random accounts and clean up their communities/users.
+mod support;
+
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -56,9 +58,10 @@ async fn req(
     (status, json)
 }
 
-async fn register(app: &Router, prefix: &str) -> (String, String) {
+async fn register(app: &Router, pool: &PgPool, prefix: &str) -> (String, String) {
     let id = format!("{:016x}", rand::random::<u64>());
     let handle = format!("{prefix}_{id}");
+    let invitation = support::invitation(pool, &format!("{handle}@example.test")).await;
     let (status, data) = req(
         app,
         Method::POST,
@@ -66,7 +69,7 @@ async fn register(app: &Router, prefix: &str) -> (String, String) {
         Some(json!({
             "handle":handle, "display_name":"Player",
             "email":format!("{handle}@example.test"),
-            "password":"long unique test password 2026"
+            "invitation_token": invitation, "password":"long unique test password 2026"
         })),
         None,
     )
@@ -114,9 +117,9 @@ async fn authorized_message_lifecycle_and_privacy() {
     MIGRATOR.run(&pool).await.expect("migrations");
     let app = router_with_database(Some(pool.clone()));
 
-    let (owner, owner_id) = register(&app, "own").await;
-    let (member, member_id) = register(&app, "mem").await;
-    let (outsider, outsider_id) = register(&app, "out").await;
+    let (owner, owner_id) = register(&app, &pool, "own").await;
+    let (member, member_id) = register(&app, &pool, "mem").await;
+    let (outsider, outsider_id) = register(&app, &pool, "out").await;
     let community_a = community(&app, &owner).await;
     let community_b = community(&app, &outsider).await;
     let text_a = channel(&app, &community_a, &owner, "text", "general").await;

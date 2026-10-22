@@ -45,6 +45,8 @@ pub struct RegisterRequest {
     display_name: String,
     email: String,
     password: String,
+    #[serde(default)]
+    invitation_token: String,
 }
 
 #[derive(Deserialize)]
@@ -78,6 +80,7 @@ pub struct SessionResponse {
     refresh_token: String,
     token_type: &'static str,
     expires_in: i64,
+    server_owner: bool,
 }
 
 #[derive(Serialize)]
@@ -94,6 +97,7 @@ pub enum AuthError {
     Conflict,
     Busy,
     Unavailable,
+    InvitationRequired,
 }
 
 impl IntoResponse for AuthError {
@@ -106,6 +110,7 @@ impl IntoResponse for AuthError {
             Self::Conflict => (StatusCode::CONFLICT, "conflict"),
             Self::Busy => (StatusCode::TOO_MANY_REQUESTS, "temporarily_busy"),
             Self::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable"),
+            Self::InvitationRequired => (StatusCode::FORBIDDEN, "invitation_invalid"),
         };
         (status, Json(ErrorBody { error })).into_response()
     }
@@ -115,7 +120,7 @@ pub(crate) fn database(state: &AppState) -> Result<&PgPool, AuthError> {
     state.database.as_ref().ok_or(AuthError::Unavailable)
 }
 
-fn valid_handle(handle: &str) -> bool {
+pub(crate) fn valid_handle(handle: &str) -> bool {
     handle.len() >= 3
         && handle.len() <= 32
         && handle
@@ -123,13 +128,13 @@ fn valid_handle(handle: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
-fn valid_display_name(name: &str) -> bool {
+pub(crate) fn valid_display_name(name: &str) -> bool {
     name == name.trim()
         && (1..=80).contains(&name.chars().count())
         && !name.chars().any(char::is_control)
 }
 
-fn canonical_email(input: &str) -> Result<String, AuthError> {
+pub(crate) fn canonical_email(input: &str) -> Result<String, AuthError> {
     if input.len() < 3
         || input.len() > 320
         || input != input.trim()
@@ -154,7 +159,7 @@ fn canonical_email(input: &str) -> Result<String, AuthError> {
     Ok(value)
 }
 
-fn valid_password(p: &str) -> bool {
+pub(crate) fn valid_password(p: &str) -> bool {
     (12..=MAX_PASSWORD_BYTES).contains(&p.len()) && !p.as_bytes().contains(&0)
 }
 
@@ -181,7 +186,7 @@ pub(crate) fn random_token() -> String {
     hex(&bytes)
 }
 
-async fn hash_password(password: String) -> Result<String, AuthError> {
+pub(crate) async fn hash_password(password: String) -> Result<String, AuthError> {
     let permit = timeout(Duration::from_secs(2), workers().acquire_owned())
         .await
         .map_err(|_| AuthError::Busy)?
@@ -200,7 +205,7 @@ async fn hash_password(password: String) -> Result<String, AuthError> {
     .map_err(|_| AuthError::Unavailable)
 }
 
-async fn verify_password(password: String, stored: String) -> Result<bool, AuthError> {
+pub(crate) async fn verify_password(password: String, stored: String) -> Result<bool, AuthError> {
     let permit = timeout(Duration::from_secs(2), workers().acquire_owned())
         .await
         .map_err(|_| AuthError::Busy)?
@@ -242,13 +247,19 @@ async fn user_by_id(pool: &PgPool, id: Uuid) -> Result<UserView, AuthError> {
     read_user(&row)
 }
 
-fn session_response(user: UserView, access: String, refresh: String) -> SessionResponse {
+fn session_response(
+    user: UserView,
+    access: String,
+    refresh: String,
+    server_owner: bool,
+) -> SessionResponse {
     SessionResponse {
         user,
         access_token: access,
         refresh_token: refresh,
         token_type: "Bearer",
         expires_in: ACCESS_SECONDS,
+        server_owner,
     }
 }
 
@@ -264,10 +275,39 @@ pub(crate) async fn register(
         return Err(AuthError::InvalidRequest);
     }
     let email = canonical_email(&input.email)?;
+    let invitation =
+        token_digest(&input.invitation_token).map_err(|_| AuthError::InvitationRequired)?;
+    // Reject missing/expired/revoked/wrong-email codes before expensive hashing.
+    let valid: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM account_invitations
+         WHERE token_hash = $1 AND email = $2 AND used_at IS NULL
+           AND revoked_at IS NULL AND expires_at > clock_timestamp())",
+    )
+    .bind(&invitation)
+    .bind(&email)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| AuthError::Unavailable)?;
+    if !valid {
+        return Err(AuthError::InvitationRequired);
+    }
     let hash = hash_password(input.password).await?;
     let access = random_token();
     let refresh = random_token();
     let mut tx = pool.begin().await.map_err(|_| AuthError::Unavailable)?;
+    let claimed = sqlx::query(
+        "UPDATE account_invitations SET used_at = clock_timestamp()
+         WHERE token_hash = $1 AND email = $2 AND used_at IS NULL
+           AND revoked_at IS NULL AND expires_at > clock_timestamp()",
+    )
+    .bind(invitation)
+    .bind(&email)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| AuthError::Unavailable)?;
+    if claimed.rows_affected() != 1 {
+        return Err(AuthError::InvitationRequired);
+    }
     let inserted = sqlx::query(
         "INSERT INTO users (handle, display_name, email, password_hash)
          VALUES ($1, $2, $3, $4) RETURNING id, handle, display_name, email",
@@ -302,7 +342,7 @@ pub(crate) async fn register(
     tx.commit().await.map_err(|_| AuthError::Unavailable)?;
     Ok((
         StatusCode::CREATED,
-        Json(session_response(user, access, refresh)),
+        Json(session_response(user, access, refresh, false)),
     ))
 }
 
@@ -346,7 +386,8 @@ pub(crate) async fn login(
     .execute(pool)
     .await
     .map_err(|_| AuthError::Unavailable)?;
-    Ok(Json(session_response(user, access, refresh)))
+    let owner = crate::onboarding::is_owner(pool, id).await?;
+    Ok(Json(session_response(user, access, refresh, owner)))
 }
 
 fn bearer_digest(headers: &HeaderMap) -> Result<String, AuthError> {
@@ -442,7 +483,8 @@ pub(crate) async fn refresh(
     .map_err(|_| AuthError::Unavailable)?
     .ok_or(AuthError::Unauthorized)?;
     let user = user_by_id(pool, user_id).await?;
-    Ok(Json(session_response(user, access, refresh)))
+    let owner = crate::onboarding::is_owner(pool, user_id).await?;
+    Ok(Json(session_response(user, access, refresh, owner)))
 }
 
 pub(crate) async fn logout(

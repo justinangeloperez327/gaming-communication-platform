@@ -1,5 +1,13 @@
 # Current stabilization audit — 21 October 2026
 
+Subsequent Group 2 work is in [PR #80](https://github.com/justinangeloperez327/gaming-communication-platform/pull/80):
+local owner bootstrap, invitation-only registration and desktop account/invitation
+controls. Use [private onboarding](account-onboarding.md) for current behavior;
+the open-registration and missing-signup statements below describe the earlier
+audit revision. [PR #79](https://github.com/justinangeloperez327/gaming-communication-platform/pull/79)
+has since merged the shared server package. Neither change supplies physical
+media or deployed-host acceptance.
+
 The next completion milestone is tracked in [PR #79](https://github.com/justinangeloperez327/gaming-communication-platform/pull/79):
 the [shared server package](server-stack.md), with real-container startup,
 persistence and recovery acceptance. The [completion roadmap](completion-roadmap.md)

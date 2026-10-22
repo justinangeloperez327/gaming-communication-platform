@@ -1,6 +1,8 @@
 //! End-to-end native WebSocket/HTTP integration with PostgreSQL.
 use std::time::Duration;
 
+mod support;
+
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -65,9 +67,10 @@ async fn req(
     (status, result)
 }
 
-async fn signup(app: &Router, prefix: &str) -> (String, String) {
+async fn signup(app: &Router, pool: &PgPool, prefix: &str) -> (String, String) {
     let suffix = format!("{:016x}", rand::random::<u64>());
     let handle = format!("{prefix}_{suffix}");
+    let invitation = support::invitation(pool, &format!("{handle}@example.test")).await;
     let (status, result) = req(
         app,
         Method::POST,
@@ -75,7 +78,7 @@ async fn signup(app: &Router, prefix: &str) -> (String, String) {
         Some(json!({
             "handle":handle,"display_name":"Socket Test",
             "email":format!("{handle}@example.test"),
-            "password":"this-is-a-long-test-password-2026"
+            "invitation_token": invitation, "password":"this-is-a-long-test-password-2026"
         })),
         None,
     )
@@ -112,9 +115,9 @@ async fn authorized_websocket_delivers_message_ids_and_rejects_removed_users() {
     let Some(pool) = db().await else { return };
     MIGRATOR.run(&pool).await.expect("migrations");
     let app = router_with_database(Some(pool.clone()));
-    let (owner, owner_id) = signup(&app, "wsown").await;
-    let (member, member_id) = signup(&app, "wsmem").await;
-    let (outsider, outsider_id) = signup(&app, "wsout").await;
+    let (owner, owner_id) = signup(&app, &pool, "wsown").await;
+    let (member, member_id) = signup(&app, &pool, "wsmem").await;
+    let (outsider, outsider_id) = signup(&app, &pool, "wsout").await;
     let (status, community) = req(
         &app,
         Method::POST,

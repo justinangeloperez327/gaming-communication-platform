@@ -8,9 +8,9 @@ installer does not install or configure these services.
 No remote deployment is performed by this repository change. The automated
 acceptance test uses disposable containers with no media peers. A reachable
 server, DNS, certificates, firewall/NAT and physical voice testing still need an
-actual host. Account registration remains open to anyone who can reach the API;
-the remote template restricts requests to the friends' explicitly supplied IP
-ranges. Owner bootstrap and invite-only onboarding are the next product group.
+actual host. New accounts require email-bound invitations from the locally
+configured owner; see [private onboarding](account-onboarding.md). The remote
+template also restricts requests to the friends' explicitly supplied IP ranges.
 
 ## Local bring-up
 
@@ -24,6 +24,7 @@ From the repository root:
 ```bash
 python3 scripts/server_stack.py init
 python3 scripts/server_stack.py up
+python3 scripts/server_stack.py owner --email owner@example.com --handle owner --display-name "Server owner"
 curl --fail http://127.0.0.1:8080/health
 curl --fail --include http://127.0.0.1:8080/ready
 python3 scripts/server_stack.py status
@@ -36,6 +37,12 @@ configuration files are inside that private directory. Never commit, publish or
 paste these files. For a lasting host, use `--config /srv/gcp/config` **before
 each subcommand**, and keep that directory outside a checkout shared with other
 users. Back it up separately using encrypted storage.
+
+Run `owner` once after `up`; it prompts for the password privately. The owner can
+then sign in to an updated desktop and issue account invitations. For an existing
+account, its current password and exact handle are required. Ownership already
+set in the database cannot be replaced by this command. Existing accounts keep
+working after the invitation migration.
 
 `up` builds a multi-stage API image using the committed Cargo lockfile, waits
 for PostgreSQL, runs embedded migrations as a one-shot service, then starts the
@@ -170,9 +177,10 @@ curl --fail --include http://127.0.0.1:18080/ready
 The restore tool refuses a running API/migration process and any populated public
 schema. It does not drop tables, clean a database or delete operator volumes.
 The new project gets new database/SFU secrets, while restored account passwords
-and data remain valid. Sessions are restored to their snapshot state; sessions
-revoked after the backup can become valid again. Revoke restored sessions before
-reopening access when that matters. Verify login and persisted community/channel
+and data remain valid. Ownership, invitations and sessions are restored to their
+snapshot state; invitations/sessions revoked or consumed after the backup can
+become valid again. Review and revoke restored pending codes and sessions before
+reopening access. Verify login and persisted community/channel
 data before selecting a recovery host. Use a remote-mode configuration at `init`
 if this recovery project will serve friends. Do not delete the original volumes
 until the owner has accepted recovery.
@@ -185,7 +193,8 @@ python3 scripts/verify_server_stack.py
 ```
 
 The second command needs Docker, builds the real API and creates disposable
-randomly named projects. It verifies fresh migrations, account/login and role
+randomly named projects. It verifies fresh migrations, refusal of uninvited
+registration, operator owner bootstrap, invited registration, login and role
 protected API operations, signed microphone grants against the configured SFU
 keys, real LiveKit room-control authentication, dependency loss/recovery,
 SIGTERM exit, public-WSS/private-control separation, persistence across container

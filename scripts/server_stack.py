@@ -6,13 +6,16 @@ file and an explicit project/config directory. stop retains all data volumes.
 
 import argparse
 from contextlib import contextmanager
+import getpass
 import ipaddress
+import json
 import os
 from pathlib import Path
 import re
 import secrets
 import subprocess
 import sys
+import warnings
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,6 +136,11 @@ class Stack:
     def database(self, *arguments, **kwargs):
         return self.run("exec", "-T", "postgres", *arguments, **kwargs)
 
+    def bootstrap_owner(self, account):
+        # Password travels through stdin only, never arguments, env files or SQL.
+        return self.run("run", "--rm", "--no-deps", "-T", "migrate", "--bootstrap-owner",
+                        input=json.dumps(account).encode("utf-8"))
+
     def backup(self, output):
         fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
@@ -197,6 +205,10 @@ def main():
         sub.add_parser(name)
     sub.add_parser("backup").add_argument("archive", type=Path)
     sub.add_parser("restore").add_argument("archive", type=Path)
+    owner = sub.add_parser("owner", help="Bootstrap one server owner using a hidden password prompt")
+    owner.add_argument("--email", required=True)
+    owner.add_argument("--handle", required=True)
+    owner.add_argument("--display-name", required=True)
     args = parser.parse_args()
     try:
         if args.action == "init":
@@ -223,7 +235,17 @@ def main():
                 elif args.action == "restore":
                     stack.restore(args.archive)
                     print("Restored into an empty database. Run up to migrate and check readiness.")
-    except (ValueError, OSError, subprocess.SubprocessError) as error:
+                elif args.action == "owner":
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("error", getpass.GetPassWarning)
+                        password = getpass.getpass("Owner password: ")
+                        confirmation = getpass.getpass("Confirm password: ")
+                    if password != confirmation or not 12 <= len(password.encode("utf-8")) <= 128:
+                        raise ValueError("Passwords must match and contain 12-128 UTF-8 bytes")
+                    stack.bootstrap_owner(dict(email=args.email, handle=args.handle,
+                                               display_name=args.display_name, password=password))
+                    print("Server owner configured. Sign in using the desktop to invite friends.")
+    except (ValueError, OSError, subprocess.SubprocessError, getpass.GetPassWarning) as error:
         # Commands never include credentials. Do not print the parsed environment.
         parser.exit(1, f"Server stack operation failed: {error}\n")
 

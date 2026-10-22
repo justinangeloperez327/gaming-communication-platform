@@ -6,7 +6,7 @@ GCP is an experimental Windows x64 communication application for private gaming 
 
 | Area | Implemented | Evidence / limits |
 | --- | --- | --- |
-| Desktop accounts | Sign-in, in-memory access/refresh tokens, timed rotation, local sign-out and best-effort remote logout | Automated API tests and Qt networking tests; no persistent desktop login |
+| Desktop accounts | Invited account creation, owner invitation controls, sign-in, in-memory tokens, timed rotation and sign-out | PostgreSQL, real-stack and Qt tests; no email delivery/recovery or persistent login |
 | Communities | API roles, invitations, channels and membership; desktop community/voice-channel selection | PostgreSQL integration tests; creation/invitation administration is API-only |
 | Text and friends | Authorized channel messages, friendships, blocks, DMs and text-channel WebSocket events | Backend integration tests; desktop message composer remains disabled |
 | Voice | Listen-only, explicit microphone opt-in, mute/F8 push-to-talk, device selection, room events, bounded recovery and Leave | Real SDK integration; managed desktop calls continue until Leave; mute/F8 PTT and periodic access checks; physical audibility unverified |
@@ -50,7 +50,7 @@ The API binds to `127.0.0.1:8080` by default. `/health` is liveness; `/ready` re
 
 Read [PostgreSQL setup](docs/postgresql.md), [authentication](docs/authentication.md), [community roles](docs/communities.md), [messages](docs/messages.md), and [LiveKit authorization](docs/livekit-tokens.md).
 
-For friends-only operation, restrict backend/LiveKit network access to your intended group and use HTTPS/WSS. Account registration is not invite-restricted and there is no complete public-internet abuse protection. The server periodically removes voice participants whose session or channel access has expired or been revoked; see [voice eviction and its limits](docs/server-voice-eviction.md). Keep API signing secrets only on the server.
+For friends-only operation, configure the owner on the shared host and use [private account invitations](docs/account-onboarding.md). Restrict backend/LiveKit network access to your intended group and use HTTPS/WSS; complete public-internet abuse protection remains absent. The server periodically removes voice participants whose session or channel access has expired or been revoked; see [voice eviction and its limits](docs/server-voice-eviction.md). Keep API signing secrets only on the server.
 
 ## Private portable ZIP
 

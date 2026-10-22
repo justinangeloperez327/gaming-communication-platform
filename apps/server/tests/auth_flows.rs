@@ -1,5 +1,7 @@
 //! Auth integration tests run against a disposable PostgreSQL service in CI.
 //! No credentials, tokens or password hashes are written to test logs.
+mod support;
+
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -71,7 +73,8 @@ async fn registration_login_rotation_profile_and_revocation() {
 
     let registration = json!({
         "handle": handle, "display_name": "First Player",
-        "email": email, "password": password
+        "email": email, "password": password,
+        "invitation_token": support::invitation(&pool, &email).await
     });
     let (status, account) = send(
         &app,
@@ -97,6 +100,7 @@ async fn registration_login_rotation_profile_and_revocation() {
     let mut duplicate = registration;
     duplicate["handle"] = json!(format!("v_{suffix}"));
     duplicate["email"] = json!(email.to_ascii_uppercase());
+    duplicate["invitation_token"] = json!(support::invitation(&pool, &email).await);
     let (status, _) = send(
         &app,
         Method::POST,
