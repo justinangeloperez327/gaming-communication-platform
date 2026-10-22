@@ -41,6 +41,7 @@ struct Fixture {
     bool oversizedList = false;
     int registrations = 0;
     int invitations = 0;
+    int invitationLists = 0;
     QJsonObject registration;
     QJsonArray pending;
     const QString id = QStringLiteral("00000000-0000-0000-0000-000000000001");
@@ -65,8 +66,14 @@ struct Fixture {
                 const auto end = bytes.indexOf("\r\n\r\n");
                 if (end < 0 || socket->property("answered").toBool()) return;
                 int length = 0;
+                bool authorized = false;
                 for (const auto &line : bytes.left(end).split('\n')) {
-                    if (line.toLower().startsWith("content-length:")) length = line.mid(15).trimmed().toInt();
+                    const auto colon = line.indexOf(':');
+                    if (colon < 0) continue;
+                    const auto name = line.left(colon).trimmed().toLower();
+                    const auto value = line.mid(colon + 1).trimmed();
+                    if (name == "content-length") length = value.toInt();
+                    if (name == "authorization") authorized = value == "Bearer " + QByteArray(64, 'a');
                 }
                 if (bytes.size() < end + 4 + length) return;
                 socket->setProperty("answered", true);
@@ -82,8 +89,9 @@ struct Fixture {
                 } else if (path == "/v1/auth/login") {
                     reply(socket, loginStatus, loginStatus == 200 ? session() : QByteArray("{\"error\":\"private-server-detail\"}"));
                 } else if (path == "/v1/auth/logout") reply(socket, 204);
-                else if (!bytes.contains("Authorization: Bearer " + QByteArray(64, 'a'))) reply(socket, 401, "{}");
+                else if (!authorized) reply(socket, 401, "{}");
                 else if (path == "/v1/account-invitations" && bytes.startsWith("GET ")) {
+                    ++invitationLists;
                     reply(socket, 200, oversizedList ? QByteArray(100000, 'x') : QJsonDocument(pending).toJson(QJsonDocument::Compact));
                 } else if (path == "/v1/account-invitations") {
                     ++invitations;
@@ -157,13 +165,20 @@ int main(int argc, char **argv) {
         }
         fixture.loginStatus = 200; fixture.owner = true;
         account.signIn(fixture.origin(), QStringLiteral("owner@example.test"), QStringLiteral("private-password"));
-        require(waitFor([&]() { return account.signedIn() && !account.busy() && !account.invitationBusy(); }), "owner login");
+        require(waitFor([&]() { return account.signedIn() && !account.busy() && !account.invitationBusy() && fixture.invitationLists > 0; }), "owner login and initial invitation list");
         require(account.serverOwner(), "server owner role");
         account.inviteFriend(QStringLiteral("new@example.test"));
-        require(waitFor([&]() { return !account.invitationBusy() && account.invitationCode().size() == 64 && account.invitations().size() == 1; }), "create and list invitations");
+        const bool created = waitFor([&]() { return !account.invitationBusy() && account.invitationCode().size() == 64 && account.invitations().size() == 1; });
+        if (!created) std::cerr << account.invitationStatus().toStdString() << '\n';
+        require(created, "create and list invitations");
         require(account.invitationEmail() == QStringLiteral("new@example.test"), "code email binding displayed");
         account.revokeInvitation();
         require(waitFor([&]() { return !account.invitationBusy() && account.invitationCode().isEmpty() && account.invitations().isEmpty(); }), "revoke and refresh");
+        fixture.pending = QJsonArray{QJsonObject{{"id", fixture.id}, {"email", "earlier@example.test"}, {"expires_in", 3600}}};
+        account.loadInvitations();
+        require(waitFor([&]() { return !account.invitationBusy() && account.invitations().size() == 1; }), "load invitation from earlier session");
+        account.revokePendingInvitation(fixture.id);
+        require(waitFor([&]() { return !account.invitationBusy() && account.invitations().isEmpty(); }), "revoke earlier invitation without its raw code");
         fixture.oversizedList = true; account.loadInvitations();
         require(waitFor([&]() { return !account.invitationBusy(); }) && account.signedIn() && account.invitations().isEmpty(), "oversized management reply cannot corrupt session");
         fixture.oversizedList = false;
