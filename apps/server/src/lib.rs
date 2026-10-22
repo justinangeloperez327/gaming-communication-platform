@@ -114,12 +114,20 @@ pub fn router_with_livekit(
             get(communities::members),
         )
         .route(
+            "/v1/communities/{community_id}/membership",
+            axum::routing::delete(communities::leave),
+        )
+        .route(
             "/v1/communities/{community_id}/members/{member_id}",
             axum::routing::patch(communities::change_role).delete(communities::remove_member),
         )
         .route(
             "/v1/communities/{community_id}/invitations",
-            post(communities::invite),
+            get(communities::invitations).post(communities::invite),
+        )
+        .route(
+            "/v1/communities/{community_id}/invitations/{invitation_id}",
+            axum::routing::delete(communities::revoke_invite),
         )
         .route("/v1/invitations/accept", post(communities::accept_invite))
         .route(

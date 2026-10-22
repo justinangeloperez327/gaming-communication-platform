@@ -124,8 +124,15 @@ pub(crate) struct ChannelView {
 
 #[derive(Serialize)]
 pub(crate) struct InvitationView {
+    id: String,
     token: String,
     expires_in: u32,
+}
+
+#[derive(Serialize)]
+pub(crate) struct PendingInvitationView {
+    id: String,
+    expires_in: i64,
 }
 
 fn community_row(row: &sqlx::postgres::PgRow) -> Result<CommunityView, AuthError> {
@@ -283,6 +290,33 @@ pub(crate) async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub(crate) async fn leave(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(community_id): Path<String>,
+) -> Result<StatusCode, AuthError> {
+    let community = uuid(&community_id)?;
+    let (pool, user_id) = actor(&state, &headers).await?;
+    if role(&pool, user_id, community).await? == "owner" {
+        return Err(AuthError::Forbidden);
+    }
+    let result = sqlx::query(
+        "DELETE FROM community_memberships m USING communities c
+         WHERE m.community_id = $1 AND m.user_id = $2
+           AND m.role IN ('admin', 'member') AND c.id = m.community_id
+           AND c.owner_id <> m.user_id",
+    )
+    .bind(community)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .map_err(db_error)?;
+    if result.rows_affected() == 0 {
+        return Err(AuthError::NotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub(crate) async fn members(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -396,7 +430,40 @@ pub(crate) async fn invite(
     let (pool, user_id) = actor(&state, &headers).await?;
     manager(&role(&pool, user_id, community).await?)?;
     let token = auth::random_token();
-    let result = sqlx::query(
+    let mut tx = pool.begin().await.map_err(|_| AuthError::Unavailable)?;
+    // Serialize the active-code limit for this community and recheck permission.
+    let _: Uuid = sqlx::query_scalar(
+        "SELECT c.id FROM communities c WHERE c.id = $1 AND EXISTS (
+           SELECT 1 FROM community_memberships m
+           WHERE m.community_id = c.id AND m.user_id = $2
+             AND m.role IN ('owner', 'admin')) FOR UPDATE",
+    )
+    .bind(community)
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(db_error)?
+    .ok_or(AuthError::NotFound)?;
+    sqlx::query(
+        "DELETE FROM community_invitations
+         WHERE community_id = $1 AND expires_at < now() - interval '7 days'",
+    )
+    .bind(community)
+    .execute(&mut *tx)
+    .await
+    .map_err(db_error)?;
+    let active: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM community_invitations
+         WHERE community_id = $1 AND used_at IS NULL AND expires_at > now()",
+    )
+    .bind(community)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(db_error)?;
+    if active >= 200 {
+        return Err(AuthError::Busy);
+    }
+    let id: Uuid = sqlx::query_scalar(
         "INSERT INTO community_invitations
          (community_id, created_by, token_hash, expires_at)
          SELECT $1, $2, $3, now() + interval '24 hours'
@@ -404,24 +471,86 @@ pub(crate) async fn invite(
            SELECT 1 FROM community_memberships m
            WHERE m.community_id = $1 AND m.user_id = $2
              AND m.role IN ('owner', 'admin')
-         )",
+         ) RETURNING id",
     )
     .bind(community)
     .bind(user_id)
     .bind(auth::token_digest(&token)?)
-    .execute(&pool)
+    .fetch_optional(&mut *tx)
     .await
-    .map_err(db_error)?;
-    if result.rows_affected() != 1 {
-        return Err(AuthError::NotFound);
-    }
+    .map_err(db_error)?
+    .ok_or(AuthError::NotFound)?;
+    tx.commit().await.map_err(db_error)?;
     Ok((
         StatusCode::CREATED,
         Json(InvitationView {
+            id: id.to_string(),
             token,
             expires_in: 24 * 60 * 60,
         }),
     ))
+}
+
+pub(crate) async fn invitations(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(community_id): Path<String>,
+) -> Result<Json<Vec<PendingInvitationView>>, AuthError> {
+    let community = uuid(&community_id)?;
+    let (pool, user_id) = actor(&state, &headers).await?;
+    manager(&role(&pool, user_id, community).await?)?;
+    let rows = sqlx::query(
+        "SELECT ci.id, greatest(0, extract(epoch FROM ci.expires_at - now())::bigint) AS ttl
+         FROM community_invitations ci
+         WHERE ci.community_id = $1 AND ci.used_at IS NULL AND ci.expires_at > now()
+           AND EXISTS (SELECT 1 FROM community_memberships m
+             WHERE m.community_id = ci.community_id AND m.user_id = $2
+               AND m.role IN ('owner', 'admin'))
+         ORDER BY ci.created_at, ci.id LIMIT 200",
+    )
+    .bind(community)
+    .bind(user_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| {
+            Ok(PendingInvitationView {
+                id: row.try_get::<Uuid, _>("id").map_err(db_error)?.to_string(),
+                expires_in: row.try_get("ttl").map_err(db_error)?,
+            })
+        })
+        .collect::<Result<Vec<_>, AuthError>>()?;
+    Ok(Json(views))
+}
+
+pub(crate) async fn revoke_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((community_id, invitation_id)): Path<(String, String)>,
+) -> Result<StatusCode, AuthError> {
+    let community = uuid(&community_id)?;
+    let invitation = uuid(&invitation_id)?;
+    let (pool, user_id) = actor(&state, &headers).await?;
+    manager(&role(&pool, user_id, community).await?)?;
+    let result = sqlx::query(
+        "DELETE FROM community_invitations ci
+         WHERE ci.id = $1 AND ci.community_id = $2 AND ci.used_at IS NULL
+           AND EXISTS (SELECT 1 FROM community_memberships m
+             WHERE m.community_id = ci.community_id AND m.user_id = $3
+               AND m.role IN ('owner', 'admin'))",
+    )
+    .bind(invitation)
+    .bind(community)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .map_err(db_error)?;
+    if result.rows_affected() == 0 {
+        return Err(AuthError::NotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub(crate) async fn accept_invite(
