@@ -3,7 +3,7 @@
 Build Windows with `GCP_ENABLE_LIVEKIT=ON`, placing `gcp-livekit-voice.exe`, `livekit.dll`, `livekit_ffi.dll` and Qt runtime dependencies alongside the desktop. Use the private ZIP tooling for dependency staging.
 
 1. Configure PostgreSQL and server-only LiveKit credentials on the Rust backend.
-2. Create accounts using [private onboarding](account-onboarding.md). Create/join a community with a voice channel through the API; community administration screens are not implemented.
+2. Create accounts using [private onboarding](account-onboarding.md). [Create/join a community](desktop-communities.md) in the desktop and ask its owner/admin to add a voice channel.
 3. Open the desktop and enter the HTTPS API origin, account email and password. Loopback HTTP is allowed for development.
 4. Choose your community and voice channel. Scan/select devices if needed.
 5. Choose Listen only, or explicitly authorize microphone capture for this call and Join with mic. Leave stops the subprocess.
@@ -14,7 +14,12 @@ The UI distinguishes running process, SDK connected acknowledgment, reconnecting
 
 Desktop calls now continue until Leave using a leased native control pipe and periodic backend authorization. Microphone calls start muted; Enable mic permits transmission, and the optional F8 push-to-talk mode works outside the Qt window. Switching modes mutes the call and requires Enable mic again. Standalone diagnostics keep their bounded duration defaults. Read [long-session voice](long-session-voice.md) for control safety, token/reconnect boundaries and tests.
 
-Sign-out stops local media and attempts API logout; offline logout can fail remotely. Active SFU eviction after revoked membership/session is not implemented; periodic checks only constrain this cooperative desktop client. Physical two-user voice, permissions, headset behavior, gaming PTT and multi-hour calls still need manual Windows acceptance.
+Sign-out stops local media and attempts API logout; offline logout can fail remotely.
+The server also performs [periodic SFU eviction](server-voice-eviction.md); outages
+can delay removal and cached self-hosted JWTs can rejoin before expiry. Ordinary
+directory refresh/rename preserves a valid local room. Removing its channel or
+membership stops the local voice child. Physical two-user voice, permissions,
+headset behavior, gaming PTT and multi-hour calls still need Windows acceptance.
 
 ### Device-scan output limits
 

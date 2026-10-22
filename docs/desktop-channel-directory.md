@@ -1,9 +1,24 @@
-# Group 31 — Authenticated community and voice channel directory
+# Authenticated community and voice channel directory
 
-After signing in, the desktop uses the account's bearer token to fetch `GET /v1/communities`. Selecting a community fetches `GET /v1/communities/{community_id}/channels`. Only channels with `channel_kind=voice` are offered for joining. No hardcoded community/channel IDs or environment configuration are needed.
+After sign-in the desktop fetches `GET /v1/communities`. Selection revalidates the
+community with `GET /v1/communities/{id}` and loads its channels. Only voice
+channels appear in the voice picker; the management editor includes both kinds.
+No hardcoded room IDs or environment configuration are needed. See
+[desktop communities](desktop-communities.md) for create/join/admin workflows.
 
-Selection changes clear previous channel choices and disconnect any active diagnostic voice process. Backend membership and channel-kind authorization are **still repeated** at LiveKit token issuance; the UI list is not an authorization boundary.
+Actual room selection changes stop local voice and clear pending microphone
+consent. Ordinary refreshes preserve a still-valid selection; removed channels
+and lost membership clear it. Listing never selects another room automatically.
+Membership and channel kind are checked again at LiveKit token issuance; UI data
+is not an authorization boundary.
 
-Requests disable HTTP redirection, enforce timeouts and response size bounds, and discard late results after logout. The directory is cleared when the account signs out. No community/channel data is persisted to disk.
+One bounded request runs at a time, with blocked redirects, a 128 KiB response cap
+and ten-second absolute event-loop deadlines. Cancel/logout/destruction abort
+pending transport; generation checks discard late results. Sign-out clears roles,
+members, invitations and room IDs. No directory data is persisted to disk.
 
-Limitations: no real-time list updates, no favorite channels or invitation UI, and no physical two-device voice acceptance. [Server-side SFU eviction](server-voice-eviction.md) is implemented separately; connected-participant eviction and cached-token rejoin timing still need physical acceptance. Qt build/CI and physical audio tests are required. The native voice process start is not proof of a room join; separate SDK acknowledgments now drive connected state.
+The API caps communities at 100 and channels/members at 200; the selected
+community can be retained as one additional verified entry. Pagination, search,
+favorites and real-time list updates are absent. [Server-side eviction](server-voice-eviction.md)
+is separate; connected-media eviction and cached-token rejoin timing still need
+physical acceptance. Process startup is not proof of a room join or audibility.
