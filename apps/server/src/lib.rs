@@ -90,8 +90,14 @@ pub fn router_with_livekit(
         .route("/v1/auth/login", post(auth::login))
         .route("/v1/auth/refresh", post(auth::refresh))
         .route("/v1/auth/logout", post(auth::logout))
-        .route("/v1/account-invitations", get(onboarding::list_invitations).post(onboarding::create_invitation))
-        .route("/v1/account-invitations/{id}", axum::routing::delete(onboarding::revoke_invitation))
+        .route(
+            "/v1/account-invitations",
+            get(onboarding::list_invitations).post(onboarding::create_invitation),
+        )
+        .route(
+            "/v1/account-invitations/{id}",
+            axum::routing::delete(onboarding::revoke_invitation),
+        )
         .route("/v1/me", get(auth::me).patch(auth::update_profile))
         .route(
             "/v1/communities",

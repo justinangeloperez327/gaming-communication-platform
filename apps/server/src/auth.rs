@@ -247,7 +247,12 @@ async fn user_by_id(pool: &PgPool, id: Uuid) -> Result<UserView, AuthError> {
     read_user(&row)
 }
 
-fn session_response(user: UserView, access: String, refresh: String, server_owner: bool) -> SessionResponse {
+fn session_response(
+    user: UserView,
+    access: String,
+    refresh: String,
+    server_owner: bool,
+) -> SessionResponse {
     SessionResponse {
         user,
         access_token: access,
@@ -270,7 +275,8 @@ pub(crate) async fn register(
         return Err(AuthError::InvalidRequest);
     }
     let email = canonical_email(&input.email)?;
-    let invitation = token_digest(&input.invitation_token).map_err(|_| AuthError::InvitationRequired)?;
+    let invitation =
+        token_digest(&input.invitation_token).map_err(|_| AuthError::InvitationRequired)?;
     // Reject missing/expired/revoked/wrong-email codes before expensive hashing.
     let valid: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM account_invitations
@@ -282,7 +288,9 @@ pub(crate) async fn register(
     .fetch_one(pool)
     .await
     .map_err(|_| AuthError::Unavailable)?;
-    if !valid { return Err(AuthError::InvitationRequired); }
+    if !valid {
+        return Err(AuthError::InvitationRequired);
+    }
     let hash = hash_password(input.password).await?;
     let access = random_token();
     let refresh = random_token();
@@ -297,7 +305,9 @@ pub(crate) async fn register(
     .execute(&mut *tx)
     .await
     .map_err(|_| AuthError::Unavailable)?;
-    if claimed.rows_affected() != 1 { return Err(AuthError::InvitationRequired); }
+    if claimed.rows_affected() != 1 {
+        return Err(AuthError::InvitationRequired);
+    }
     let inserted = sqlx::query(
         "INSERT INTO users (handle, display_name, email, password_hash)
          VALUES ($1, $2, $3, $4) RETURNING id, handle, display_name, email",

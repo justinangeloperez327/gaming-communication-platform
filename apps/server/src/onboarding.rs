@@ -9,7 +9,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row, types::Uuid};
 
-use crate::{AppState, auth::{self, AuthError}};
+use crate::{
+    AppState,
+    auth::{self, AuthError},
+};
 
 #[derive(Deserialize)]
 pub struct OwnerInput {
@@ -37,29 +40,37 @@ pub async fn bootstrap_owner(pool: &PgPool, input: OwnerInput) -> Result<Uuid, A
         return Err(AuthError::InvalidRequest);
     }
     let email = auth::canonical_email(&input.email)?;
-    let existing = sqlx::query("SELECT id, handle, password_hash FROM users WHERE lower(email) = $1")
-        .bind(&email)
-        .fetch_optional(pool)
-        .await
-        .map_err(|_| AuthError::Unavailable)?;
+    let existing =
+        sqlx::query("SELECT id, handle, password_hash FROM users WHERE lower(email) = $1")
+            .bind(&email)
+            .fetch_optional(pool)
+            .await
+            .map_err(|_| AuthError::Unavailable)?;
     let (existing_id, hash) = if let Some(row) = existing {
         let handle: String = row.try_get("handle").map_err(|_| AuthError::Unavailable)?;
-        let stored: String = row.try_get("password_hash").map_err(|_| AuthError::Unavailable)?;
+        let stored: String = row
+            .try_get("password_hash")
+            .map_err(|_| AuthError::Unavailable)?;
         if handle != input.handle || !auth::verify_password(input.password, stored).await? {
             return Err(AuthError::Unauthorized);
         }
-        (Some(row.try_get::<Uuid, _>("id").map_err(|_| AuthError::Unavailable)?), None)
+        (
+            Some(
+                row.try_get::<Uuid, _>("id")
+                    .map_err(|_| AuthError::Unavailable)?,
+            ),
+            None,
+        )
     } else {
         (None, Some(auth::hash_password(input.password).await?))
     };
 
     let mut tx = pool.begin().await.map_err(|_| AuthError::Unavailable)?;
-    let owner: Option<Uuid> = sqlx::query_scalar(
-        "SELECT owner_id FROM server_ownership WHERE singleton = 1 FOR UPDATE",
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(|_| AuthError::Unavailable)?;
+    let owner: Option<Uuid> =
+        sqlx::query_scalar("SELECT owner_id FROM server_ownership WHERE singleton = 1 FOR UPDATE")
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|_| AuthError::Unavailable)?;
     if owner.is_some() {
         return Err(AuthError::Conflict);
     }
@@ -158,9 +169,17 @@ pub(crate) async fn create_invitation(
     .await
     .map_err(|_| AuthError::Unavailable)?;
     tx.commit().await.map_err(|_| AuthError::Unavailable)?;
-    Ok((StatusCode::CREATED, Json(CreatedInvitation {
-        invitation: InvitationView { id: id.to_string(), email, expires_in: 24 * 60 * 60 }, token,
-    })))
+    Ok((
+        StatusCode::CREATED,
+        Json(CreatedInvitation {
+            invitation: InvitationView {
+                id: id.to_string(),
+                email,
+                expires_in: 24 * 60 * 60,
+            },
+            token,
+        }),
+    ))
 }
 
 pub(crate) async fn list_invitations(
@@ -179,7 +198,10 @@ pub(crate) async fn list_invitations(
     let mut invitations = Vec::with_capacity(rows.len());
     for row in rows {
         invitations.push(InvitationView {
-            id: row.try_get::<Uuid, _>("id").map_err(|_| AuthError::Unavailable)?.to_string(),
+            id: row
+                .try_get::<Uuid, _>("id")
+                .map_err(|_| AuthError::Unavailable)?
+                .to_string(),
             email: row.try_get("email").map_err(|_| AuthError::Unavailable)?,
             expires_in: row.try_get("ttl").map_err(|_| AuthError::Unavailable)?,
         });
