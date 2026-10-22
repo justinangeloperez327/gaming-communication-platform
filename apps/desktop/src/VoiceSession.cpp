@@ -361,8 +361,8 @@ void VoiceSession::start(bool publishMicrophone) {
     requestAuthorization(publishMicrophone, false);
 }
 
-void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck) {
-    if (pending_ || (recheck && (!running() || stopRequested_))) return;
+void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck, bool rotationRetry) {
+    if (pending_ || authorizationWaiting_ || (recheck && (!running() || stopRequested_))) return;
     if (!account_->signedIn()) {
         stopWithReason(QStringLiteral("Sign-in required for voice"));
         return;
@@ -397,21 +397,32 @@ void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck) {
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setTransferTimeout(10000);
     if (!recheck) setStatus(QStringLiteral("Requesting authorized voice room…"));
+    // A credential-rotation retry shares the original absolute deadline.
+    const int deadline = authorizationWatchdog_.isActive() ? qMax(1, authorizationWatchdog_.remainingTime()) : 10000;
     pending_ = network_.post(request, QByteArray("{}"));
-    boundReply(pending_, 16384, 10000);
-    authorizationWatchdog_.start(10000);
+    boundReply(pending_, 16384, deadline);
+    authorizationWatchdog_.start(deadline);
     emit runningChanged();
     QNetworkReply *reply = pending_;
     const auto generation = generation_;
-    connect(reply, &QNetworkReply::finished, this, [this, reply, publishMicrophone, recheck, generation]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, publishMicrophone, recheck, generation, access, rotationRetry]() {
         // Cancellation takes precedence over completed replies.
         if (pending_ != reply || generation != generation_) { reply->deleteLater(); return; }
         pending_ = nullptr;
-        authorizationWatchdog_.stop();
         const auto status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         const auto error = reply->error();
         QByteArray response = reply->readAll();
         reply->deleteLater();
+        // Refresh atomically invalidates the old API token. Retry only this
+        // authorization read, once, when a concurrent rotation explains 401.
+        if (status == 401 && !rotationRetry && account_->signedIn() &&
+            (account_->busy() || account_->accessToken() != access)) {
+            response.fill(0);
+            if (account_->busy()) waitForAccountAuthorization(publishMicrophone, recheck, access);
+            else requestAuthorization(publishMicrophone, recheck, true);
+            return;
+        }
+        authorizationWatchdog_.stop();
         if (error != QNetworkReply::NoError || status != 201 || response.size() > 16384) {
             if (recheck) stopWithReason(QStringLiteral("Voice access recheck failed; join again manually"));
             else setStatus(QStringLiteral("Voice authorization failed or expired"));
@@ -461,6 +472,24 @@ void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck) {
         }
         emit runningChanged();
     });
+}
+
+void VoiceSession::waitForAccountAuthorization(bool publishMicrophone, bool recheck, const QString &previousAccess) {
+    authorizationWaiting_ = true;
+    const auto generation = generation_;
+    accountWait_ = connect(account_, &AccountSession::changed, this,
+        [this, publishMicrophone, recheck, previousAccess, generation]() {
+            if (generation != generation_ || !authorizationWaiting_ || account_->busy()) return;
+            authorizationWaiting_ = false;
+            disconnect(accountWait_);
+            accountWait_ = {};
+            if (!account_->signedIn() || account_->accessToken() == previousAccess) {
+                stopWithReason(QStringLiteral("Voice session refresh failed; join again manually"));
+                return;
+            }
+            requestAuthorization(publishMicrophone, recheck, true);
+        });
+    emit runningChanged();
 }
 
 void VoiceSession::launch(bool publishMicrophone, const QString &url, const QString &token) {
@@ -539,6 +568,9 @@ void VoiceSession::resetControls() {
 void VoiceSession::cancelAuthorization() {
     ++generation_;
     authorizationWatchdog_.stop();
+    authorizationWaiting_ = false;
+    disconnect(accountWait_);
+    accountWait_ = {};
     if (!pending_) return;
     auto *reply = std::exchange(pending_, nullptr);
     reply->disconnect(this);

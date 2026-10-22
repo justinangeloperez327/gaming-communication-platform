@@ -20,6 +20,7 @@ The UI separates requested mute/armed state from native track mute acknowledgmen
 - Leave queues orderly mute/disconnect and closes stdin; a two-second Qt watchdog force-stops an unresponsive process. A transmitting call that fails to acknowledge a mute within one second is also stopped.
 - About once per minute Qt repeats the existing authenticated voice-token request, checking the current session and channel membership. An absolute ten-second request watchdog also covers slowly trickling responses. Denial, network failure or invalid responses stop voice; there is no automatic rejoin or silent microphone enable.
 - SDK reconnect cancels stale in-flight checks and immediately repeats authorization after recovery. Mic controls stay disabled until it succeeds. The native loop also clears arming on every observed interruption, including fast reconnects between polls. SDK callbacks and session-loop status lines are serialized.
+- If account-token rotation overlaps a voice authorization check, a 401 explained by pending/changed refresh credentials permits one retry with the new token. Waiting and retry retain the original ten-second deadline. A second denial stops voice; cancellation removes the account-change listener, preventing later refresh from reopening a call.
 - These checks normally stop this cooperative desktop client within approximately 70 seconds of losing backend access. They are **not server-side SFU eviction** and cannot constrain a modified client or someone using a copied JWT independently.
 - Recheck JWTs are discarded; this does not update the SDK's stored token. JWT join expiry remains five minutes. An established SFU session may continue beyond it, while reconnect after expiry can fail and require a new manually authorized join. Multi-hour physical calls and late reconnect have not been verified.
 - Account access/refresh rotation remains handled by the existing desktop account session. No refresh token or LiveKit API secret is sent to the voice child.
@@ -38,6 +39,9 @@ acknowledgment, microphone failure, final buffered failure status, unsafe room
 origins and destruction during authorization. A separate [real synthetic PCM
 contract](usable-voice.md) exercises the SDK/SFU with no physical devices. Its
 explicit room rejoin does not verify the SDK's actual network-recovery path.
+Actual account refresh timer/HTTP fixtures also cover overlapping old-token
+denial, successful rotated-token retry without restarting voice, a second denial
+and cancellation while waiting for refresh.
 
 Before treating long calls/PTT as accepted, test two real users on Windows: microphone/source behavior, remote audibility, held/released F8 while gaming, mode switches, manual mute, headset loss, background/elevated games, desktop suspension/exit, network loss before/after JWT expiry, account refresh and backend membership removal. Measure the complete desktop/native process overhead during matched gaming runs. No physical audio, keyboard compatibility, long-call reliability or gaming-performance result is inferred from CI.
 

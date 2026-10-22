@@ -53,7 +53,17 @@ struct ApiFixture {
     int joins = 0;
     int cancelledTokens = 0;
     QList<QPointer<QTcpSocket>> heldTokens;
+    int loginTtl = 900, refreshes = 0, voiceDenials = 0;
+    bool holdRefresh = false, rejectFreshVoice = false;
+    QPointer<QTcpSocket> refreshReply;
+    QString accessToken = QString(64, 'a'), refreshToken = QString(64, 'b'), lastVoiceAccess;
     QString voiceUrl = QStringLiteral("wss://fixture.invalid");
+    QByteArray sessionBody(int ttl) const {
+        return QJsonDocument(QJsonObject{
+            {"access_token", accessToken}, {"refresh_token", refreshToken},
+            {"expires_in", ttl}, {"user", QJsonObject{{"display_name", "Test"}}}
+        }).toJson(QJsonDocument::Compact);
+    }
     QByteArray tokenBody() const {
         return QJsonDocument(QJsonObject{
             {"server_url", voiceUrl}, {"participant_token", QString(64, 'x')}, {"expires_in", 300}
@@ -69,6 +79,12 @@ struct ApiFixture {
         for (const auto &socket : heldTokens)
             if (socket && socket->state() == QAbstractSocket::ConnectedState) respond(socket, 201, tokenBody());
         heldTokens.clear();
+    }
+    void completeRefresh() {
+        holdRefresh = false;
+        if (refreshReply && refreshReply->state() == QAbstractSocket::ConnectedState)
+            respond(refreshReply, 200, sessionBody(900));
+        refreshReply = nullptr;
     }
     ApiFixture() {
         require(server.listen(QHostAddress::LocalHost), "HTTP fixture listen");
@@ -86,14 +102,18 @@ struct ApiFixture {
                 QByteArray body;
                 int status = 200;
                 if (path == "/v1/auth/login") {
-                    body = QJsonDocument(QJsonObject{
-                        {"access_token", QString(64, 'a')}, {"refresh_token", QString(64, 'b')},
-                        {"expires_in", 900}, {"user", QJsonObject{{"display_name", "Test"}}}
-                    }).toJson(QJsonDocument::Compact);
+                    body = sessionBody(loginTtl);
+                } else if (path == "/v1/auth/refresh") {
+                    ++refreshes;
+                    accessToken = QString(64, 'c');
+                    refreshToken = QString(64, 'd');
+                    if (holdRefresh) { refreshReply = socket; return; }
+                    body = sessionBody(900);
                 } else if (path == "/v1/auth/logout") {
                     status = 204;
-                } else if (!request.toLower().contains("authorization: bearer " + QByteArray(64, 'a'))) {
+                } else if (!request.toLower().contains("authorization: bearer " + accessToken.toUtf8())) {
                     status = 401;
+                    if (path.endsWith("/livekit-token")) ++voiceDenials;
                 } else if (path == "/v1/communities") {
                     body = "[{\"id\":\"" + community.toUtf8() + "\",\"name\":\"Test\",\"role\":\"member\"}]";
                 } else if (path == "/v1/communities/" + community.toUtf8()) {
@@ -109,12 +129,14 @@ struct ApiFixture {
                     if (!channelExists) body = "[]";
                 } else if (path.endsWith("/livekit-token")) {
                     ++joins;
+                    lastVoiceAccess = accessToken;
                     if (hold) {
                         heldTokens.append(socket);
                         QObject::connect(socket, &QTcpSocket::disconnected, &server, [this]() { ++cancelledTokens; });
                         return;
                     }
-                    status = revoke ? 403 : 201;
+                    status = rejectFreshVoice ? 401 : revoke ? 403 : 201;
+                    if (status == 401) ++voiceDenials;
                     body = tokenBody();
                 } else status = 404;
                 respond(socket, status, body);
@@ -404,6 +426,50 @@ int main(int argc, char **argv) {
         require(directory.channelId().isEmpty() && directory.channels().isEmpty() && directory.communityId() == community,
                 "removed channel clears only the voice selection");
         account.signOut();
+        qunsetenv("GCP_FIXTURE_EXPECT_DEVICE_ARGS");
+        const auto exerciseRotation = [&](bool denyFresh, bool cancel) {
+            ApiFixture rotatingApi;
+            rotatingApi.loginTtl = 61; // actual AccountSession refresh timer fires in one second
+            rotatingApi.holdRefresh = true;
+            AccountSession rotatingAccount;
+            ChannelDirectory rotatingDirectory(&rotatingAccount);
+            VoiceSession rotatingVoice(&rotatingAccount, &rotatingDirectory, nullptr, VoiceRuntime{executable, 100});
+            int childStarts = 0;
+            QObject::connect(&rotatingVoice, &VoiceSession::statusChanged, &rotatingVoice, [&]() {
+                if (rotatingVoice.status().startsWith("Native voice process started")) ++childStarts;
+            });
+            rotatingAccount.signIn(rotatingApi.origin(), "rotation@example.test", "private-test-password");
+            require(waitFor([&]() { return !rotatingDirectory.communities().isEmpty(); }), "rotation fixture sign-in");
+            rotatingDirectory.chooseCommunity(community);
+            require(waitFor([&]() { return !rotatingDirectory.channels().isEmpty(); }), "rotation fixture channels");
+            rotatingDirectory.chooseVoiceChannel(channel);
+            rotatingVoice.joinWithMicrophone(true);
+            require(waitFor([&]() { return rotatingVoice.connected(); }), "call before actual account refresh timer");
+            require(waitFor([&]() { return rotatingApi.refreshes == 1 && rotatingApi.voiceDenials == 1; }), "voice check overlaps a committed rotation before refresh response");
+            require(rotatingAccount.busy() && rotatingVoice.running() && rotatingVoice.busy(), "rotation 401 waits without restarting the child");
+            rotatingApi.rejectFreshVoice = denyFresh;
+            const auto beforeFresh = rotatingApi.joins;
+            if (cancel) rotatingVoice.leave();
+            rotatingApi.completeRefresh();
+            require(waitFor([&]() { return !rotatingAccount.busy(); }), "rotated credentials reach account controller");
+            if (cancel) {
+                require(waitFor([&]() { return !rotatingVoice.busy(); }), "Leave cancels deferred rotation retry");
+                require(!rotatingVoice.running() && rotatingApi.joins == beforeFresh, "refresh completion cannot reopen a cancelled call");
+            } else if (denyFresh) {
+                require(waitFor([&]() { return !rotatingVoice.busy(); }), "fresh-token denial stops call");
+                require(rotatingApi.voiceDenials == 2 && rotatingVoice.status().contains("recheck failed"), "rotation retry is bounded to one and cannot bypass denial");
+            } else {
+                require(waitFor([&]() { return rotatingApi.joins >= beforeFresh + 2 && rotatingApi.lastVoiceAccess == QString(64, 'c'); }), "rotated authorization succeeds and periodic checks resume");
+                require(rotatingVoice.connected() && rotatingVoice.running() && rotatingVoice.muted() && childStarts == 1,
+                        "rotation preserves call and never silently re-arms microphone");
+            }
+            rotatingVoice.leave();
+            require(waitFor([&]() { return !rotatingVoice.busy(); }), "rotation fixture cleanup");
+            rotatingAccount.signOut();
+        };
+        exerciseRotation(false, false);
+        exerciseRotation(true, false);
+        exerciseRotation(false, true);
         require(qgetenv("DATABASE_URL") == "dummy-database-credential" &&
                 qgetenv("LIVEKIT_TOKEN") == "dummy-inherited-room-token",
                 "child filtering must not mutate the parent environment");

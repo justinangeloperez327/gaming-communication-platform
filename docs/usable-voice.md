@@ -35,6 +35,13 @@ revocation mechanism. Native mute runs at the existing 50 ms polling cadence;
 SDK/driver transitions can briefly precede its application, and blocked calls
 are not a hard real-time guarantee. Server reconciliation remains separate.
 
+Account refresh atomically replaces the API access token. If a concurrent voice
+check gets 401 while refresh is pending or credentials have changed, it waits for
+refresh and retries that authorization request once with the new token. Waiting
+and retry share the original ten-second deadline. A second denial stops the
+call; Leave/logout/destruction cancels the wait, so refresh cannot reopen a call.
+No community mutation or native process launch is retried automatically.
+
 Terminal disconnect/device/microphone errors retain an actionable status after
 the child exits. Microphone source/publication failures point to Windows privacy
 settings and the selected device, without claiming which caused the failure.
@@ -48,7 +55,7 @@ including a failing disconnect.
 
 | Layer | Real execution | Boundary |
 | --- | --- | --- |
-| Qt voice UI/controller | Shipped QML, HTTP and separate QProcess fixture: consent consumption, delayed audio readiness, mic/mode controls, periodic denial, immediate reconnect authorization, pending-check mute, denied recovery, missing mute acknowledgment, terminal/mic failure, unsafe URL rejection, cancellation/destruction, logout and channel deletion | The child is a protocol fixture; no SDK/network/media claim |
+| Qt voice UI/controller | Shipped QML, HTTP and separate QProcess fixture: consent consumption, delayed audio readiness, mic/mode controls, periodic denial, immediate reconnect authorization, pending-check mute, denied recovery, missing mute acknowledgment, terminal/mic failure, unsafe URL rejection, cancellation/destruction, logout and channel deletion. Actual AccountSession timer/HTTP rotation overlaps voice checks: preserve call, deny second failure and cancel deferred retry | The child is a protocol fixture; no SDK/network/media claim |
 | Portable native policy | Fragmented/malformed commands, initial mute, consent, PTT release, open/PTT rearming after interruption, heartbeat lease and synthetic 12-hour timeline under ASan/UBSan in Linux CI | No real-time latency or long-call proof |
 | Native media contract | Existing pinned C++ SDK 1.12.2 with checksum-pinned LiveKit 1.13.10 on Windows loopback: real room joins, decoded 48 kHz mono synthetic 1 kHz PCM, initial mute, remote mute/unmute, room isolation, explicit room rejoin and removal of an active publisher | Does not use PlatformAudio, real GCP accounts or physical devices; explicit rejoin is not forced SDK network recovery |
 | Rust/API and stack | Database authorization/token grants, session identities, mocked occupied-room reconciliation, real SFU control API and container onboarding/community/backup/restore acceptance | The Rust reconciliation loop and physical media are not combined into one end-to-end acceptance run |
