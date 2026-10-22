@@ -12,13 +12,17 @@ ApplicationWindow {
     minimumHeight: 580
     color: "#0e141d"
 
-    property string selectedChannel: "general"
     property bool microphoneConsent: false
     readonly property color panel: "#151e2b"
     readonly property color borderTone: "#293649"
     readonly property color textTone: "#e7edf5"
     readonly property color mutedTone: "#9aabba"
     readonly property color accent: "#5e9fea"
+
+    Connections {
+        target: channelDirectory
+        function onSelectionChanged() { root.microphoneConsent = false }
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -76,7 +80,8 @@ ApplicationWindow {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "Gaming Community"
+                    text: channelDirectory.communityName.length ? channelDirectory.communityName : "Your communities"
+                    textFormat: Text.PlainText
                     font.pixelSize: 17
                     font.weight: Font.DemiBold
                     color: root.textTone
@@ -200,7 +205,9 @@ ApplicationWindow {
                         anchors.rightMargin: 24
                         spacing: 8
                         Text {
-                            text: "# " + root.selectedChannel
+                            text: channelDirectory.channelName.length ? "Voice · " + channelDirectory.channelName :
+                                  channelDirectory.communityName.length ? channelDirectory.communityName : "Your communities"
+                            textFormat: Text.PlainText
                             color: root.textTone
                             font.weight: Font.DemiBold
                             font.pixelSize: 17
@@ -240,6 +247,13 @@ ApplicationWindow {
                     AccountPanel {
                         Layout.fillWidth: true
                         account: accountSession
+                        textTone: root.textTone
+                        mutedTone: root.mutedTone
+                    }
+                    CommunityPanel {
+                        Layout.fillWidth: true
+                        directory: channelDirectory
+                        signedIn: accountSession.signedIn
                         textTone: root.textTone
                         mutedTone: root.mutedTone
                     }
