@@ -294,7 +294,6 @@ int main(int argc, char **argv) {
         api.holdChannels = true; const int beforeLogout = api.held;
         directory.refresh(); require(waitFor([&]() { return api.held > beforeLogout; }), "held request before logout");
         account.signOut();
-        require(qmlWarnings == 0, "community workflows produced QML warnings");
         require(directory.communities().isEmpty() && directory.members().isEmpty() && directory.invitationToken().isEmpty() && directory.communityId().isEmpty(), "logout clears directory and privileged data");
         require(field("communityJoinCode")->property("text").toString().isEmpty(), "QML clears undispatched join code at logout");
         api.holdChannels = false;
@@ -340,6 +339,7 @@ int main(int argc, char **argv) {
         }
         require(waitFor([&]() { return api.disconnected > closedBeforeDestruction; }), "destruction aborts pending directory transport");
         account.signOut();
+        require(qmlWarnings == 0, "community workflows produced QML warnings");
         std::cout << "Qt community create/join/admin, bounded replies, role recovery and cancellation passed\n";
         return 0;
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }
