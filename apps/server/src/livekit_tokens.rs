@@ -47,14 +47,45 @@ impl LiveKitConfig {
         let url = env::var("LIVEKIT_URL").ok();
         let key = env::var("LIVEKIT_API_KEY").ok();
         let secret = env::var("LIVEKIT_API_SECRET").ok();
-        match (url, key, secret) {
-            (None, None, None) => Ok(None),
-            (Some(url), Some(key), Some(secret)) => Self::new(url, key, secret).map(Some),
+        let control = env::var("LIVEKIT_CONTROL_URL").ok();
+        match (url, key, secret, control) {
+            (None, None, None, None) => Ok(None),
+            (Some(url), Some(key), Some(secret), control) => {
+                let config = Self::new(url, key, secret)?;
+                match control {
+                    Some(control) => config.with_control_url(&control).map(Some),
+                    None => Ok(Some(config)),
+                }
+            }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "LiveKit credentials must be configured together",
             )),
         }
+    }
+
+    // An explicit server-only origin avoids routing internal control traffic
+    // through public DNS/TLS. Plain HTTP remains restricted to literal loopback.
+    fn with_control_url(mut self, raw: &str) -> Result<Self, io::Error> {
+        let invalid = || io::Error::new(io::ErrorKind::InvalidInput, "Invalid LiveKit control URL");
+        let url = reqwest::Url::parse(raw).map_err(|_| invalid())?;
+        let secure = url.scheme() == "https" && url.host_str().is_some();
+        let local =
+            url.scheme() == "http" && matches!(url.host_str(), Some("127.0.0.1" | "localhost"));
+        if (!secure && !local)
+            || raw.len() > 2048
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+            || url.path() != "/"
+            || raw.bytes().any(|b| b.is_ascii_whitespace())
+            || raw.contains(['?', '#', '@'])
+        {
+            return Err(invalid());
+        }
+        self.control_url = url;
+        Ok(self)
     }
 
     pub fn new(server_url: String, api_key: String, api_secret: String) -> Result<Self, io::Error> {
@@ -252,6 +283,31 @@ mod tests {
             "an-example-livekit-secret-longer-than-32-bytes".into(),
         )
         .expect("valid test configuration")
+    }
+
+    #[test]
+    fn control_override_keeps_public_wss_and_rejects_unsafe_origins() {
+        let configured = config()
+            .with_control_url("http://127.0.0.1:7880")
+            .expect("loopback control");
+        assert_eq!(configured.server_url, "wss://voice.example.test");
+        assert_eq!(configured.control_url.as_str(), "http://127.0.0.1:7880/");
+        assert!(
+            config()
+                .with_control_url("https://control.example.test")
+                .is_ok()
+        );
+        for invalid in [
+            "http://livekit:7880",
+            "http://localhost.evil.test",
+            "ws://127.0.0.1:7880",
+            "https://user:secret@control.example.test",
+            "https://control.example.test/path",
+            "http://127.0.0.1:7880?x=1",
+            "https://control.example.test/#fragment",
+        ] {
+            assert!(config().with_control_url(invalid).is_err());
+        }
     }
 
     #[test]

@@ -1,5 +1,10 @@
 # PostgreSQL foundation — Group 20
 
+For packaged single-host operation, use the [shared server stack](server-stack.md).
+`gaming-comms-server --migrate-only` applies embedded migrations and exits without
+opening an HTTP listener; it requires `DATABASE_URL`. The Compose migration
+service uses this command before starting an API with `GCP_RUN_MIGRATIONS=0`.
+
 The Rust/Axum server now supports PostgreSQL using a bounded SQLx connection pool. Migrations define **users, communities, memberships, text/voice channels and messages**. The schema supports the implemented authenticated accounts, role-checked communities, messages, friends/DMs and voice-token APIs. Protected routes require database-backed bearer sessions.
 
 ## Database requirements

@@ -1,5 +1,11 @@
 # Current stabilization audit — 21 October 2026
 
+The next completion milestone is tracked in [PR #79](https://github.com/justinangeloperez327/gaming-communication-platform/pull/79):
+the [shared server package](server-stack.md), with real-container startup,
+persistence and recovery acceptance. The [completion roadmap](completion-roadmap.md)
+tracks all twelve product groups. This dated audit is the prior evidence record;
+packaging a server does not supply a deployed host or physical media evidence.
+
 On 22 October the owner requested a release and installer despite the remaining
 acceptance gaps. See the [alpha installer guide](windows-installer.md) for that
 subsequent work. The evidence and physical limitations in this dated audit remain

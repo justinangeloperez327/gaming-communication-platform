@@ -16,6 +16,12 @@ $env:LIVEKIT_API_SECRET = "YOUR_RANDOM_LONG_SERVER_SECRET"
 
 These must be set together. Partial configuration or invalid credentials causes startup to fail. An unconfigured server starts without LiveKit token issuance and responds with HTTP 503 to authorized issuance requests. The URL must be `wss://` for remote endpoints; `ws://127.0.0.1:7880` or `ws://localhost:7880` is permitted for loopback development only. The API secret is never logged or returned to a client.
 
+An optional server-only `LIVEKIT_CONTROL_URL` overrides the control API origin
+without changing the WSS address returned to desktop clients. Use HTTPS or
+literal-loopback HTTP (for example `http://127.0.0.1:7880`); credentials, query
+strings, fragments and non-root paths are rejected. The [shared server stack](server-stack.md)
+uses this to keep control traffic on the host while advertising public WSS.
+
 All user account and community tables must already have been migrated using the controlled SQLx migration process. Bind the Rust server to loopback or protect it with an HTTPS reverse proxy and abuse throttling; public exposure has **not** been secured yet.
 
 ## Authorized endpoint
@@ -50,7 +56,7 @@ Do not send the API secret to desktop clients or put credentials in URLs, analyt
 
 ## Verification
 
-The Rust unit test **verifies the real HS256 signature** and decodes the issued claims, including restricted media sources and token expiry. PostgreSQL integration tests create actual community membership, voice and text channels; test nonmember, wrong-community, wrong-channel-type, removed-member and revoked-session denial; ensure only a valid user can obtain a token with noncacheable headers. CI does not contact a LiveKit server, test microphone hardware, or confirm actual room join/playback.
+The Rust unit test **verifies the real HS256 signature** and decodes the issued claims, including restricted media sources and token expiry. PostgreSQL integration tests create actual community membership, voice and text channels; test nonmember, wrong-community, wrong-channel-type, removed-member and revoked-session denial; ensure only a valid user can obtain a token with noncacheable headers. Dedicated CI steps also contact a real pinned LiveKit server for room-control contracts and [stack acceptance](server-stack.md). These checks have no media peers and do not test microphone hardware or actual room join/playback.
 
 The native C++ voice process connects to authorized rooms; see [desktop voice](desktop-voice.md). Physical Windows two-participant audio tests remain mandatory before claiming voice is working end to end.
 

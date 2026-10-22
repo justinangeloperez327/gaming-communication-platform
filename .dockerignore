@@ -1,0 +1,9 @@
+**
+!Cargo.toml
+!Cargo.lock
+!apps/
+!apps/server/
+!apps/server/**
+apps/server/target/
+**/.env*
+**/*.log

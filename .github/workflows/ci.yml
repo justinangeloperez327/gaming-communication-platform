@@ -61,6 +61,17 @@ jobs:
       - name: Frame-time comparison tests
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
+  server-stack:
+    name: Self-hosted stack acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configuration and restore guard tests
+        run: python3 -m unittest discover -s scripts -p 'test_server_stack.py'
+      - name: Real PostgreSQL, API and LiveKit stack (no media peers)
+        run: python3 scripts/verify_server_stack.py
+
   desktop:
     name: Windows Qt, media and LiveKit builds
     runs-on: windows-2022
@@ -249,7 +260,7 @@ jobs:
 
   preview-release:
     name: Publish requested alpha preview
-    needs: [rust, desktop]
+    needs: [rust, desktop, server-stack]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
