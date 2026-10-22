@@ -249,6 +249,17 @@ int main(int argc, char **argv) {
         require(api.joins >= 2 && voice.status().contains("recheck failed"), "periodic backend authorization");
 
         api.revoke = false;
+        qputenv("GCP_FIXTURE_VOICE_OUTPUT", "delay-ready");
+        voice.joinWithMicrophone(true);
+        require(waitFor([&]() { return voice.running(); }), "native process starts before audio readiness");
+        qunsetenv("GCP_FIXTURE_VOICE_OUTPUT");
+        require(!voice.connected() && !field("voiceMute")->property("enabled").toBool(), "mic controls wait for native audio readiness");
+        voice.setMuted(false);
+        require(voice.muted() && !voice.transmitting(), "unmute ignored before audio is ready");
+        require(waitFor([&]() { return voice.connected(); }), "audio readiness acknowledgement enables connected state");
+        voice.leave();
+        require(waitFor([&]() { return !voice.busy(); }), "leave after delayed audio setup");
+
         qputenv("GCP_FIXTURE_VOICE_OUTPUT", "reconnect");
         voice.joinWithMicrophone(true);
         require(waitFor([&]() { return voice.connected(); }), "join before SDK reconnect fixture");

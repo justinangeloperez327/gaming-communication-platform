@@ -253,18 +253,30 @@ struct VoiceEvents final : livekit::RoomDelegate {
     std::atomic<bool> network_lost{false};
     std::atomic<bool> reconnecting{false};
     std::atomic<std::uint64_t> interruptions{0};
+    std::mutex connection_events;
+    bool controls_ready = false; // guarded by connection_events
+    void beginProtocol() {
+        const std::scoped_lock lock(connection_events);
+        controls_ready = true;
+        voice_event("connected");
+        if (network_lost.load()) voice_event("connection_lost");
+        else if (reconnecting.load()) voice_event("reconnecting");
+    }
     void onReconnecting(livekit::Room&, const livekit::ReconnectingEvent&) override {
+        const std::scoped_lock lock(connection_events);
         interruptions.fetch_add(1);
         reconnecting.store(true);
-        voice_event("reconnecting");
+        if (controls_ready) voice_event("reconnecting");
     }
     void onReconnected(livekit::Room&, const livekit::ReconnectedEvent&) override {
+        const std::scoped_lock lock(connection_events);
         reconnecting.store(false);
-        voice_event("reconnected");
+        if (controls_ready) voice_event("reconnected");
     }
     void onDisconnected(livekit::Room&, const livekit::DisconnectedEvent&) override {
+        const std::scoped_lock lock(connection_events);
         network_lost.store(true);
-        voice_event("connection_lost");
+        if (controls_ready) voice_event("connection_lost");
     }
 
     void onTrackSubscribed(livekit::Room&,
@@ -356,7 +368,6 @@ int join(const Options& o) {
     opts.connect_timeout = std::chrono::seconds(15);
     if (!room.connect(raw_url, raw_token, opts))
         throw std::runtime_error("Could not join LiveKit voice room");
-    voice_event("connected");
 
     try {
         bool muted = o.desktop_control;
@@ -387,6 +398,9 @@ int join(const Options& o) {
         gcp::transport::VoiceControl control{o.publish_mic, o.desktop_control,
                                               o.push_to_talk, started};
         auto interruption = events.interruptions.load();
+        // Do not enable desktop mic controls until publication has completed.
+        // The desktop's connection watchdog also bounds a stuck audio setup.
+        events.beginProtocol();
         std::uint64_t peak_private_bytes = before.private_bytes;
         std::uint64_t sample_count = 0;
         auto next_perf_sample = Clock::now() + std::chrono::seconds(2);

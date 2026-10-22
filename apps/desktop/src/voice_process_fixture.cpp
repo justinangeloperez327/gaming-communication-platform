@@ -64,6 +64,10 @@ int main(int argc, char **argv) {
         std::cout << "GCP_VOICE_EVENT:microphone_failed" << std::endl;
         return 1;
     }
+    if (outputMode && std::string_view{outputMode} == "delay-ready") {
+        std::cout << "GCP_VOICE_EVENT:muted" << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    }
     std::cout << "GCP_VOICE_EVENT:connected\nGCP_VOICE_EVENT:muted" << std::endl;
     bool interrupted = false;
     std::string command;

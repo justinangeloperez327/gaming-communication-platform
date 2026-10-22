@@ -13,6 +13,9 @@ For a microphone call, check the consent box, Join with mic, then Enable mic.
 PTT uses F8; enable the mode, Enable mic, release F8, then hold it to transmit.
 Mode changes mute the call. Mute/PTT stops transmission; the audio source/device
 can remain open until Leave. Windows microphone privacy settings still apply.
+The native connected acknowledgment waits for microphone publication/setup to
+finish, so process/room startup cannot enable mic controls while audio setup is
+still blocked. The existing 22-second connection watchdog covers that setup.
 
 Consent is consumed by either join action and cleared by Leave, logout, actual
 room selection changes and voice authorization/process transitions. It cannot
@@ -45,7 +48,7 @@ including a failing disconnect.
 
 | Layer | Real execution | Boundary |
 | --- | --- | --- |
-| Qt voice UI/controller | Shipped QML, HTTP and separate QProcess fixture: consent consumption, mic/mode controls, periodic denial, immediate reconnect authorization, pending-check mute, denied recovery, missing mute acknowledgment, terminal/mic failure, unsafe URL rejection, cancellation/destruction, logout and channel deletion | The child is a protocol fixture; no SDK/network/media claim |
+| Qt voice UI/controller | Shipped QML, HTTP and separate QProcess fixture: consent consumption, delayed audio readiness, mic/mode controls, periodic denial, immediate reconnect authorization, pending-check mute, denied recovery, missing mute acknowledgment, terminal/mic failure, unsafe URL rejection, cancellation/destruction, logout and channel deletion | The child is a protocol fixture; no SDK/network/media claim |
 | Portable native policy | Fragmented/malformed commands, initial mute, consent, PTT release, open/PTT rearming after interruption, heartbeat lease and synthetic 12-hour timeline under ASan/UBSan in Linux CI | No real-time latency or long-call proof |
 | Native media contract | Existing pinned C++ SDK 1.12.2 with checksum-pinned LiveKit 1.13.10 on Windows loopback: real room joins, decoded 48 kHz mono synthetic 1 kHz PCM, initial mute, remote mute/unmute, room isolation, explicit room rejoin and removal of an active publisher | Does not use PlatformAudio, real GCP accounts or physical devices; explicit rejoin is not forced SDK network recovery |
 | Rust/API and stack | Database authorization/token grants, session identities, mocked occupied-room reconciliation, real SFU control API and container onboarding/community/backup/restore acceptance | The Rust reconciliation loop and physical media are not combined into one end-to-end acceptance run |

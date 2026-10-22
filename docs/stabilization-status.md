@@ -16,7 +16,7 @@ Group 4.
 | Accounts | Local stdin owner bootstrap, one-use hashed email-bound invitations, atomic invited registration and desktop signup/owner invitation UI | Merged [PR #80](https://github.com/justinangeloperez327/gaming-communication-platform/pull/80), [onboarding](account-onboarding.md); PostgreSQL, Qt and container tests; no email delivery/recovery/MFA/persistent login |
 | Communities | Desktop create/join/leave, channel CRUD/order, member roles and invitation issue/revoke; bounded requests/models and selection-preserving refresh | Merged [PR #81](https://github.com/justinangeloperez327/gaming-communication-platform/pull/81), [guide](desktop-communities.md); real API/container and offscreen QML tests; no live directory updates, pagination or owner transfer |
 | Voice recovery | An interruption clears open-mic/PTT arming, cancels old checks, mutes the track and requires immediate current-access reauthorization plus Enable mic after SDK recovery | [PR #82](https://github.com/justinangeloperez327/gaming-communication-platform/pull/82), [voice report](usable-voice.md); Qt HTTP/QProcess and portable policy tests; physical network interruption remains unverified |
-| Voice consent/lifetimes | Pending consent is cleared by either join action, Leave, logout and room/process transitions; terminal errors survive child exit; pending replies abort before destruction; stopping closes unused stdout | Shipped VoicePanel is exercised in Qt tests, including denial, missing mute acknowledgment, cancellation/destruction and fast child failure; physical capture/privacy remains pending |
+| Voice consent/lifetimes | Consent clears on either join, Leave, logout and room/process transitions; connected acknowledgment waits for audio publication; terminal errors survive exit; pending replies abort before destruction; stopping closes unused stdout | Shipped VoicePanel is exercised in Qt tests, including delayed readiness, denial, missing mute acknowledgment, cancellation/destruction and fast child failure; physical capture/privacy remains pending |
 | Media integration | Real synthetic PCM publisher/receiver, decoded tone, initial mute, remote mute/unmute, room isolation, explicit rejoin and active-peer RoomService eviction assertions | Dedicated Windows loopback contract with pinned existing SDK and checksum-pinned SFU; no PlatformAudio, real accounts, forced SDK network interruption or physical devices |
 | Existing safety work | Bounded HTTP/output, subprocess/native cleanup, five-second control lease, periodic access checks, session-specific identities, SFU reconciliation/readiness, native URL policy and channel-scoped realtime queues | [Earlier audit](stabilization-audit.md), [long calls](long-session-voice.md), [eviction](server-voice-eviction.md); no exhaustive defect-free or leak-free claim |
 | Distribution | Qt/QML/LiveKit staging, ZIP inventory/hashes, corruption rejection, notice baseline, signature inventory and existing alpha install/repair/uninstall | Existing Windows CI checks are retained; no version bump or new release; clean consumer-PC and full attribution/signing remain open |
@@ -77,8 +77,9 @@ The first Group 4 implementation head
 acceptance, synthetic media and existing ZIP/preview-installer checks. The media
 contract recorded 1,124 decoded frames, including 844 tone frames; the staged
 package verified 1,339 payload files. Counts describe that run, not fixed product
-budgets. The subsequent source-owner lifetime/documentation follow-up must also
-pass the current PR head's checks; final run links are recorded in PR #82.
+budgets. The subsequent source-owner lifetime/audio-readiness/documentation
+follow-ups must also pass the current PR head's checks; final run links are
+recorded in PR #82.
 
 Group 4 local checks passed 49 Python tests, whitespace checks and GCC C++20
 voice-control ASan/UBSan with leak detection disabled: this environment's
