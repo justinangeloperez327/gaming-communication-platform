@@ -237,33 +237,11 @@ ApplicationWindow {
                         color: root.mutedTone
                         wrapMode: Text.WordWrap
                     }
-                    Rectangle {
+                    AccountPanel {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: accountSession.signedIn ? 120 : 270
-                        radius: 6
-                        color: root.panel
-                        border.color: root.borderTone
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            spacing: 5
-                            Text { text: "Account"; color: root.textTone; font.pixelSize: 14 }
-                            Text { text: accountSession.status; color: root.mutedTone }
-                            TextField { id: serverOrigin; Layout.fillWidth: true; visible: !accountSession.signedIn; placeholderText: "https://your-gcp-server" }
-                            TextField { id: loginEmail; Layout.fillWidth: true; visible: !accountSession.signedIn; placeholderText: "Email" }
-                            TextField { id: loginPassword; Layout.fillWidth: true; visible: !accountSession.signedIn; placeholderText: "Password"; echoMode: TextInput.Password }
-                            Button {
-                                text: accountSession.signedIn ? "Sign out" : "Sign in"
-                                enabled: !accountSession.busy
-                                onClicked: {
-                                    if (accountSession.signedIn) accountSession.signOut()
-                                    else {
-                                        accountSession.signIn(serverOrigin.text, loginEmail.text, loginPassword.text)
-                                        loginPassword.text = ""
-                                    }
-                                }
-                            }
-                        }
+                        account: accountSession
+                        textTone: root.textTone
+                        mutedTone: root.mutedTone
                     }
                     Rectangle {
                         Layout.fillWidth: true
