@@ -35,7 +35,7 @@ jobs:
           --health-retries 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -66,7 +66,7 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -122,7 +122,7 @@ jobs:
         run: |
           ./scripts/verify-windows-ci-acceptance.ps1 -RecordFile build/windows-ci-acceptance.json -ExpectedCommit "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Upload Windows package acceptance record
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcp-windows-ci-acceptance
           path: build/windows-ci-acceptance.json
@@ -137,7 +137,7 @@ jobs:
         run: |
           ./scripts/verify-windows-signature-inventory.ps1 -BundleDirectory build/gcp-windows-test -InventoryFile build/windows-signature-inventory.json
       - name: Upload signing inventory
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcp-windows-signature-inventory
           path: build/windows-signature-inventory.json
@@ -171,7 +171,7 @@ jobs:
           $savedSha = (Get-Content -LiteralPath build/gcp-private-windows-x64.sha256 -Raw).Trim()
           if ($savedSha -cne $zipSha) { throw "Portable ZIP checksum file does not match archive" }
       - name: Upload private portable ZIP and checksum
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcp-private-windows-x64
           path: |
@@ -189,21 +189,21 @@ jobs:
           if ($installer.Count -ne 1) { throw 'Expected exactly one installer' }
           ./scripts/test-windows-installer.ps1 -Installer $installer[0].FullName
       - name: Upload verified preview installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcp-windows-installer
           path: build/installer/
           if-no-files-found: error
           retention-days: 7
       - name: Upload verified unsigned desktop test bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcp-desktop-unsigned-test-win64
           path: build/gcp-windows-test/
           if-no-files-found: error
           retention-days: 7
       - name: Upload native voice diagnostic
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcp-livekit-voice-win64
           path: |
@@ -213,21 +213,21 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload GPU hardware H.264 diagnostic
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcp-hardware-h264-win64
           path: build/desktop/Release/gcp-hardware-h264.exe
           if-no-files-found: error
           retention-days: 7
       - name: Upload media diagnostic
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcp-media-probe-win64
           path: build/desktop/Release/gcp-media-probe.exe
           if-no-files-found: error
           retention-days: 7
       - name: Upload hardware LiveKit bridge
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcp-livekit-hardware-win64
           path: |
@@ -237,7 +237,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload LiveKit diagnostic
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcp-livekit-smoke-win64
           path: |
@@ -258,12 +258,12 @@ jobs:
       group: gcp-preview-release
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v6
         with:
           name: gcp-private-windows-x64
           path: build/release-artifacts/portable
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v6
         with:
           name: gcp-windows-installer
           path: build/release-artifacts/installer
