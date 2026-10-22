@@ -1,5 +1,12 @@
 # Current stabilization audit — 21 October 2026
 
+Group 3 is tracked in [PR #81](https://github.com/justinangeloperez327/gaming-communication-platform/pull/81):
+[desktop community/channel administration](desktop-communities.md), revocable
+community invitations, self-leave and selection-preserving refresh. PR #80 is
+merged. The API-only administration and missing-invitation-UI statements in this
+dated audit describe its earlier revision; use current subsystem guides and PR
+results for subsequent behavior. Physical media/performance evidence is unchanged.
+
 Subsequent Group 2 work is in [PR #80](https://github.com/justinangeloperez327/gaming-communication-platform/pull/80):
 local owner bootstrap, invitation-only registration and desktop account/invitation
 controls. Use [private onboarding](account-onboarding.md) for current behavior;

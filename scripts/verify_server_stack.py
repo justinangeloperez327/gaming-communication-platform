@@ -22,12 +22,12 @@ import urllib.request
 from server_stack import Stack, initialize
 
 
-def request(url, *, data=None, token=None, expected=200, ssl_context=None, source_ip=None):
+def request(url, *, data=None, token=None, expected=200, ssl_context=None, source_ip=None, method=None):
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = "Bearer " + token
     body = None if data is None else json.dumps(data).encode()
-    query = urllib.request.Request(url, data=body, headers=headers)
+    query = urllib.request.Request(url, data=body, headers=headers, method=method)
     # Loopback acceptance must not inherit a runner's HTTP proxy.
     handlers = [urllib.request.ProxyHandler({})]
     if ssl_context:
@@ -122,6 +122,42 @@ def exercise(stack, base, email, password, *, create=False):
     return token, path, grant["room"]
 
 
+def exercise_community_management(base, community_owner, other_session, grant_path):
+    """Real HTTP/API/DB management contract; no desktop or media peers."""
+    path = base + grant_path.split("/channels/", 1)[0]
+    invitations = path + "/invitations"
+    member = other_session["access_token"]
+    member_id = other_session["user"]["id"]
+    # Server ownership gives no implicit community access or management rights.
+    request(path + "/members", token=member, expected=404)
+    request(path + "/membership", method="DELETE", token=community_owner, expected=403)
+    invitation = request(invitations, data={}, token=community_owner, expected=201)
+    pending = request(invitations, token=community_owner)
+    assert any(item["id"] == invitation["id"] for item in pending)
+    assert all("token" not in item and "token_hash" not in item for item in pending)
+    request(base + "/v1/invitations/accept", data={"token": invitation["token"]},
+            token=member, expected=201)
+    request(invitations, token=member, expected=403)
+    request(path, method="DELETE", token=member, expected=403)
+    request(path + "/members/" + member_id, method="PATCH", data={"role": "admin"},
+            token=community_owner, expected=204)
+    text = request(path + "/channels", data={"name": "lobby", "channel_kind": "text", "position": 0},
+                   token=member, expected=201)
+    text_path = path + "/channels/" + text["id"]
+    changed = request(text_path, method="PATCH", data={"name": "squad-chat", "position": 3}, token=member)
+    assert changed["name"] == "squad-chat" and changed["position"] == 3
+    request(text_path, method="DELETE", token=member, expected=204)
+    changed = request(path, method="PATCH", data={"name": "Friends stack"}, token=member)
+    assert changed["name"] == "Friends stack"
+    revoked = request(invitations, data={}, token=member, expected=201)
+    request(invitations + "/" + revoked["id"], method="DELETE", token=member, expected=204)
+    orphaned = request(invitations, data={}, token=member, expected=201)
+    request(path + "/membership", method="DELETE", token=member, expected=204)
+    request(path + "/channels", token=member, expected=404)
+    for token in (revoked["token"], orphaned["token"]):
+        request(base + "/v1/invitations/accept", data={"token": token}, token=member, expected=404)
+
+
 def main():
     # Fail before creating containers if fixed acceptance ports are occupied.
     for port in (18080, 15432, 17880, 17881, 18443, 18444):
@@ -159,6 +195,7 @@ def main():
                     "handle": "stack_owner", "display_name": "Stack owner",
                     "invitation_token": invitation["token"]}, expected=201)
             token, grant_path, room = exercise(source, base, email, password, create=True)
+            exercise_community_management(base, token, owner, grant_path)
 
             # Authenticate against the real SFU with the same keys as API grants.
             values = credentials(source.config)

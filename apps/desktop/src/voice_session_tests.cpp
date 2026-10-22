@@ -38,6 +38,7 @@ struct ApiFixture {
     bool revoke = false;
     bool hold = false;
     bool holdChannels = false;
+    bool channelExists = true;
     int channelLists = 0;
     int closedHeldChannels = 0;
     int joins = 0;
@@ -66,7 +67,9 @@ struct ApiFixture {
                 } else if (!request.toLower().contains("authorization: bearer " + QByteArray(64, 'a'))) {
                     status = 401;
                 } else if (path == "/v1/communities") {
-                    body = "[{\"id\":\"" + community.toUtf8() + "\",\"name\":\"Test\"}]";
+                    body = "[{\"id\":\"" + community.toUtf8() + "\",\"name\":\"Test\",\"role\":\"member\"}]";
+                } else if (path == "/v1/communities/" + community.toUtf8()) {
+                    body = "{\"id\":\"" + community.toUtf8() + "\",\"name\":\"Test\",\"role\":\"member\"}";
                 } else if (path.endsWith("/channels")) {
                     ++channelLists;
                     if (holdChannels) {
@@ -74,7 +77,8 @@ struct ApiFixture {
                                          [this]() { ++closedHeldChannels; });
                         return;
                     }
-                    body = "[{\"id\":\"" + channel.toUtf8() + "\",\"name\":\"Voice\",\"channel_kind\":\"voice\"}]";
+                    body = "[{\"id\":\"" + channel.toUtf8() + "\",\"name\":\"team-voice\",\"channel_kind\":\"voice\",\"position\":0}]";
+                    if (!channelExists) body = "[]";
                 } else if (path.endsWith("/livekit-token")) {
                     ++joins;
                     if (hold) return; // Let the desktop cancel a real pending reply.
@@ -234,12 +238,19 @@ int main(int argc, char **argv) {
         directory.chooseCommunity(community);
         require(waitFor([&]() { return !directory.channels().isEmpty(); }), "channel reload after cancellation");
         directory.chooseVoiceChannel(channel);
+        voice.joinListenOnly();
+        require(waitFor([&]() { return voice.connected(); }), "voice connected before directory refresh");
         directory.refresh();
-        require(directory.communityId().isEmpty() && directory.channelId().isEmpty() && directory.channels().isEmpty(),
-                "refresh clears selected community and channel");
+        require(directory.communityId() == community && directory.channelId() == channel,
+                "refresh retains the selected room while revalidating");
         require(waitFor([&]() { return !directory.busy(); }), "directory refresh completion");
-        require(directory.communityId().isEmpty() && directory.channelId().isEmpty(),
-                "refresh does not silently restore selection");
+        require(directory.communityId() == community && directory.channelId() == channel && voice.connected(),
+                "harmless refresh preserves the active voice process");
+        api.channelExists = false;
+        directory.refresh();
+        require(waitFor([&]() { return !directory.busy() && !voice.busy(); }), "removed room stops voice");
+        require(directory.channelId().isEmpty() && directory.channels().isEmpty() && directory.communityId() == community,
+                "removed channel clears only the voice selection");
         account.signOut();
         require(qgetenv("DATABASE_URL") == "dummy-database-credential" &&
                 qgetenv("LIVEKIT_TOKEN") == "dummy-inherited-room-token",

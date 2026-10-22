@@ -196,7 +196,8 @@ The second command needs Docker, builds the real API and creates disposable
 randomly named projects. It verifies fresh migrations, refusal of uninvited
 registration, operator owner bootstrap, invited registration, login and role
 protected API operations, signed microphone grants against the configured SFU
-keys, real LiveKit room-control authentication, dependency loss/recovery,
+keys, community joining/promotion/channel edits, invitation revocation and leave,
+real LiveKit room-control authentication, dependency loss/recovery,
 SIGTERM exit, public-WSS/private-control separation, persistence across container
 recreation, refusal to overwrite a populated database, restoration into a fresh
 volume with new service credentials, Caddy configuration validation, actual TLS

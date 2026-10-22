@@ -9,7 +9,7 @@ Each group needs reviewable code and evidence before its status is advanced.
 | --- | --- | --- |
 | 1 | Shared server package | Docker build, generated secrets, migrations, readiness/restarts, TLS configuration, persistence and backup/restore. This change implements the package; see [server stack](server-stack.md) and its CI results. No external deployment or physical media verification. |
 | 2 | Account onboarding | Owner bootstrap, email-bound one-use invitations, desktop account creation/owner controls and actionable errors; see [onboarding](account-onboarding.md) and PR #80. Automated API/stack/Qt coverage; physical deployed-host acceptance and email/recovery remain outstanding. |
-| 3 | Communities and channels | Desktop create/join/invite/admin flows with backend role enforcement. Current desktop selects existing communities/voice channels. |
+| 3 | Communities and channels | Desktop create/join/leave, channel CRUD/order, invitation issue/revoke and member administration with backend role checks; see [desktop communities](desktop-communities.md) and PR #81. Automated Qt/API/container coverage; no live directory updates, pagination or owner transfer. |
 | 4 | Usable voice milestone | Real room integration/recovery plus owner-run two-PC audio, device, mute/PTT and consent acceptance. Current automated tests do not prove audibility. |
 | 5 | Text messaging | Desktop history/composer, live events and reconnect recovery connected to existing authorized API. |
 | 6 | Friends and DMs | Desktop request/block/conversation flows and live delivery using existing backend operations. |

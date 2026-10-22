@@ -18,6 +18,7 @@ set_source_files_properties(qml/IdPicker.qml PROPERTIES
     QT_RESOURCE_ALIAS IdPicker.qml
 )
 set_source_files_properties(qml/AccountPanel.qml PROPERTIES QT_RESOURCE_ALIAS AccountPanel.qml)
+set_source_files_properties(qml/CommunityPanel.qml PROPERTIES QT_RESOURCE_ALIAS CommunityPanel.qml)
 
 qt_add_qml_module(gcp-desktop
     URI Gcp.Desktop
@@ -27,6 +28,7 @@ qt_add_qml_module(gcp-desktop
         qml/AudioDevicePicker.qml
         qml/IdPicker.qml
         qml/AccountPanel.qml
+        qml/CommunityPanel.qml
 )
 
 target_link_libraries(gcp-desktop PRIVATE
@@ -40,6 +42,16 @@ set_target_properties(gcp-desktop PROPERTIES
 )
 
 if(BUILD_TESTING)
+    qt_add_executable(gcp-community-tests
+        src/community_tests.cpp src/ChannelDirectory.cpp src/ChannelDirectory.h
+        src/AccountSession.cpp src/AccountSession.h)
+    target_link_libraries(gcp-community-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
+    target_compile_definitions(gcp-community-tests PRIVATE
+        GCP_COMMUNITY_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+    add_test(NAME desktop_community_management COMMAND $<TARGET_FILE:gcp-community-tests>)
+    set_tests_properties(desktop_community_management PROPERTIES
+        TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+
     qt_add_executable(gcp-account-onboarding-tests
         src/onboarding_tests.cpp src/AccountSession.cpp src/AccountSession.h)
     target_link_libraries(gcp-account-onboarding-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)

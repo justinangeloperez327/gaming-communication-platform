@@ -354,3 +354,227 @@ async fn community_routes_fail_closed_without_database() {
     let (status, _) = request(&app, Method::GET, "/v1/communities", None, None).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }
+
+async fn invitation(app: &Router, path: &str, token: &str) -> Value {
+    let (status, value) = request(app, Method::POST, path, None, Some(token)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert!(value["id"].as_str().is_some());
+    value
+}
+
+#[tokio::test]
+async fn pending_invitation_revocation_limits_and_self_leave() {
+    let Some(pool) = test_database().await else {
+        return;
+    };
+    MIGRATOR.run(&pool).await.expect("migrations");
+    let app = router_with_database(Some(pool.clone()));
+    let (owner, owner_id) = register(&app, &pool, "manage_o").await;
+    let (member, member_id) = register(&app, &pool, "manage_m").await;
+    let (other, other_id) = register(&app, &pool, "manage_x").await;
+    let (status, community) = request(
+        &app,
+        Method::POST,
+        "/v1/communities",
+        Some(json!({"name":"Management acceptance"})),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let id = community["id"].as_str().expect("community id");
+    let path = format!("/v1/communities/{id}");
+    let invites = format!("{path}/invitations");
+    let membership = format!("{path}/membership");
+    assert_eq!(
+        request(&app, Method::DELETE, &membership, None, Some(&owner))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(&app, Method::GET, &invites, None, Some(&other))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    let code = invitation(&app, &invites, &owner).await;
+    let join = Some(json!({"token":code["token"]}));
+    assert_eq!(
+        request(
+            &app,
+            Method::POST,
+            "/v1/invitations/accept",
+            join,
+            Some(&member)
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let unused = invitation(&app, &invites, &owner).await;
+    let revoke = format!("{invites}/{}", unused["id"].as_str().expect("invite id"));
+    for (method, target) in [
+        (Method::GET, invites.clone()),
+        (Method::DELETE, revoke.clone()),
+    ] {
+        assert_eq!(
+            request(&app, method, &target, None, Some(&member)).await.0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    let (status, pending) = request(&app, Method::GET, &invites, None, Some(&owner)).await;
+    assert_eq!(status, StatusCode::OK);
+    let pending = pending.as_array().expect("pending list");
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0]["id"], unused["id"]);
+    assert!(pending[0].get("token").is_none());
+    assert!(pending[0].get("token_hash").is_none());
+    // A valid manager of another community cannot revoke this community's code.
+    let (status, second) = request(
+        &app,
+        Method::POST,
+        "/v1/communities",
+        Some(json!({"name":"Another community"})),
+        Some(&other),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let wrong_scope = format!(
+        "/v1/communities/{}/invitations/{}",
+        second["id"].as_str().expect("id"),
+        unused["id"].as_str().expect("id")
+    );
+    assert_eq!(
+        request(&app, Method::DELETE, &wrong_scope, None, Some(&other))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        request(&app, Method::DELETE, &revoke, None, Some(&owner))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        request(
+            &app,
+            Method::POST,
+            "/v1/invitations/accept",
+            Some(json!({"token":unused["token"]})),
+            Some(&other)
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    // Revocation and redemption serialize: either membership commits or revocation wins.
+    let raced = invitation(&app, &invites, &owner).await;
+    let raced_path = format!("{invites}/{}", raced["id"].as_str().expect("id"));
+    let (revoked, joined) = tokio::join!(
+        request(&app, Method::DELETE, &raced_path, None, Some(&owner)),
+        request(
+            &app,
+            Method::POST,
+            "/v1/invitations/accept",
+            Some(json!({"token":raced["token"]})),
+            Some(&other)
+        )
+    );
+    assert!(
+        (revoked.0 == StatusCode::NO_CONTENT && joined.0 == StatusCode::NOT_FOUND)
+            || (revoked.0 == StatusCode::NOT_FOUND && joined.0 == StatusCode::CREATED)
+    );
+    if joined.0 == StatusCode::CREATED {
+        assert_eq!(
+            request(&app, Method::DELETE, &membership, None, Some(&other))
+                .await
+                .0,
+            StatusCode::NO_CONTENT
+        );
+    }
+    // Promote and let the admin leave; old invitation codes from that creator stop working.
+    let role_path = format!("{path}/members/{member_id}");
+    assert_eq!(
+        request(
+            &app,
+            Method::PATCH,
+            &role_path,
+            Some(json!({"role":"admin"})),
+            Some(&owner)
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let orphaned = invitation(&app, &invites, &member).await;
+    assert_eq!(
+        request(&app, Method::DELETE, &membership, None, Some(&member))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        request(&app, Method::GET, &path, None, Some(&member))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        request(
+            &app,
+            Method::POST,
+            "/v1/invitations/accept",
+            Some(json!({"token":orphaned["token"]})),
+            Some(&other)
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    sqlx::query("DELETE FROM community_invitations WHERE community_id = $1")
+        .bind(id.parse::<sqlx::types::Uuid>().expect("UUID"))
+        .execute(&pool)
+        .await
+        .expect("clear local invitation fixtures");
+    sqlx::query(
+        "INSERT INTO community_invitations (community_id, created_by, token_hash, expires_at)
+         SELECT $1::uuid, $2::uuid, replace($1::text, '-', '') || lpad(n::text, 32, '0'), now() + interval '1 hour'
+         FROM generate_series(1, 199) AS n",
+    )
+    .bind(id.parse::<sqlx::types::Uuid>().expect("UUID"))
+    .bind(owner_id.parse::<sqlx::types::Uuid>().expect("UUID"))
+    .execute(&pool).await.expect("seed active invitation bound");
+    let (a, b) = tokio::join!(
+        request(&app, Method::POST, &invites, None, Some(&owner)),
+        request(&app, Method::POST, &invites, None, Some(&owner))
+    );
+    assert!(
+        (a.0 == StatusCode::CREATED && b.0 == StatusCode::TOO_MANY_REQUESTS)
+            || (b.0 == StatusCode::CREATED && a.0 == StatusCode::TOO_MANY_REQUESTS)
+    );
+    let (status, pending) = request(&app, Method::GET, &invites, None, Some(&owner)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(pending.as_array().expect("bounded list").len(), 200);
+    // Delete owned communities before users: owner_id intentionally restricts user deletion.
+    assert_eq!(
+        request(&app, Method::DELETE, &path, None, Some(&owner))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let second_path = format!("/v1/communities/{}", second["id"].as_str().expect("id"));
+    assert_eq!(
+        request(&app, Method::DELETE, &second_path, None, Some(&other))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    for user in [owner_id, member_id, other_id] {
+        sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user.parse::<sqlx::types::Uuid>().expect("UUID"))
+            .execute(&pool)
+            .await
+            .expect("cleanup account");
+    }
+}

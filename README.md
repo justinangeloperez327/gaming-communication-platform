@@ -7,7 +7,7 @@ GCP is an experimental Windows x64 communication application for private gaming 
 | Area | Implemented | Evidence / limits |
 | --- | --- | --- |
 | Desktop accounts | Invited account creation, owner invitation controls, sign-in, in-memory tokens, timed rotation and sign-out | PostgreSQL, real-stack and Qt tests; no email delivery/recovery or persistent login |
-| Communities | API roles, invitations, channels and membership; desktop community/voice-channel selection | PostgreSQL integration tests; creation/invitation administration is API-only |
+| Communities | Desktop create/join/leave, channel editing, invitations and role-aware member administration; API ownership enforcement | PostgreSQL, container and Qt tests; capped lists, no live directory updates or owner transfer |
 | Text and friends | Authorized channel messages, friendships, blocks, DMs and text-channel WebSocket events | Backend integration tests; desktop message composer remains disabled |
 | Voice | Listen-only, explicit microphone opt-in, mute/F8 push-to-talk, device selection, room events, bounded recovery and Leave | Real SDK integration; managed desktop calls continue until Leave; mute/F8 PTT and periodic access checks; physical audibility unverified |
 | Screen sharing | Separate consent-gated monitor diagnostics: CPU-readback publishing and GPU BGRA→NV12→hardware-class H.264→LiveKit bridge | No desktop sharing/viewing UI; hardware, remote playback and driver compatibility unverified |
@@ -16,6 +16,9 @@ GCP is an experimental Windows x64 communication application for private gaming 
 | Performance | Process CPU/private memory samples, capture/encoder timing, exported game frame-time analysis | No measured gaming resource budget or advantage over other apps established |
 
 See [long-session voice and controls](docs/long-session-voice.md) for the latest voice behavior and tests.
+Use [desktop communities](docs/desktop-communities.md) to create a private space,
+add a voice channel and invite existing accounts. Text-channel creation works;
+desktop text messaging remains incomplete.
 
 The ZIP includes a [versioned notice baseline](docs/windows-third-party-notices.md); complete transitive attribution review remains pending.
 

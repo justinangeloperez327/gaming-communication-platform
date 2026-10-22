@@ -2,7 +2,7 @@
 
 GCP retains three separate runtime boundaries:
 
-- **Qt/C++20 desktop:** in-memory account session, asynchronous authenticated HTTP requests, community/voice-channel selection, subprocess lifecycle and consent UI.
+- **Qt/C++20 desktop:** in-memory account session, asynchronous authenticated HTTP requests, community/channel/member/invitation management, voice-room selection, subprocess lifecycle and consent UI.
 - **Rust/Axum modular monolith:** PostgreSQL-backed accounts/sessions, community roles, messages, friends/DMs, channel event sockets and restricted LiveKit voice JWT issuance.
 - **Native LiveKit/Windows media:** a voice child process uses WebRTC platform audio. Separate diagnostic executables exercise Windows Graphics Capture, CPU readback or same-device D3D11 BGRA→NV12 conversion, asynchronous hardware-class Media Foundation H.264 output and encoded LiveKit transport.
 
@@ -25,6 +25,12 @@ IPs. WebRTC media still goes directly to LiveKit. Database and certificate volum
 persist independently of containers; no service is deployed by adding this package.
 
 Networking and queues are bounded; password hashing uses a bounded worker semaphore. Native capture owns GPU/COM resources through RAII and shared callback state; hardware-class encoding is event-driven. Physical driver behavior, remote media delivery and gaming resource usage are unverified.
+
+The existing directory controller also owns community management. One bounded
+request runs at a time; details load on demand. Refresh reconciles stable IDs
+rather than clearing a valid room, and selection invalidation stops local voice.
+Server-side SQL role predicates remain authoritative. Pending community codes are
+revocable and limited per community without replacing the existing schema.
 
 Builds use CMake/Qt and Cargo. PR/manual CI validates the application, API, real
 disposable server stack, portable ZIP and per-user alpha installer. A separate
