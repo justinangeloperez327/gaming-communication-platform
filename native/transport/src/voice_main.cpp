@@ -344,6 +344,10 @@ int join(const Options& o) {
 
     livekit::PlatformAudio audio;
     select_devices(audio, o);
+    // These owners outlive Room, even if disconnect itself throws during
+    // exception unwinding. Room must finish using the audio source first.
+    std::shared_ptr<livekit::PlatformAudioSource> mic_source;
+    std::shared_ptr<livekit::LocalAudioTrack> mic_track;
     VoiceEvents events;
     livekit::Room room;
     room.setDelegate(&events);
@@ -354,9 +358,6 @@ int join(const Options& o) {
         throw std::runtime_error("Could not join LiveKit voice room");
     voice_event("connected");
 
-    // Ensure microphone source and track both remain alive until disconnect.
-    std::shared_ptr<livekit::PlatformAudioSource> mic_source;
-    std::shared_ptr<livekit::LocalAudioTrack> mic_track;
     try {
         bool muted = o.desktop_control;
         if (o.publish_mic) {

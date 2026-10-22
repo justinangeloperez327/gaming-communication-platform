@@ -1,144 +1,115 @@
-# Current stabilization audit — 21 October 2026
+# Current stabilization audit — Group 4
 
-Group 3 is tracked in [PR #81](https://github.com/justinangeloperez327/gaming-communication-platform/pull/81):
-[desktop community/channel administration](desktop-communities.md), revocable
-community invitations, self-leave and selection-preserving refresh. PR #80 is
-merged. The API-only administration and missing-invitation-UI statements in this
-dated audit describe its earlier revision; use current subsystem guides and PR
-results for subsequent behavior. Physical media/performance evidence is unchanged.
+GCP remains an experimental private Windows communication application. Groups
+1–3 are merged; [Group 4 / PR #82](https://github.com/justinangeloperez327/gaming-communication-platform/pull/82)
+adds voice consent/recovery fixes and a real synthetic-audio SDK/SFU contract.
+The owner's physical two-PC voice acceptance remains pending. The existing
+unsigned alpha installer is an installation preview, not product acceptance.
+No new release, service deployment, installer implementation or merge is part of
+Group 4.
 
-Subsequent Group 2 work is in [PR #80](https://github.com/justinangeloperez327/gaming-communication-platform/pull/80):
-local owner bootstrap, invitation-only registration and desktop account/invitation
-controls. Use [private onboarding](account-onboarding.md) for current behavior;
-the open-registration and missing-signup statements below describe the earlier
-audit revision. [PR #79](https://github.com/justinangeloperez327/gaming-communication-platform/pull/79)
-has since merged the shared server package. Neither change supplies physical
-media or deployed-host acceptance.
+## Completed fixes
 
-The next completion milestone is tracked in [PR #79](https://github.com/justinangeloperez327/gaming-communication-platform/pull/79):
-the [shared server package](server-stack.md), with real-container startup,
-persistence and recovery acceptance. The [completion roadmap](completion-roadmap.md)
-tracks all twelve product groups. This dated audit is the prior evidence record;
-packaging a server does not supply a deployed host or physical media evidence.
-
-On 22 October the owner requested a release and installer despite the remaining
-acceptance gaps. See the [alpha installer guide](windows-installer.md) for that
-subsequent work. The evidence and physical limitations in this dated audit remain
-unchanged; availability of an installer does not close them.
-
-GCP remains an experimental private Windows communication application. Automated
-checks cover real backend logic, desktop HTTP/QProcess behavior, native policy
-logic and portable packaging. They do not establish stable two-user audio,
-desktop screen sharing or gaming resource budgets. Installer work remains blocked
-by the acceptance items below.
-
-This report reviews main revision `4866d9772b79b9a07ae10220f45644f17641cf41`, whose application tree
-matches tested PR head `d73d37324419020fcb63502730fab4b651c61153` from PR #75.
-The [15 October report](stabilization-audit.md) is historical; its five-minute
-call, missing mute/PTT and original test-count statements are superseded here.
-This is a source and automated-test audit, not exhaustive defect elimination.
-
-## Completed fixes and evidence
-
-| Area | Completed work | Evidence and limits |
+| Area | Implemented | Evidence and limits |
 | --- | --- | --- |
-| Initial audit | Bounded HTTP bodies, child cleanup, native capture/encoder exception cleanup, corrected memory/benchmark records, package traversal/hidden-file rejection and sanitizer CI | [PR #63](https://github.com/justinangeloperez327/gaming-communication-platform/pull/63); historical report details each finding. No physical leak-free or gaming-performance claim |
-| Long calls and microphone controls | Managed calls continue until Leave/failure; initial mute, F8 PTT, heartbeat lease, mute acknowledgment watchdog and periodic backend access checks | [PR #64](https://github.com/justinangeloperez327/gaming-communication-platform/pull/64), [guide](long-session-voice.md). Synthetic 12-hour policy timeline and offline subprocess tests are not a multi-hour audio call |
-| Server room access | Session-specific participant identities, periodic database/SFU reconciliation, RemoveParticipant, readiness gating, bounded control requests and retries | [PR #65](https://github.com/justinangeloperez327/gaming-communication-platform/pull/65), [guide](server-voice-eviction.md). Active-media eviction and cached-token rejoin timing remain unverified |
-| LiveKit control compatibility | Dedicated test against checksum-pinned LiveKit 1.13.10 on loopback | [PR #66](https://github.com/justinangeloperez327/gaming-communication-platform/pull/66). Exercises actual room-service authorization/contracts with no media peers |
-| Native output and credentials | Bounded device scan/status stdout, shutdown on oversized status lines, discarded unused stderr, removal of known backend credentials from child environments | [PR #67](https://github.com/justinangeloperez327/gaming-communication-platform/pull/67), [#68](https://github.com/justinangeloperez327/gaming-communication-platform/pull/68), [#71](https://github.com/justinangeloperez327/gaming-communication-platform/pull/71). Dummy-environment and real QProcess tests; not secure zeroization of SDK/process memory |
-| Native URL safety | Shared authority validation rejects deceptive loopback URLs across native media tools | [PR #69](https://github.com/justinangeloperez327/gaming-communication-platform/pull/69), portable policy tests. No TLS deployment acceptance claim |
-| Realtime fanout | Channel-scoped WebSocket queues and RAII subscriber cleanup replace cross-channel fanout | [PR #70](https://github.com/justinangeloperez327/gaming-communication-platform/pull/70), backend/concurrent-drop tests. Single-process delivery only |
-| Notice packaging | Exact pinned Qt/LiveKit baseline texts, independent notice hashes, version guards and rejection fixtures | [PR #72](https://github.com/justinangeloperez327/gaming-communication-platform/pull/72), [coverage](windows-third-party-notices.md). Full transitive attribution review remains open |
-| Desktop HTTP lifetime | Logout response size cap; absolute reply-owned deadlines for all desktop HTTP calls in addition to inactivity timeouts | [PR #73](https://github.com/justinangeloperez327/gaming-communication-platform/pull/73), [#74](https://github.com/justinangeloperez327/gaming-communication-platform/pull/74), actual loopback oversized/silent/trickling-response tests. Deadlines require a responsive Qt event loop |
-| Device selection | Dropdowns follow controller endpoint IDs across model replacement/reordering; scans preserve or clear selection consistently | [PR #75](https://github.com/justinangeloperez327/gaming-communication-platform/pull/75), actual offscreen QML and subprocess argument tests. Physical endpoint opening remains unverified |
+| Shared server | Generated secrets, explicit migrations, readiness/restarts, restricted TLS configuration, persistence and backup/restore | Merged [PR #79](https://github.com/justinangeloperez327/gaming-communication-platform/pull/79), [server guide](server-stack.md); real-container acceptance, no external deployment |
+| Accounts | Local stdin owner bootstrap, one-use hashed email-bound invitations, atomic invited registration and desktop signup/owner invitation UI | Merged [PR #80](https://github.com/justinangeloperez327/gaming-communication-platform/pull/80), [onboarding](account-onboarding.md); PostgreSQL, Qt and container tests; no email delivery/recovery/MFA/persistent login |
+| Communities | Desktop create/join/leave, channel CRUD/order, member roles and invitation issue/revoke; bounded requests/models and selection-preserving refresh | Merged [PR #81](https://github.com/justinangeloperez327/gaming-communication-platform/pull/81), [guide](desktop-communities.md); real API/container and offscreen QML tests; no live directory updates, pagination or owner transfer |
+| Voice recovery | An interruption clears open-mic/PTT arming, cancels old checks, mutes the track and requires immediate current-access reauthorization plus Enable mic after SDK recovery | [PR #82](https://github.com/justinangeloperez327/gaming-communication-platform/pull/82), [voice report](usable-voice.md); Qt HTTP/QProcess and portable policy tests; physical network interruption remains unverified |
+| Voice consent/lifetimes | Pending consent is cleared by either join action, Leave, logout and room/process transitions; terminal errors survive child exit; pending replies abort before destruction; stopping closes unused stdout | Shipped VoicePanel is exercised in Qt tests, including denial, missing mute acknowledgment, cancellation/destruction and fast child failure; physical capture/privacy remains pending |
+| Media integration | Real synthetic PCM publisher/receiver, decoded tone, initial mute, remote mute/unmute, room isolation, explicit rejoin and active-peer RoomService eviction assertions | Dedicated Windows loopback contract with pinned existing SDK and checksum-pinned SFU; no PlatformAudio, real accounts, forced SDK network interruption or physical devices |
+| Existing safety work | Bounded HTTP/output, subprocess/native cleanup, five-second control lease, periodic access checks, session-specific identities, SFU reconciliation/readiness, native URL policy and channel-scoped realtime queues | [Earlier audit](stabilization-audit.md), [long calls](long-session-voice.md), [eviction](server-voice-eviction.md); no exhaustive defect-free or leak-free claim |
+| Distribution | Qt/QML/LiveKit staging, ZIP inventory/hashes, corruption rejection, notice baseline, signature inventory and existing alpha install/repair/uninstall | Existing Windows CI checks are retained; no version bump or new release; clean consumer-PC and full attribution/signing remain open |
 
-No runtime dependency or core Qt/Rust/LiveKit architecture was replaced by these
-fixes. Bounded allocations, reduced cross-channel fanout and cleanup remove known
-resource risks; no measured reduction in CPU, GPU, RAM or game frame times is
-claimed. Audio/codec quality settings were preserved.
+The Qt/C++ desktop, Rust/Axum/PostgreSQL backend and native LiveKit architecture
+and audio quality defaults are preserved. No new application runtime dependency
+was added. Lifecycle and bounded-buffer fixes remove known resource risks; no
+measured CPU/GPU/RAM or gaming frame-time improvement is claimed.
 
-## Capability status
+## Verified behavior versus unfinished functionality
 
-| Subsystem | Implemented and automatically exercised | Remaining functionality or acceptance |
+| Subsystem | Automated execution | Remaining work or acceptance |
 | --- | --- | --- |
-| Account and authorization | Argon2id, hashed bearer tokens, rotating refresh, revocation, database membership/role/channel predicates; desktop in-memory login/refresh/logout | Desktop-to-deployed-backend acceptance; no persistent login, invite-only registration or complete public-internet abuse protection |
-| Communities and text | Backend invitations, channels, messages, friendships, blocks, DMs and text-channel socket events; desktop voice directory | Community administration/invitations and text/friend/DM workflows remain API-only; composer is disabled; no distributed fanout |
-| Voice | Native SDK platform audio, listen-only and per-call mic consent, mute/PTT, device choices, SDK events, watchdogs and access rechecks | Remote audibility, Windows microphone privacy, headset/default-device behavior, long calls and late reconnect while gaming |
-| Screen | Explicit consent-gated full-monitor diagnostics; CPU readback publisher and GPU conversion/hardware-class H.264 transport bridge | Desktop sharing/viewing UI, window picker, independent screen authorization flow, remote decoded quality and actual GPU encoder-engine evidence |
-| Synthetic media | Generated frames and externally encoded file publishing | These are transport/format fixtures, not screen-capture, hardware-encoder or performance verification |
-| Portable ZIP | Pinned Qt/SDK, deployed plugins/DLLs, payload hashes, signing inventory, staged/extracted runtime startup and notice baseline | Clean consumer Windows PC, full attribution/source obligations, owner signing choice and physical media acceptance |
+| Accounts/community | Real database/HTTP/container onboarding and role checks plus actual offscreen desktop controls | Deployed-host/physical desktop acceptance; recovery/email/owner transfer/live directory updates |
+| Voice controls | Real Qt/QML/HTTP/QProcess behavior with a simulated native child; native control policy separately under sanitizers | Physical microphone privacy, audibility, F8/game compatibility, default-device routing and multi-hour calls |
+| Voice transport | Dedicated real SDK/SFU synthetic PCM contract; Rust grants/reconciliation separately covered | Full deployed desktop → API → PlatformAudio → friend speakers; actual SDK network recovery and revocation/rejoin timing |
+| Text/friends/DMs | Authorized persistent API operations and channel socket events | Desktop composer/history/live delivery and friend/DM flows remain incomplete; composer is disabled |
+| Screen sharing | Consent-gated monitor/capture/encoder/transport diagnostics and format/parser tests | Desktop consent/picker/publisher/viewer authorization and physical remote decode/quality remain incomplete |
+| Windows packages | Hosted build, runtime/dependency and existing installer lifecycle tests | Clean Windows consumer PC, upgrade qualification, full transitive licensing/source obligations and owner publisher signing |
+| Performance | Corrected telemetry and analysis tools, fixture validation | Matched gaming measurements of complete desktop/native resource cost and frame-time impact; no measured budgets yet |
 
-## Security and consent limits
+## Security and consent boundaries
 
-- Microphone publication requires per-call consent and starts muted. Mute/PTT
-  controls transmission; the device/source may remain open until Leave. Track
-  acknowledgments do not prove remote audibility or Windows privacy behavior.
-- Voice tokens grant microphone publication only. Screen diagnostics require
-  separate explicit consent and operator test credentials. A finished desktop
-  screen-sharing feature must add its own authorized consent/picker/viewer flow.
-- Desktop access rechecks stop a cooperative client on failure. Server
-  reconciliation separately removes unauthorized participants periodically.
-  Outages can delay removal; self-hosted cached JWTs can rejoin before expiry.
-  Token expiry alone does not evict an established participant.
-- Separate logins have separate participant identities. Refresh preserves the
-  same login identity; concurrent connections using that login can still collide.
-- Use a private access boundary for the intended friends and HTTPS/WSS outside
-  loopback. Registration is open to reachable users. Complete rate limiting,
-  email verification, recovery and MFA are not implemented.
-- Server admin credentials stay out of desktop-issued grants. Known backend
-  credential environment variables are filtered from native children; this is
-  not an exhaustive environment allowlist or secure-memory guarantee.
-- Messages are plaintext to the API/database. Application-level E2EE is absent.
-  Package checksums prove consistency, not publisher authenticity.
+- Microphone capture requires per-call consent. Calls and mode changes start
+  muted; interrupted calls must be explicitly armed again. Mute/PTT controls
+  transmission, and the device may stay open until Leave. Hosted tests do not
+  establish Windows privacy or physical capture-stop behavior.
+- The desktop's immediate/periodic HTTP access checks govern the cooperative
+  client. Rust separately reconciles real SFU participants against current
+  sessions, membership and channel state. Outages can delay removal; cached
+  self-hosted JWTs can rejoin before expiry. Expiry alone does not evict a peer.
+- Voice JWTs permit microphone publication only. Screen diagnostics use separate
+  explicit consent and operator credentials; desktop screen authorization is
+  still a later group. Separate logins have separate identities; refreshing a
+  login preserves its identity, so concurrent connections on that login collide.
+- Registration now requires a valid owner-issued invitation. Email ownership,
+  recovery, MFA and complete public-internet rate limiting are absent. Use a
+  private network boundary and HTTPS/WSS for the intended friend group.
+- Backend credentials stay server-side. Known credential variables are removed
+  from native child environments; this is not a sandbox or secure zeroization.
+  Messages are plaintext to the API/database and application E2EE is absent.
+- Package hashes prove consistency. Owner signing and full attribution/source
+  obligations remain separate from the current notice baseline.
 
-## Verification record
+## Checks and evidence
 
-Application main: `4866d97` (merge of PR #75); tested application head:
-`d73d37324419020fcb63502730fab4b651c61153`. Their tracked trees match.
-[CI run 39540102932](https://github.com/justinangeloperez327/gaming-communication-platform/actions/runs/39540102932)
-passed both jobs, including:
+PR #82 checks identify the exact tested head. Its CI must pass Rust formatting,
+Clippy with warnings denied, real PostgreSQL tests, the explicit Linux SFU
+control contract, sanitizer tests, Python suites, real container acceptance,
+Windows native/Qt build and CTest, the new real synthetic-audio contract and
+existing package/install lifecycle checks before it is marked ready. Workflow
+success is not physical voice, screen, clean-PC or gaming acceptance.
 
-- Windows Qt/media/LiveKit compilation and **19 CTests**. The actual QML picker
-  test and HTTP/QProcess voice control tests passed.
-- Package corruption/notice rejection fixtures, signing-inventory consistency,
-  staged and extracted Qt/QML and SDK startup; **1,327 payload files** verified
-  in that build. Counts are build evidence, not permanent package contracts.
-- Rust formatting, Clippy with warnings denied, PostgreSQL-backed tests,
-  explicitly selected real LiveKit control contract, portable native sanitizer
-  checks and Python suites. The external-server contract is ignored by regular
-  Cargo tests and run separately in CI.
+The first Group 4 implementation head
+`60e538ecb45077a13420feca40c9824e99ebd45e` passed all three jobs in
+[CI 39849493873](https://github.com/justinangeloperez327/gaming-communication-platform/actions/runs/39849493873):
+21 Windows CTests, Rust/PostgreSQL/sanitizer/Python checks, real container
+acceptance, synthetic media and existing ZIP/preview-installer checks. The media
+contract recorded 1,124 decoded frames, including 844 tone frames; the staged
+package verified 1,339 payload files. Counts describe that run, not fixed product
+budgets. The subsequent source-owner lifetime/documentation follow-up must also
+pass the current PR head's checks; final run links are recorded in PR #82.
 
-Local checks during these follow-ups include 29 Python tests, authored-file
-whitespace checks and GCC C++20 fixture compilation with warnings denied. Qt,
-Rust and PowerShell execution used CI rather than the local audit environment.
-Preserved upstream notice EOF whitespace is intentional.
+Group 4 local checks passed 49 Python tests, whitespace checks and GCC C++20
+voice-control ASan/UBSan with leak detection disabled: this environment's
+LeakSanitizer cannot inspect process/task state. Qt/Rust/Docker/Windows checks
+use CI because those runtimes are unavailable locally.
 
-Graphify's available index was `10122d6`, before PR #75. It helped locate the
-directory/voice boundaries; current source and CI were checked independently.
-Its semantic symbol suggestions and name-linked tests are not proof of a Qt
-signal/slot call path or complete coverage. No runtime verdict is inferred from
-graph topology.
+Graphify was used to trace the voice/lifecycle/test boundaries. Initial recall
+used `1285b7c`; its later impact query had refreshed to main `2e4d100`, still before
+this branch. Current source was checked independently.
+Recalled candidate reviews and graph relationships are not runtime evidence.
 
-## Blockers before implementing the Windows installer
+## Remaining qualification before stable distribution
 
-1. Test the exact extracted ZIP on clean Windows x64 without Qt/Visual Studio
-   development tooling. Confirm dependencies, account flow and native voice.
-2. Complete the owner's two-user private-SFU acceptance: consent/listen-only,
-   both users hearing audio, mute/PTT, Leave/logout/exit, device loss, long calls
-   and network recovery before/after JWT expiry.
-3. Test actual connected-participant eviction/rejoin after logout, membership or
-   channel removal and backend/SFU restart/outage. Set acceptable revocation
-   timing from observations; the empty-room control contract does not close this.
-4. Finish the intended desktop screen-sharing consent/authorization/picker/viewer
-   integration and test capture, stop, decoding, readability, cadence, device loss
-   and supported display modes on real hardware.
-5. Measure matched baseline and GCP voice/share gaming runs, including complete
-   desktop/native resource cost, CPU/private memory, GPU Video Encode, FPS/1% lows,
-   hardware/drivers/network details and repeated runs. Agree budgets from evidence.
-6. Finish exact-build Qt/plugin and LiveKit FFI/WebRTC/codec attribution/source
-   review, plus Microsoft runtime redistribution material. The pinned baseline
-   is incomplete by design. Publisher code signing remains the owner's task.
+The owner already authorized the preview installer, which exists. These are
+product/stable-distribution blockers, not requests to implement another installer:
 
-No installer, public release or service deployment was created. Installer
-upgrade/uninstall/rollback work should follow portable application acceptance.
+1. Complete the [two-PC voice/device/privacy/PTT/network acceptance](usable-voice.md)
+   on the exact build, including long calls and interruption after token expiry.
+2. Verify occupied-room logout/membership/channel revocation with the complete
+   Rust reconciliation loop and actual users, including outages and copied-token
+   rejoin timing. The synthetic RoomService test verifies active-peer removal,
+   not every authorization transition in one end-to-end run.
+3. Finish desktop text, friends/DMs and screen authorization/publisher/viewer
+   groups from the [roadmap](completion-roadmap.md). Test physical screen capture,
+   stop/consent, remote readability/cadence and device/display changes.
+4. Measure repeated matched gaming baseline/voice/share runs: full desktop/native
+   CPU/private memory, GPU engines and FPS/1% lows with hardware/driver/network
+   details. Set budgets from evidence before changing quality settings.
+5. Test the exact extracted ZIP on clean Windows x64 without Qt/Visual Studio,
+   then qualify preview install/repair/uninstall and upgrades on consumer PCs.
+6. Complete exact-build Qt/plugin/LiveKit FFI/WebRTC/codec and Microsoft runtime
+   attribution/source review; the owner handles publisher code signing.
+
+No physical two-user voice, screen sharing or gaming result is claimed here.

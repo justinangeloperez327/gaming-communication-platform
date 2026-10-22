@@ -1,5 +1,9 @@
 # Group 34 — Fail-closed voice recovery guardrails
 
+Historical increment: current SDK callbacks, immediate reconnect authorization
+and microphone rearming supersede the limitations below. Read [Group 4 voice](usable-voice.md)
+and [long-session controls](long-session-voice.md) for current behavior.
+
 The Qt client now enforces a **22-second room-acknowledgment deadline** after the native voice process starts. If the native process never emits the exact `GCP_VOICE_EVENT:connected` acknowledgment, Qt terminates it, forcibly kills it after two seconds if necessary, and shows a distinct timeout/error status. This complements the existing 12-second executable startup timeout.
 
 After a timeout, the user must deliberately choose **Listen only** or explicitly reauthorize microphone publication using the existing consent control. Every attempt requests a fresh backend-authorized LiveKit room JWT. There is no automatic retry, background microphone reopening, or token reuse.

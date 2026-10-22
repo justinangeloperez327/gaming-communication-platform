@@ -30,3 +30,13 @@ Tests use an HTTP LiveKit control fixture with real HS256 admin signatures and P
 CI also runs `python3 scripts/test_livekit_control_contract.py` on Linux x64 with Rust installed. It downloads the official LiveKit 1.13.10 server archive with a pinned SHA-256, starts it on loopback with disposable test credentials, runs one explicitly selected Rust contract test, and stops the process even on failure. It neither deploys a service nor needs production credentials. The regular Rust test suite ignores this external-server test; the dedicated CI step must pass it explicitly.
 
 The contract checks real CreateRoom/ListRooms/ListParticipants responses, room-scoped admin authorization, rejection of insufficient/wrong-room grants and invalid signatures, missing-participant RemoveParticipant with the revocation cutoff, empty-room reconciliation/readiness, and DeleteRoom cleanup. There are no connected participants: successful execution does not verify removal of an active media peer, Cloud token revocation, self-hosted rejoin timing, TLS deployment, audio, screen sharing or gaming performance. PostgreSQL/mock-SFU tests continue to cover revocation state transitions separately.
+
+## Active synthetic media peer contract
+
+The separate [Windows SDK/SFU test](usable-voice.md) creates actual synthetic PCM
+publisher/receiver peers and an isolated room. Before removal the runner checks
+that the publisher has an active track, invokes real RoomService RemoveParticipant
+and requires SDK disconnect/departure callbacks while the receiver remains
+connected. This adds occupied-room control compatibility evidence. It does not
+combine the Rust reconciliation loop, PostgreSQL revocation and physical users
+in the same acceptance run, or establish cached-token rejoin timing.
