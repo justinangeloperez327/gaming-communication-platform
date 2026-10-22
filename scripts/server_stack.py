@@ -151,7 +151,9 @@ class Stack:
                            capture_output=True, text=True).stdout.strip()
         if running:
             raise ValueError("Stop the API and migrations before restoring a new database")
-        with archive.open("rb") as source:
+        # subprocess inherits the OS file offset, not Python's buffered read
+        # position. Keep the header check unbuffered so pg_restore sees byte 0.
+        with archive.open("rb", buffering=0) as source:
             if source.read(5) != b"PGDMP":
                 raise ValueError("Expected a trusted pg_dump custom-format archive")
             source.seek(0)

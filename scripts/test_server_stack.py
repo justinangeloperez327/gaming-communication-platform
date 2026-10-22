@@ -86,6 +86,26 @@ class StackTests(unittest.TestCase):
             stack.restore(archive)
         stack.database.assert_not_called()
 
+    def test_restore_passes_archive_header_at_os_file_offset_zero(self):
+        initialize(self.config)
+        stack = Stack(self.config)
+        stack.run = Mock(return_value=Mock(stdout=""))
+        archive = self.root / "backup.pgdump"
+        archive.write_bytes(b"PGDMP" + b"fixture" * 2048)
+
+        def database(*args, **kwargs):
+            if args[0] == "psql":
+                return Mock(stdout="0\n")
+            self.assertEqual(args[0], "pg_restore")
+            # Match the child process's read of its inherited stdin descriptor.
+            self.assertEqual(os.read(kwargs["stdin"].fileno(), 5), b"PGDMP")
+            self.assertIn("--single-transaction", args)
+            return Mock()
+
+        stack.database = Mock(side_effect=database)
+        stack.restore(archive)
+        self.assertEqual(stack.database.call_count, 2)
+
     def test_failed_backup_is_removed_and_existing_backup_is_preserved(self):
         initialize(self.config)
         stack = Stack(self.config)

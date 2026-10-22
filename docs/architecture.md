@@ -8,8 +8,20 @@ GCP retains three separate runtime boundaries:
 
 LiveKit SFU media bypasses the Rust application API. PostgreSQL stores durable metadata and messages; there is no implemented Redis/object-storage dependency. Desktop messaging, stream viewing, screen-sharing controls and window selection remain incomplete. Synthetic video and pre-encoded files are explicit diagnostic inputs.
 
-The desktop obtains fresh, microphone-only room grants from the API using current membership. GCP logout clears local state and stops local voice. Backend session/membership revocation prevents new tokens but does not evict an already connected SFU participant. Token expiry does not imply active-room expiry. The desktop now checks current channel/session access periodically and stops on failure; a separate LiveKit control-plane integration is still needed to enforce that boundary for arbitrary clients. See [long-session voice](long-session-voice.md).
+The desktop obtains fresh, microphone-only room grants from the API using current membership. GCP logout clears local state and stops local voice. The desktop checks current channel/session access periodically and stops on failure. The Rust server separately reconciles SFU participants against current database sessions and membership, removing unauthorized participants through LiveKit's control API. Removal is periodic and outages can delay it; a cached self-hosted JWT can rejoin until its expiry. Token expiry alone does not disconnect an established participant. See [long-session voice](long-session-voice.md) and [server-side eviction](server-voice-eviction.md).
+
+The [shared host package](server-stack.md) composes the existing Rust service,
+PostgreSQL and LiveKit on one Linux Docker Engine host. An explicit migration job
+precedes the API, and readiness requires both database access and successful SFU
+reconciliation. An optional Caddy proxy terminates HTTPS/WSS and restricts source
+IPs. WebRTC media still goes directly to LiveKit. Database and certificate volumes
+persist independently of containers; no service is deployed by adding this package.
 
 Networking and queues are bounded; password hashing uses a bounded worker semaphore. Native capture owns GPU/COM resources through RAII and shared callback state; hardware-class encoding is event-driven. Physical driver behavior, remote media delivery and gaming resource usage are unverified.
 
-Builds use CMake/Qt and Cargo. PR/manual CI and main-push CI validate the application, API and private portable ZIP without deployment or release. See [stabilization audit](stabilization-audit.md) for verified checks and remaining risks.
+Builds use CMake/Qt and Cargo. PR/manual CI validates the application, API, real
+disposable server stack, portable ZIP and per-user alpha installer. A separate
+main-push job publishes the explicitly configured owner-requested preview once
+after the required checks succeed; it skips a version already published. No
+backend deployment is automated. See the [current stabilization audit](stabilization-status.md)
+and [completion roadmap](completion-roadmap.md) for evidence and remaining risks.
