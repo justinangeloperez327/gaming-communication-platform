@@ -19,6 +19,7 @@ set_source_files_properties(qml/IdPicker.qml PROPERTIES
 )
 set_source_files_properties(qml/AccountPanel.qml PROPERTIES QT_RESOURCE_ALIAS AccountPanel.qml)
 set_source_files_properties(qml/CommunityPanel.qml PROPERTIES QT_RESOURCE_ALIAS CommunityPanel.qml)
+set_source_files_properties(qml/VoicePanel.qml PROPERTIES QT_RESOURCE_ALIAS VoicePanel.qml)
 
 qt_add_qml_module(gcp-desktop
     URI Gcp.Desktop
@@ -29,6 +30,7 @@ qt_add_qml_module(gcp-desktop
         qml/IdPicker.qml
         qml/AccountPanel.qml
         qml/CommunityPanel.qml
+        qml/VoicePanel.qml
 )
 
 target_link_libraries(gcp-desktop PRIVATE
@@ -91,9 +93,12 @@ if(BUILD_TESTING)
         src/VoiceSession.cpp src/VoiceSession.h
         src/AccountSession.cpp src/AccountSession.h
         src/ChannelDirectory.cpp src/ChannelDirectory.h)
-    target_link_libraries(gcp-voice-session-tests PRIVATE Qt6::Network)
+    target_link_libraries(gcp-voice-session-tests PRIVATE Qt6::Network Qt6::Quick Qt6::QuickControls2)
+    target_compile_definitions(gcp-voice-session-tests PRIVATE
+        GCP_VOICE_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
     add_dependencies(gcp-voice-session-tests gcp-voice-process-fixture)
     add_test(NAME desktop_voice_control_and_reauthorization
         COMMAND $<TARGET_FILE:gcp-voice-session-tests>)
-    set_tests_properties(desktop_voice_control_and_reauthorization PROPERTIES TIMEOUT 30)
+    set_tests_properties(desktop_voice_control_and_reauthorization PROPERTIES
+        TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
 endif()

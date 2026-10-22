@@ -40,6 +40,11 @@ int main() {
         check(!voice.transmit(start, false, true)); // mode switch re-mutes
         voice.receive("unmute\n", start);
         check(voice.transmit(start + 4999ms, false, true));
+        voice.interrupt();
+        check(voice.takeMuteRequest());
+        check(!voice.transmit(start + 4999ms, false, true)); // open mic never resumes by itself
+        voice.receive("unmute\n", start + 4999ms);
+        check(voice.transmit(start + 4999ms, false, true));
         check(voice.stopped(start + 5s));
         check(!voice.transmit(start + 5s, false, true));
 
@@ -67,6 +72,17 @@ int main() {
         check(diagnostic.transmit(start + 1h, false, true));
         diagnostic.stop();
         check(!diagnostic.transmit(start, false, true));
+        VoiceControl fast_reconnect{true, true, true, start};
+        fast_reconnect.receive("unmute\n", start);
+        check(!fast_reconnect.transmit(start, false, true));
+        check(fast_reconnect.transmit(start, true, true));
+        fast_reconnect.interrupt();
+        check(!fast_reconnect.transmit(start, false, true));
+        check(!fast_reconnect.transmit(start, true, true));
+        fast_reconnect.receive("unmute\n", start);
+        check(!fast_reconnect.transmit(start, true, true));
+        check(!fast_reconnect.transmit(start, false, true));
+        check(fast_reconnect.transmit(start, true, true));
         // No five-minute duration policy is hidden in managed voice controls.
         VoiceControl long_call{true, true, false, start};
         for (int second = 0; second <= 43200; ++second)

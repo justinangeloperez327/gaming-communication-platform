@@ -39,7 +39,9 @@ public:
     [[nodiscard]] bool takeMuteRequest() noexcept {
         return std::exchange(mute_requested_, false);
     }
-    void resetPushToTalk() noexcept { key_released_ = false; }
+    // An SDK interruption invalidates both open-mic arming and the PTT key
+    // gate, even when reconnect completes between two session-loop polls.
+    void interrupt() noexcept { muted_ = true; key_released_ = false; mute_requested_ = true; }
     void stop() noexcept { stopped_ = true; muted_ = true; key_released_ = false; }
     [[nodiscard]] bool stopped(TimePoint now) const noexcept {
         return stopped_ || (managed_ && now - heartbeat_ >= lease_timeout);

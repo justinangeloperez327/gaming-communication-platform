@@ -70,7 +70,9 @@ private:
     bool sendControl(const QByteArray &command);
     void stopWithReason(const QString &reason);
     void resetControls();
+    void cancelAuthorization();
     void readDeviceScanOutput();
+    void readStatusOutput();
     void setStatus(const QString &value);
     VoiceRuntime runtime_;
     QString nativeProgram() const;
@@ -102,6 +104,7 @@ private:
     bool connectionTimedOut_ = false;
     bool deviceLost_ = false;
     bool connected_ = false;
+    bool recovering_ = false;
     QByteArray outputBuffer_;
     bool microphoneEnabled_ = false;
     QString status_ = QStringLiteral("Disconnected");
