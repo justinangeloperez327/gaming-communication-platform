@@ -386,22 +386,37 @@ async fn pending_invitation_revocation_limits_and_self_leave() {
     let invites = format!("{path}/invitations");
     let membership = format!("{path}/membership");
     assert_eq!(
-        request(&app, Method::DELETE, &membership, None, Some(&owner)).await.0,
+        request(&app, Method::DELETE, &membership, None, Some(&owner))
+            .await
+            .0,
         StatusCode::FORBIDDEN
     );
     assert_eq!(
-        request(&app, Method::GET, &invites, None, Some(&other)).await.0,
+        request(&app, Method::GET, &invites, None, Some(&other))
+            .await
+            .0,
         StatusCode::NOT_FOUND
     );
     let code = invitation(&app, &invites, &owner).await;
     let join = Some(json!({"token":code["token"]}));
     assert_eq!(
-        request(&app, Method::POST, "/v1/invitations/accept", join, Some(&member)).await.0,
+        request(
+            &app,
+            Method::POST,
+            "/v1/invitations/accept",
+            join,
+            Some(&member)
+        )
+        .await
+        .0,
         StatusCode::CREATED
     );
     let unused = invitation(&app, &invites, &owner).await;
     let revoke = format!("{invites}/{}", unused["id"].as_str().expect("invite id"));
-    for (method, target) in [(Method::GET, invites.clone()), (Method::DELETE, revoke.clone())] {
+    for (method, target) in [
+        (Method::GET, invites.clone()),
+        (Method::DELETE, revoke.clone()),
+    ] {
         assert_eq!(
             request(&app, method, &target, None, Some(&member)).await.0,
             StatusCode::FORBIDDEN
@@ -424,17 +439,33 @@ async fn pending_invitation_revocation_limits_and_self_leave() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED);
-    let wrong_scope = format!("/v1/communities/{}/invitations/{}", second["id"].as_str().expect("id"), unused["id"].as_str().expect("id"));
+    let wrong_scope = format!(
+        "/v1/communities/{}/invitations/{}",
+        second["id"].as_str().expect("id"),
+        unused["id"].as_str().expect("id")
+    );
     assert_eq!(
-        request(&app, Method::DELETE, &wrong_scope, None, Some(&other)).await.0,
+        request(&app, Method::DELETE, &wrong_scope, None, Some(&other))
+            .await
+            .0,
         StatusCode::NOT_FOUND
     );
     assert_eq!(
-        request(&app, Method::DELETE, &revoke, None, Some(&owner)).await.0,
+        request(&app, Method::DELETE, &revoke, None, Some(&owner))
+            .await
+            .0,
         StatusCode::NO_CONTENT
     );
     assert_eq!(
-        request(&app, Method::POST, "/v1/invitations/accept", Some(json!({"token":unused["token"]})), Some(&other)).await.0,
+        request(
+            &app,
+            Method::POST,
+            "/v1/invitations/accept",
+            Some(json!({"token":unused["token"]})),
+            Some(&other)
+        )
+        .await
+        .0,
         StatusCode::NOT_FOUND
     );
     // Revocation and redemption serialize: either membership commits or revocation wins.
@@ -442,25 +473,70 @@ async fn pending_invitation_revocation_limits_and_self_leave() {
     let raced_path = format!("{invites}/{}", raced["id"].as_str().expect("id"));
     let (revoked, joined) = tokio::join!(
         request(&app, Method::DELETE, &raced_path, None, Some(&owner)),
-        request(&app, Method::POST, "/v1/invitations/accept", Some(json!({"token":raced["token"]})), Some(&other))
+        request(
+            &app,
+            Method::POST,
+            "/v1/invitations/accept",
+            Some(json!({"token":raced["token"]})),
+            Some(&other)
+        )
     );
     assert!(
         (revoked.0 == StatusCode::NO_CONTENT && joined.0 == StatusCode::NOT_FOUND)
             || (revoked.0 == StatusCode::NOT_FOUND && joined.0 == StatusCode::CREATED)
     );
     if joined.0 == StatusCode::CREATED {
-        assert_eq!(request(&app, Method::DELETE, &membership, None, Some(&other)).await.0, StatusCode::NO_CONTENT);
+        assert_eq!(
+            request(&app, Method::DELETE, &membership, None, Some(&other))
+                .await
+                .0,
+            StatusCode::NO_CONTENT
+        );
     }
     // Promote and let the admin leave; old invitation codes from that creator stop working.
     let role_path = format!("{path}/members/{member_id}");
-    assert_eq!(request(&app, Method::PATCH, &role_path, Some(json!({"role":"admin"})), Some(&owner)).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(
+        request(
+            &app,
+            Method::PATCH,
+            &role_path,
+            Some(json!({"role":"admin"})),
+            Some(&owner)
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
     let orphaned = invitation(&app, &invites, &member).await;
-    assert_eq!(request(&app, Method::DELETE, &membership, None, Some(&member)).await.0, StatusCode::NO_CONTENT);
-    assert_eq!(request(&app, Method::GET, &path, None, Some(&member)).await.0, StatusCode::NOT_FOUND);
-    assert_eq!(request(&app, Method::POST, "/v1/invitations/accept", Some(json!({"token":orphaned["token"]})), Some(&other)).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(
+        request(&app, Method::DELETE, &membership, None, Some(&member))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        request(&app, Method::GET, &path, None, Some(&member))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        request(
+            &app,
+            Method::POST,
+            "/v1/invitations/accept",
+            Some(json!({"token":orphaned["token"]})),
+            Some(&other)
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
     sqlx::query("DELETE FROM community_invitations WHERE community_id = $1")
         .bind(id.parse::<sqlx::types::Uuid>().expect("UUID"))
-        .execute(&pool).await.expect("clear local invitation fixtures");
+        .execute(&pool)
+        .await
+        .expect("clear local invitation fixtures");
     sqlx::query(
         "INSERT INTO community_invitations (community_id, created_by, token_hash, expires_at)
          SELECT $1::uuid, $2::uuid, replace($1::text, '-', '') || lpad(n::text, 32, '0'), now() + interval '1 hour'
@@ -484,6 +560,8 @@ async fn pending_invitation_revocation_limits_and_self_leave() {
     for user in [owner_id, member_id, other_id] {
         sqlx::query("DELETE FROM users WHERE id = $1")
             .bind(user.parse::<sqlx::types::Uuid>().expect("UUID"))
-            .execute(&pool).await.expect("cleanup account");
+            .execute(&pool)
+            .await
+            .expect("cleanup account");
     }
 }
