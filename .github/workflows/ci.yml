@@ -259,11 +259,11 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v7
         with:
           name: gcp-private-windows-x64
           path: build/release-artifacts/portable
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v7
         with:
           name: gcp-windows-installer
           path: build/release-artifacts/installer
