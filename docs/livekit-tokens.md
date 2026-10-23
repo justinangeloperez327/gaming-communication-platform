@@ -1,6 +1,10 @@
-# LiveKit Voice Room Authorization — Group 26
+# LiveKit voice room authorization
 
-The Rust backend can issue a short-lived **LiveKit join JWT** for one voice channel to an authenticated user who is **currently a member of its community**. It does not expose the LiveKit signing secret to clients. This API is for the future native Windows voice experience; microphone capture/playback is implemented in Group 27.
+The Rust backend issues a short-lived **LiveKit join JWT** for one voice channel
+to an authenticated current community member. It keeps the signing secret on
+the server. The desktop/native voice path consumes this microphone-only grant;
+see [voice evidence](usable-voice.md). Group 7's separate
+[screen authorization](screen-authorization.md) does not expand voice permissions.
 
 The token structure uses LiveKit's documented HS256 `iss`, `sub`, `exp`, `nbf` and `video` grants. See [LiveKit's token and grants reference](https://docs.livekit.io/frontends/reference/tokens-grants/).
 

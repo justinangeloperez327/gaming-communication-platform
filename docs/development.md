@@ -51,3 +51,12 @@ covers staged refreshes, action direction, malformed/oversized responses,
 cancellation/destruction, peer validation and a refresh-timer 401 race. The
 complete `desktop_qml_startup` test runs the real Main window before deployment;
 `--smoke-qml` sends startup diagnostics to captured stderr for GUI builds.
+
+Group 7 adds a PostgreSQL-backed screen lease API test to `livekit_eviction.rs`.
+The Windows synthetic-media runner now also runs `gcp-livekit-screen-contract`
+using the existing pinned SDK and disposable SFU. It checks role/source grants,
+decoded synthetic pixels, separate voice-room isolation, exact track ownership
+and publisher-only removal. Its fixture tokens are independent of the Rust
+API tests; no physical capture or desktop viewer runs. See
+[screen authorization](screen-authorization.md) for verification boundaries and
+the explicit migration/desktop integration contract.

@@ -3,7 +3,7 @@
 GCP retains three separate runtime boundaries:
 
 - **Qt/C++20 desktop:** in-memory account session, asynchronous authenticated HTTP requests, community/channel/member/invitation and friend/block/conversation management, independent text/voice selection, bounded text history/composition, authenticated event sockets, subprocess lifecycle and consent UI.
-- **Rust/Axum modular monolith:** PostgreSQL-backed accounts/sessions, community roles, messages, friends/DMs, channel event sockets and restricted LiveKit voice JWT issuance.
+- **Rust/Axum modular monolith:** PostgreSQL-backed accounts/sessions, community roles, messages, friends/DMs, channel event sockets and restricted LiveKit voice/screen JWT issuance with screen leases.
 - **Native LiveKit/Windows media:** a voice child process uses WebRTC platform audio. Separate diagnostic executables exercise Windows Graphics Capture, CPU readback or same-device D3D11 BGRA→NV12 conversion, asynchronous hardware-class Media Foundation H.264 output and encoded LiveKit transport.
 
 LiveKit SFU media bypasses the Rust application API. PostgreSQL stores durable metadata and messages; there is no implemented Redis/object-storage dependency. Stream viewing, screen-sharing controls and window selection remain incomplete. Synthetic video and pre-encoded files are explicit diagnostic inputs.
@@ -48,6 +48,19 @@ channel UUIDs from sharing activity. Ordered pair locks serialize private writes
 with block/unfriend, which wake active subscriptions only after commit. Current
 friendship and bilateral block checks remain server-side; community roles never
 grant DM moderation rights. See [desktop friends](desktop-friends.md).
+
+Group 7 gives publishers and viewers distinct, short-lived database leases and
+identities in separate `gcp-screen-{channel}` rooms. This is necessary because
+LiveKit subscription grants apply to an entire room; voice must not implicitly
+receive screen tracks. Publisher grants permit only screen video and no
+subscription; viewer grants permit subscription and no publication. Current
+access, lease purpose, track count/type and expiry are checked by reconciliation.
+Stopping a lease does not revoke its login's voice identity. The authorized
+publisher directory supplies identity/user mapping without trusting SFU metadata.
+The upcoming desktop publisher/viewer must bind explicit local consent to a
+source and channel, stop on interruption and consume these grants. See
+[screen authorization](screen-authorization.md) for the API and implementation
+contract; OS consent cannot be proved by a boolean sent to a server.
 
 Builds use CMake/Qt and Cargo. PR/manual CI validates the application, API, real
 disposable server stack, portable ZIP and per-user alpha installer. A separate
