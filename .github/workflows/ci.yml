@@ -54,6 +54,8 @@ jobs:
           /tmp/gcp-parser-tests
           g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/voice_control_tests.cpp -o /tmp/gcp-voice-control-tests
           /tmp/gcp-voice-control-tests
+          g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/screen_control_tests.cpp -o /tmp/gcp-screen-control-tests
+          /tmp/gcp-screen-control-tests
           g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/livekit_url_tests.cpp -o /tmp/gcp-livekit-url-tests
           /tmp/gcp-livekit-url-tests
       - name: Offline physical GPU evidence validator tests
@@ -167,6 +169,8 @@ jobs:
             }
             $child.Dispose()
           }
+          & ./build/gcp-windows-test/gcp-livekit-screen.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged screen publisher self-test failed" }
           & ./build/gcp-windows-test/gcp-livekit-voice.exe --self-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged LiveKit voice self-test failed: $LASTEXITCODE" }
       - name: Record CI-only Windows bundle acceptance
@@ -220,6 +224,8 @@ jobs:
             if (-not $child.HasExited) { Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue }
             $child.Dispose()
           }
+          & (Join-Path $unpacked 'gcp-livekit-screen.exe') --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Extracted screen publisher self-test failed" }
           & (Join-Path $unpacked 'gcp-livekit-voice.exe') --self-test
           if ($LASTEXITCODE -ne 0) { throw "Extracted ZIP LiveKit self-test failed: $LASTEXITCODE" }
           $zipSha = (Get-FileHash -LiteralPath build/gcp-private-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
