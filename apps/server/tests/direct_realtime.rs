@@ -244,15 +244,32 @@ async fn direct_events_retries_and_bilateral_revocation() {
     }
     // A different authorized channel can have the same UUID as a DM. Its
     // subscriber must not observe private IDs/actors through the shared code.
-    let (_, isolated) = req(&app, Method::POST, "/v1/communities", Some(json!({"name":"DM isolation"})), Some(&c)).await;
+    let (_, isolated) = req(
+        &app,
+        Method::POST,
+        "/v1/communities",
+        Some(json!({"name":"DM isolation"})),
+        Some(&c),
+    )
+    .await;
     let isolated_id = isolated["id"].as_str().expect("community");
-    let (_, channel) = req(&app, Method::POST, &format!("/v1/communities/{isolated_id}/channels"),
-        Some(json!({"name":"isolated","channel_kind":"text","position":0})), Some(&c)).await;
+    let (_, channel) = req(
+        &app,
+        Method::POST,
+        &format!("/v1/communities/{isolated_id}/channels"),
+        Some(json!({"name":"isolated","channel_kind":"text","position":0})),
+        Some(&c),
+    )
+    .await;
     sqlx::query("UPDATE channels SET id=$1 WHERE id=$2")
         .bind(Uuid::parse_str(conversation).expect("id"))
         .bind(Uuid::parse_str(channel["id"].as_str().expect("channel")).expect("id"))
-        .execute(&pool).await.expect("equal ID fixture");
-    let channel_url = format!("ws://127.0.0.1:{port}/v1/communities/{isolated_id}/channels/{conversation}/events");
+        .execute(&pool)
+        .await
+        .expect("equal ID fixture");
+    let channel_url = format!(
+        "ws://127.0.0.1:{port}/v1/communities/{isolated_id}/channels/{conversation}/events"
+    );
     let mut isolated_socket = connect(&channel_url, &c).await;
     next_kind(&mut isolated_socket, "ready").await;
     let id = Uuid::from_u128(rand::random()).to_string();
@@ -278,14 +295,39 @@ async fn direct_events_retries_and_bilateral_revocation() {
             assert!(event.get(private).is_none());
         }
     }
-    assert!(timeout(Duration::from_millis(200), async {
+    let marker_path = format!("/v1/communities/{isolated_id}/channels/{conversation}/messages");
+    let (status, marker) = req(
+        &app,
+        Method::POST,
+        &marker_path,
+        Some(json!({"body":"channel marker"})),
+        Some(&c),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    // If hubs were accidentally shared, the private event would precede this
+    // marker in the same queue. This proves ordering without a quiet-time guess.
+    timeout(Duration::from_secs(12), async {
         loop {
-            if let WsMessage::Text(text) = isolated_socket.next().await.expect("open channel").expect("channel frame") {
+            if let WsMessage::Text(text) = isolated_socket
+                .next()
+                .await
+                .expect("open channel")
+                .expect("channel frame")
+            {
                 let event: Value = serde_json::from_str(&text).expect("JSON");
-                assert_ne!(event["message_id"], id, "DM event leaked into an equal-ID community channel");
+                assert_ne!(
+                    event["message_id"], id,
+                    "DM event leaked into an equal-ID community channel"
+                );
+                if event["type"] == "message_created" && event["message_id"] == marker["id"] {
+                    break;
+                }
             }
         }
-    }).await.is_err());
+    })
+    .await
+    .expect("channel marker after private writes");
     drop(isolated_socket);
     let item = format!("{path}/{id}");
     assert_eq!(
@@ -497,22 +539,53 @@ async fn direct_events_retries_and_bilateral_revocation() {
     let mut sb = connect(&url, &b).await;
     next_kind(&mut sa, "ready").await;
     next_kind(&mut sb, "ready").await;
-    assert_eq!(req(&app, Method::POST, "/v1/auth/logout", None, Some(&a)).await.0, StatusCode::NO_CONTENT);
-    let (_, after_logout) = req(&app, Method::POST, &path, Some(json!({"body":"not for the revoked session"})), Some(&b)).await;
-    assert_eq!(next_kind(&mut sb, "message_created").await["message_id"], after_logout["id"]);
+    assert_eq!(
+        req(&app, Method::POST, "/v1/auth/logout", None, Some(&a))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, after_logout) = req(
+        &app,
+        Method::POST,
+        &path,
+        Some(json!({"body":"not for the revoked session"})),
+        Some(&b),
+    )
+    .await;
+    assert_eq!(
+        next_kind(&mut sb, "message_created").await["message_id"],
+        after_logout["id"]
+    );
     timeout(Duration::from_secs(3), async {
         loop {
             match sa.next().await {
                 None | Some(Ok(WsMessage::Close(_))) | Some(Err(_)) => break,
                 Some(Ok(WsMessage::Text(text))) => {
                     let event: Value = serde_json::from_str(&text).expect("JSON");
-                    assert_ne!(event["message_id"], after_logout["id"], "revoked session observed fresh private activity");
+                    assert_ne!(
+                        event["message_id"], after_logout["id"],
+                        "revoked session observed fresh private activity"
+                    );
                 }
                 _ => {}
             }
         }
-    }).await.expect("session revocation closes before fresh activity");
-    assert_eq!(req(&app, Method::DELETE, &format!("/v1/communities/{isolated_id}"), None, Some(&c)).await.0, StatusCode::NO_CONTENT);
+    })
+    .await
+    .expect("session revocation closes before fresh activity");
+    assert_eq!(
+        req(
+            &app,
+            Method::DELETE,
+            &format!("/v1/communities/{isolated_id}"),
+            None,
+            Some(&c)
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
     sqlx::query("DELETE FROM dm_conversations WHERE id=$1")
         .bind(Uuid::parse_str(conversation).expect("id"))
         .execute(&pool)

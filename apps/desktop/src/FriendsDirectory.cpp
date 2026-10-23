@@ -78,7 +78,7 @@ void FriendsDirectory::refresh() {
     send(Operation::Friends, "GET", QStringLiteral("/v1/friends"));
 }
 void FriendsDirectory::cancel() {
-    abort(); verified_ = false; refreshWanted_ = false;
+    abort(); verified_ = false; refreshWanted_ = false; outcome_.clear();
     status_ = QStringLiteral("Cancelled. Refresh friends to confirm whether the change reached the server."); emit changed();
 }
 void FriendsDirectory::select(const QVariantMap &row) {
@@ -94,6 +94,8 @@ void FriendsDirectory::chooseConversation(const QString &id) {
     if (!row.isEmpty() && !find(friends_, row.value(QStringLiteral("other_user_id")).toString()).isEmpty()) select(row);
 }
 void FriendsDirectory::revokePeer(const QString &peer) {
+    if (peer_ == peer && !conversation_.isEmpty() && outcome_.isEmpty())
+        outcome_ = QStringLiteral("Private conversation closed because friendship or access changed.");
     emit relationshipLost(peer);
     for (qsizetype i = conversations_.size(); i > 0; --i)
         if (conversations_[i - 1].toMap().value(QStringLiteral("other_user_id")).toString() == peer) conversations_.removeAt(i - 1);
@@ -102,7 +104,8 @@ void FriendsDirectory::revokePeer(const QString &peer) {
 void FriendsDirectory::invalidateConversation(const QString &id) {
     if (id != conversation_ || id.isEmpty()) return;
     const auto peer = peer_; revokePeer(peer); verified_ = false;
-    status_ = QStringLiteral("Private conversation access changed. Refresh friends or sign in again.");
+    outcome_ = QStringLiteral("Private conversation access changed. Check the current friendship or sign in again.");
+    status_ = outcome_;
     emit changed(); refreshWanted_ = true;
     if (ready()) refresh();
 }
@@ -241,7 +244,7 @@ void FriendsDirectory::publish() {
     status_ = outcome_.isEmpty() ? QStringLiteral("Friends up to date. Lists refresh every 30 seconds; Refresh checks now.") : outcome_; outcome_.clear();
 }
 void FriendsDirectory::failed(int http, QNetworkReply::NetworkError error) {
-    verified_ = false;
+    verified_ = false; outcome_.clear();
     if (http == 401) { reset(); status_ = QStringLiteral("Session expired. Sign in again to manage friends."); }
     else if (http == 404) status_ = QStringLiteral("User, request or private conversation is unavailable. Refresh friends before trying again.");
     else if (http == 409) status_ = QStringLiteral("Already friends, a request is pending, or requests are unavailable. Refresh to check.");
