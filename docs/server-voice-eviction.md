@@ -1,6 +1,14 @@
-# Server-side voice access enforcement
+# Server-side media access enforcement
 
 The Rust server polls LiveKit active rooms and checks participants against current PostgreSQL sessions, voice channels and community membership. Logout, session expiry/deletion, membership removal and channel/community deletion therefore remove access without trusting the desktop to leave. Refreshing a login preserves its participant identity; separate logins remain independent.
+
+Group 7 also reconciles `gcp-screen-{canonical channel UUID}` rooms against
+current publisher/viewer leases. It checks exact lease identity/purpose, channel,
+expiry and track count/type; Stop removes the lease first and attempts an
+immediate disconnect. Voice and screen use different rooms and identities, so a
+screen-only Stop leaves voice connected. See [screen authorization](screen-authorization.md).
+Both namespaces share the existing control-plane health guard and room limits;
+a failed screen reconciliation also blocks new media grants until recovery.
 
 ## Operation
 
@@ -11,7 +19,12 @@ literal-loopback HTTP origin. It follows the same root-path and credential-free
 URL restrictions and does not alter `LIVEKIT_URL` in issued desktop grants. See
 the [single-host stack](server-stack.md) for its loopback control configuration.
 
-Reserve `gcp-voice-{canonical channel UUID}` rooms exclusively for this GCP deployment. Other rooms are untouched. Participants in reserved rooms must use `gcp-session-{canonical login session UUID}`; legacy user-only identities are removed and must rejoin with a new grant. Do not share this namespace between deployments.
+Reserve `gcp-voice-{canonical channel UUID}` and `gcp-screen-{canonical channel UUID}`
+rooms exclusively for this GCP deployment. Other rooms are untouched. Voice
+participants must use `gcp-session-{canonical login session UUID}`; screen
+participants use the exact publisher/viewer lease identities. Legacy or
+wrong-purpose identities are removed and must rejoin with a valid grant. Do not
+share these namespaces between deployments.
 
 The binary drives one reconciliation loop alongside the HTTP server. Embedders using `router_with_livekit` must also drive `run_eviction_loop`. Configuration begins unready: `/ready` and new voice grants return 503 until a complete pass succeeds. Any failed pass or a successful pass older than 30 seconds blocks new grants. Other API functions remain available.
 

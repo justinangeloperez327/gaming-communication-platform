@@ -8,6 +8,7 @@ use std::{
 };
 
 use crate::livekit_tokens::{LiveKitConfig, participant_identity, room_name};
+use crate::screen_sessions::{self, Purpose};
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use sqlx::{PgPool, types::Uuid};
@@ -80,6 +81,29 @@ struct Room {
 #[derive(Deserialize)]
 struct Participant {
     identity: String,
+    #[serde(default)]
+    tracks: Vec<Track>,
+}
+#[derive(Deserialize)]
+struct Track {
+    #[serde(default)]
+    source: Value,
+    #[serde(default, rename = "type")]
+    kind: Value,
+}
+
+fn screen_tracks_allowed(participant: &Participant) -> bool {
+    match screen_sessions::parse_identity(&participant.identity) {
+        Some((_, Purpose::View)) => participant.tracks.is_empty(),
+        Some((_, Purpose::Publish)) => {
+            participant.tracks.len() <= 1
+                && participant.tracks.iter().all(|track| {
+                    (track.source == json!(3) || track.source == json!("SCREEN_SHARE"))
+                        && (track.kind == json!(1) || track.kind == json!("VIDEO"))
+                })
+        }
+        None => false,
+    }
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -109,9 +133,35 @@ fn session_id(identity: &str) -> Option<Uuid> {
     (participant_identity(id) == identity).then_some(id)
 }
 
+fn screen_channel_id(name: &str) -> Option<Uuid> {
+    let id = Uuid::parse_str(name.strip_prefix("gcp-screen-")?).ok()?;
+    (screen_sessions::room_name(id) == name).then_some(id)
+}
+
 impl LiveKitConfig {
     pub(crate) fn eviction_healthy(&self) -> bool {
         self.eviction_guard.healthy()
+    }
+
+    pub(crate) async fn remove_screen_participant(
+        &self,
+        channel: Uuid,
+        lease: Uuid,
+        purpose: Purpose,
+    ) -> Result<(), EvictionError> {
+        let room = screen_sessions::room_name(channel);
+        let result: Result<Value, EvictionError> = self
+            .rpc(
+                "RemoveParticipant",
+                Some(&room),
+                json!({"room": room, "identity": screen_sessions::identity(lease, purpose),
+                   "revoke_token_ts": unix_seconds()? + 1}),
+            )
+            .await;
+        if result.is_err() {
+            self.eviction_guard.mark(false);
+        }
+        result.map(|_| ())
     }
 
     async fn rpc<T: DeserializeOwned>(
@@ -203,8 +253,10 @@ impl LiveKitConfig {
         let mut report = EvictionReport::default();
         let mut failure = None;
         for room in rooms.rooms {
-            let Some(channel) = channel_id(&room.name) else {
-                continue;
+            let (channel, screen) = match (channel_id(&room.name), screen_channel_id(&room.name)) {
+                (Some(channel), _) => (channel, false),
+                (_, Some(channel)) => (channel, true),
+                _ => continue,
             };
             report.rooms_checked += 1;
             let participants: Participants = match self
@@ -225,13 +277,36 @@ impl LiveKitConfig {
                 failure = Some(EvictionError::Capacity);
                 continue;
             }
-            let sessions: Vec<Uuid> = participants
+            let ids: Vec<Uuid> = participants
                 .participants
                 .iter()
-                .filter_map(|p| session_id(&p.identity))
+                .filter_map(|p| {
+                    if screen {
+                        screen_sessions::parse_identity(&p.identity).map(|(id, _)| id)
+                    } else {
+                        session_id(&p.identity)
+                    }
+                })
                 .collect();
-            let allowed: HashSet<Uuid> = if sessions.is_empty() {
+            let allowed: HashSet<String> = if ids.is_empty() {
                 HashSet::new()
+            } else if screen {
+                let rows: Vec<(Uuid, String)> = sqlx::query_as(
+                    "SELECT l.id,l.purpose FROM screen_leases l
+                     JOIN user_sessions s ON s.id=l.session_id
+                     JOIN community_memberships m ON m.user_id=s.user_id
+                     JOIN channels c ON c.community_id=m.community_id AND c.id=l.channel_id
+                     WHERE l.id=ANY($1) AND l.channel_id=$2 AND c.channel_kind='voice'
+                       AND l.expires_at>clock_timestamp() AND s.revoked_at IS NULL
+                       AND s.access_expires_at>clock_timestamp() AND s.refresh_expires_at>clock_timestamp()")
+                    .bind(ids).bind(channel).fetch_all(pool).await.map_err(|_| EvictionError::Database)?;
+                rows.into_iter()
+                    .filter_map(|(id, purpose)| match purpose.as_str() {
+                        "publish" => Some(screen_sessions::identity(id, Purpose::Publish)),
+                        "view" => Some(screen_sessions::identity(id, Purpose::View)),
+                        _ => None,
+                    })
+                    .collect()
             } else {
                 sqlx::query_scalar::<_, Uuid>(
                     "SELECT s.id FROM user_sessions s
@@ -241,12 +316,13 @@ impl LiveKitConfig {
                        AND s.revoked_at IS NULL AND s.access_expires_at > now()
                        AND s.refresh_expires_at > now()",
                 )
-                .bind(sessions)
+                .bind(ids)
                 .bind(channel)
                 .fetch_all(pool)
                 .await
                 .map_err(|_| EvictionError::Database)?
                 .into_iter()
+                .map(participant_identity)
                 .collect()
             };
             for participant in participants.participants {
@@ -255,8 +331,8 @@ impl LiveKitConfig {
                     failure = Some(EvictionError::InvalidResponse);
                     continue;
                 }
-                let authorized =
-                    session_id(&participant.identity).is_some_and(|id| allowed.contains(&id));
+                let authorized = allowed.contains(&participant.identity)
+                    && (!screen || screen_tracks_allowed(&participant));
                 if !authorized {
                     let result: Result<Value, EvictionError> = self
                         .rpc(
@@ -291,7 +367,7 @@ impl LiveKitConfig {
             tick.tick().await;
             if self.reconcile_voice_access(pool).await.is_err() {
                 tracing::warn!(
-                    "LiveKit access reconciliation failed; new voice grants are unavailable"
+                    "LiveKit access reconciliation failed; new media grants are unavailable"
                 );
             }
         }

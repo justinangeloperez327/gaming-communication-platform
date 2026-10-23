@@ -142,26 +142,85 @@ impl LiveKitConfig {
     }
 
     fn sign(&self, session: Uuid, channel: Uuid, now: u64) -> Result<String, AuthError> {
+        self.sign_join(
+            participant_identity(session),
+            room_name(channel),
+            &["microphone"],
+            true,
+            now,
+            now.checked_add(JOIN_TTL_SECONDS)
+                .ok_or(AuthError::Unavailable)?,
+        )
+    }
+
+    fn sign_join(
+        &self,
+        identity: String,
+        room: String,
+        sources: &[&str],
+        subscribe: bool,
+        now: u64,
+        expiry: u64,
+    ) -> Result<String, AuthError> {
         let mut nonce = [0u8; 16];
         OsRng.fill_bytes(&mut nonce);
         let claims = serde_json::json!({
             "iss": self.api_key,
-            "sub": participant_identity(session),
+            "sub": identity,
             "iat": now,
             "nbf": now.saturating_sub(CLOCK_SKEW_SECONDS),
-            "exp": now.checked_add(JOIN_TTL_SECONDS).ok_or(AuthError::Unavailable)?,
+            "exp": expiry,
             "jti": hex(&nonce),
             "video": {
                 "roomJoin": true,
-                "room": room_name(channel),
-                "canPublish": true,
-                "canPublishSources": ["microphone"],
-                "canSubscribe": true,
+                "room": room,
+                "canPublish": !sources.is_empty(),
+                "canPublishSources": sources,
+                "canSubscribe": subscribe,
                 "canPublishData": false,
                 "canUpdateOwnMetadata": false,
             }
         });
         self.sign_claims(claims)
+    }
+
+    pub(crate) fn screen_token(
+        &self,
+        lease: Uuid,
+        channel: Uuid,
+        purpose: crate::screen_sessions::Purpose,
+        expiry: u64,
+    ) -> Result<TokenResponse, AuthError> {
+        use crate::screen_sessions::{self, Purpose};
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| AuthError::Unavailable)?
+            .as_secs();
+        if !self.eviction_healthy()
+            || expiry <= now
+            || expiry > now + screen_sessions::LEASE_SECONDS
+        {
+            return Err(AuthError::Unavailable);
+        }
+        let room = screen_sessions::room_name(channel);
+        let sources: &[&str] = match purpose {
+            Purpose::Publish => &["screen_share"],
+            Purpose::View => &[],
+        };
+        let participant_token = self.sign_join(
+            screen_sessions::identity(lease, purpose),
+            room.clone(),
+            sources,
+            purpose == Purpose::View,
+            now,
+            expiry,
+        )?;
+        Ok(TokenResponse {
+            server_url: self.server_url.clone(),
+            participant_token,
+            room,
+            expires_in: expiry - now,
+        })
     }
 
     pub(crate) fn sign_claims(&self, claims: serde_json::Value) -> Result<String, AuthError> {

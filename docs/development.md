@@ -31,7 +31,7 @@ To bind a different address in PowerShell: `$env:GCP_BIND_ADDRESS="127.0.0.1:900
 
 ## CI and contribution workflow
 
-GitHub Actions CI runs for pull requests, main pushes and manual dispatch. CI compiles the Windows media probe and tests CLI primitives but does **not** execute actual microphone/monitor capture on GitHub-hosted runners. CI stages and uploads test ZIP artifacts and runs a real loopback synthetic-audio SDK/SFU contract; see [voice evidence](usable-voice.md). PR checks do not publish releases or deploy services. The existing main-branch alpha publication is version-gated; Group 5 does not change its version or release configuration. Tests do not change production databases.
+GitHub Actions CI runs for pull requests, main pushes and manual dispatch. CI compiles the Windows media probe and tests CLI primitives but does **not** execute actual microphone/monitor capture on GitHub-hosted runners. CI stages and uploads test ZIP artifacts and runs a real loopback synthetic-audio SDK/SFU contract; see [voice evidence](usable-voice.md). PR checks do not publish releases or deploy services. The existing main-branch alpha publication is version-gated; Group 7 does not change its version or release configuration. Tests do not change production databases.
 
 Maintain isolated feature branches. Build and test locally before merging. Keep documentation about existing capabilities accurate; planned functionality belongs in issues/PR descriptions rather than pretending to exist in the README.
 
@@ -51,3 +51,12 @@ covers staged refreshes, action direction, malformed/oversized responses,
 cancellation/destruction, peer validation and a refresh-timer 401 race. The
 complete `desktop_qml_startup` test runs the real Main window before deployment;
 `--smoke-qml` sends startup diagnostics to captured stderr for GUI builds.
+
+Group 7 adds a PostgreSQL-backed screen lease API test to `livekit_eviction.rs`.
+The Windows synthetic-media runner now also runs `gcp-livekit-screen-contract`
+using the existing pinned SDK and disposable SFU. It checks role/source grants,
+decoded synthetic pixels, separate voice-room isolation, exact track ownership
+and publisher-only removal. Its fixture tokens are independent of the Rust
+API tests; no physical capture or desktop viewer runs. See
+[screen authorization](screen-authorization.md) for verification boundaries and
+the explicit migration/desktop integration contract.

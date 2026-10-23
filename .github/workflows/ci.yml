@@ -134,10 +134,10 @@ jobs:
       - name: Smoke tests
         shell: pwsh
         run: ctest --test-dir build/desktop -C Release --output-on-failure
-      - name: Real LiveKit synthetic audio transport, mute, room isolation and active eviction
+      - name: Real LiveKit synthetic audio and screen authorization contracts
         timeout-minutes: 5
         shell: pwsh
-        run: python scripts/verify_voice_media.py --executable build/desktop/Release/gcp-livekit-media-contract.exe
+        run: python scripts/verify_voice_media.py --executable build/desktop/Release/gcp-livekit-media-contract.exe --screen-executable build/desktop/Release/gcp-livekit-screen-contract.exe
       - name: Exercise package integrity rejection fixtures
         shell: pwsh
         run: ./scripts/test-windows-test-bundle.ps1
