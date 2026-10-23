@@ -2,11 +2,11 @@
 
 GCP retains three separate runtime boundaries:
 
-- **Qt/C++20 desktop:** in-memory account session, asynchronous authenticated HTTP requests, community/channel/member/invitation management, voice-room selection, subprocess lifecycle and consent UI.
+- **Qt/C++20 desktop:** in-memory account session, asynchronous authenticated HTTP requests, community/channel/member/invitation management, independent text/voice selection, bounded text history/composition, authenticated event sockets, subprocess lifecycle and consent UI.
 - **Rust/Axum modular monolith:** PostgreSQL-backed accounts/sessions, community roles, messages, friends/DMs, channel event sockets and restricted LiveKit voice JWT issuance.
 - **Native LiveKit/Windows media:** a voice child process uses WebRTC platform audio. Separate diagnostic executables exercise Windows Graphics Capture, CPU readback or same-device D3D11 BGRA→NV12 conversion, asynchronous hardware-class Media Foundation H.264 output and encoded LiveKit transport.
 
-LiveKit SFU media bypasses the Rust application API. PostgreSQL stores durable metadata and messages; there is no implemented Redis/object-storage dependency. Desktop messaging, stream viewing, screen-sharing controls and window selection remain incomplete. Synthetic video and pre-encoded files are explicit diagnostic inputs.
+LiveKit SFU media bypasses the Rust application API. PostgreSQL stores durable metadata and messages; there is no implemented Redis/object-storage dependency. Desktop friends/DM flows, stream viewing, screen-sharing controls and window selection remain incomplete. Synthetic video and pre-encoded files are explicit diagnostic inputs.
 
 Account ownership is bootstrapped by an explicit local operator command. The
 server enforces owner-only, email-bound invitations for new accounts; the Qt
@@ -31,6 +31,14 @@ request runs at a time; details load on demand. Refresh reconciles stable IDs
 rather than clearing a valid room, and selection invalidation stops local voice.
 Server-side SQL role predicates remain authoritative. Pending community codes are
 revocable and limited per community without replacing the existing schema.
+
+The text controller uses Qt WebSockets for identifier notifications and the
+existing HTTP API for all durable operations. It subscribes before requesting a
+current snapshot, replaces the recent window after a gap, and coalesces bounded
+ID refetches. Client-generated message UUIDs reuse the existing database primary
+key for safe explicit POST retries; no new table or broker is needed. Text
+selection has its own signal and does not emit the voice selection-change
+signal. See [desktop messaging](desktop-messaging.md).
 
 Builds use CMake/Qt and Cargo. PR/manual CI validates the application, API, real
 disposable server stack, portable ZIP and per-user alpha installer. A separate

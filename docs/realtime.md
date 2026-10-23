@@ -10,7 +10,7 @@ A native client can open:
 
 with `Authorization: Bearer ACCESS_TOKEN` and normal WebSocket Upgrade headers. The server authenticates against the PostgreSQL session table and verifies current membership of the exact requested **text** channel before upgrading. Anonymous, expired-session or nonmember subscriptions are rejected. Do not place access tokens in query strings or log them.
 
-A browser's native `WebSocket` constructor cannot supply a custom Authorization header; this endpoint targets the planned Qt/Windows client. A secure browser-specific authentication scheme is not included.
+A browser's native `WebSocket` constructor cannot supply a custom Authorization header; this endpoint is used by the Qt/Windows text client. A secure browser-specific authentication scheme is not included.
 
 Each connection receives a `ready` JSON event and subscribes to the server-local event bus. Other notification frames have this shape:
 
@@ -49,13 +49,13 @@ The server sends a `typing` event with the authenticated sender's user ID and `a
 
 ### Reconnect and recovery
 
-After a WebSocket reconnect, clients **must** call the existing `GET /v1/communities/{community_id}/channels/{channel_id}/messages?limit=100`, then use the Group 23 keyset pagination API to reconcile missing message IDs/edits/deletions. On `resync_required` they must do the same. The WebSocket stream is an optimization for notification latency, not a durable event history. A client that needs edits/deletions while disconnected may have to refetch displayed message IDs and current pages.
+After subscribing or reconnecting, clients must refetch current HTTP history to reconcile missed message IDs, edits and deletions. The desktop requests the latest 50 messages and replaces its old window; users can load older pages again. On `resync_required` they must do the same. The WebSocket stream is an optimization for notification latency, not a durable event history. A client that needs edits/deletions while disconnected may have to refetch displayed message IDs and current pages.
 
 ### Important deployment limitation
 
 **Fanout and presence are local to one Rust server process.** A message written to instance A does not currently notify WebSocket clients connected to instance B. Load-balanced deployments must use sticky routing as an interim workaround (which still does not guarantee cross-node events), or add PostgreSQL `LISTEN/NOTIFY` or an event broker/outbox before horizontally scaling. No exactly-once delivery or cross-node presence is claimed.
 
-The next production-hardening steps are distributed event propagation, durable reconciliation/sequence numbers, rate limiting and a client-side reconnect strategy. Qt desktop chat and LiveKit tokens are separate future groups.
+The [desktop client](desktop-messaging.md) implements bounded reconnect/backoff, a fresh history snapshot after each subscription, ID coalescing and HTTP polling while the socket is unavailable. Distributed event propagation, durable reconciliation/sequence numbers and complete rate limiting remain future work. LiveKit media and grants are separate from text events.
 
 ## Automated acceptance
 

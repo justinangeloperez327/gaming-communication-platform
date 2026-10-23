@@ -42,7 +42,8 @@ int main(int argc, char **argv) {
         ChannelDirectory ownerRooms(&owner), friendRooms(&friendAccount);
         ChatSession ownerChat(&owner, &ownerRooms);
         owner.signIn(origin, "chat-owner@example.test", password);
-        require(waitFor([&]() { return owner.signedIn() && !owner.busy() && !ownerRooms.busy(); }) && owner.serverOwner(), "real owner login");
+        require(waitFor([&]() { return owner.signedIn() && !owner.busy() && !ownerRooms.busy() &&
+            !owner.invitationBusy() && !owner.invitationStatus().isEmpty(); }) && owner.serverOwner(), "real owner login and initial invitation list");
         owner.inviteFriend("chat-friend@example.test");
         require(waitFor([&]() { return !owner.invitationBusy(); }) && !owner.invitationCode().isEmpty(), "owner account invitation");
         friendAccount.createAccount(origin, "chat_friend", "Chat Friend", "chat-friend@example.test", password, owner.invitationCode());

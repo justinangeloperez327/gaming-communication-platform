@@ -276,9 +276,9 @@ int main(int argc, char **argv) {
         require(waitFor([&]() { return chat.canMutate() && !chat.loading() && model->rowCount() == 0; }), "stale channel response cancelled");
         directory.chooseTextChannel(text); require(waitFor([&]() { return chat.canMutate() && !chat.loading(); }), "restore channel");
         chat.setDraft("retained on malformed history"); api.malformed = true; chat.refreshLatest();
-        require(waitFor([&]() { return !chat.loading(); }) && !chat.canMutate() && !chat.draft().isEmpty(), "malformed page cannot authorize writes");
-        api.malformed = false; api.oversized = true; chat.refreshLatest();
-        require(waitFor([&]() { return !chat.loading(); }) && !chat.canMutate(), "oversized history rejected");
+        require(waitFor([&]() { return !chat.loading() && !chat.canMutate(); }) && !chat.draft().isEmpty(), "malformed page cannot authorize writes");
+        api.malformed = false; api.oversized = true; const auto readsBeforeOversize = api.reads; chat.refreshLatest();
+        require(waitFor([&]() { return api.reads > readsBeforeOversize && !chat.loading() && !chat.canMutate(); }), "oversized history rejected");
         api.oversized = false; chat.refreshLatest(); require(waitFor([&]() { return chat.canMutate() && !chat.loading(); }), "manual recovery");
         api.deny = true; chat.refreshLatest(); require(waitFor([&]() { return !chat.loading() && model->rowCount() == 0 && chat.draft().isEmpty(); }), "membership loss purges history and affected drafts");
         account.signOut(); require(!chat.canSubmit() && chat.draft().isEmpty(), "logout clears messaging state");

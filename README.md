@@ -8,7 +8,8 @@ GCP is an experimental Windows x64 communication application for private gaming 
 | --- | --- | --- |
 | Desktop accounts | Invited account creation, owner invitation controls, sign-in, in-memory tokens, timed rotation and sign-out | PostgreSQL, real-stack and Qt tests; no email delivery/recovery or persistent login |
 | Communities | Desktop create/join/leave, channel editing, invitations and role-aware member administration; API ownership enforcement | PostgreSQL, container and Qt tests; capped lists, no live directory updates or owner transfer |
-| Text and friends | Authorized channel messages, friendships, blocks, DMs and text-channel WebSocket events | Backend integration tests; desktop message composer remains disabled |
+| Text | Desktop paginated history, plain-text send/edit/delete, independent text/voice selection and live reconnect recovery | Qt/QML/HTTP/WS, real Qt→Rust→PostgreSQL and retry/authorization tests; physical two-PC acceptance pending |
+| Friends and DMs | Authorized friendships, blocks and persistent DMs in the API | Backend integration tests; desktop flows are Group 6 |
 | Voice | Listen-only, per-call mic consent, mute/F8 PTT, device selection, muted recovery with immediate access recheck, and Leave | Qt/QProcess policy tests and real loopback synthetic PCM transport/mute/isolation/rejoin/active-eviction contract; physical audibility unverified |
 | Screen sharing | Separate consent-gated monitor diagnostics: CPU-readback publishing and GPU BGRA→NV12→hardware-class H.264→LiveKit bridge | No desktop sharing/viewing UI; hardware, remote playback and driver compatibility unverified |
 | Test video | Synthetic RGBA/NV12/BGRA patterns and externally encoded H.264 file publishing | Diagnostic fixtures; not evidence of screen capture or gaming performance |
@@ -19,8 +20,8 @@ See [long-session voice and controls](docs/long-session-voice.md) for the latest
 Group 4's [voice evidence and acceptance guide](docs/usable-voice.md) separates
 synthetic media checks from the owner's pending two-PC test.
 Use [desktop communities](docs/desktop-communities.md) to create a private space,
-add a voice channel and invite existing accounts. Text-channel creation works;
-desktop text messaging remains incomplete.
+add channels and invite existing accounts. See [desktop messaging](docs/desktop-messaging.md)
+for text history, send retries, live updates and their limits.
 
 The ZIP includes a [versioned notice baseline](docs/windows-third-party-notices.md); complete transitive attribution review remains pending.
 
@@ -28,7 +29,7 @@ See the [current stabilization audit](docs/stabilization-status.md) for complete
 
 ## Build Windows desktop
 
-Requirements: Windows 10/11 x64, Visual Studio 2022 C++ workload and Windows SDK, CMake 3.24+, Qt Quick/Quick Controls/Network (Qt 6.8.3 in CI).
+Requirements: Windows 10/11 x64, Visual Studio 2022 C++ workload and Windows SDK, CMake 3.24+, Qt Quick/Quick Controls/Network/**WebSockets** (Qt 6.8.3 in CI).
 
 ```powershell
 cmake -S . -B build/desktop -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="C:/Qt/6.8.3/msvc2022_64" -DGCP_ENABLE_LIVEKIT=ON -DGCP_LIVEKIT_DOWNLOAD=ON
@@ -71,7 +72,9 @@ CI additionally tests staged and extracted Qt/QML startup, native SDK initializa
 
 ## Verification boundaries
 
-CI builds Windows media code and runs a real loopback LiveKit synthetic-audio
+CI runs actual Qt text controllers against Rust/PostgreSQL and exercises shipped
+QML with controlled network failures. It also builds Windows media code and runs
+a real loopback LiveKit synthetic-audio
 contract: room joins, decoded PCM, mute/unmute, isolation, explicit rejoin and
 active publisher eviction. The Rust control contract and stack tests run
 separately. CI does not hear a friend's audio, exercise physical capture/headsets,
