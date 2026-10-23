@@ -73,13 +73,13 @@ int main(int argc, char **argv) {
         const auto first = model(ownerChat)->rows().last().id;
         require(model(*receiver)->find(first)->body == model(ownerChat)->find(first)->body, "peer receives exact stored plaintext");
         ownerChat.editMessage(first, "edited by author");
-        require(waitFor([&]() { return model(*receiver)->find(first)->body == "edited by author"; }), "real author edit reaches peer");
+        require(waitFor([&]() { return !ownerChat.sending() && model(*receiver)->find(first)->body == "edited by author"; }), "real author edit reaches peer");
         receiver->editMessage(first, "forbidden");
         require(!receiver->sending() && model(*receiver)->find(first)->body == "edited by author", "member cannot edit another author's message");
         receiver->setDraft("friend reply"); receiver->sendDraft();
-        require(waitFor([&]() { return !find(ownerChat, "friend reply").isEmpty(); }), "friend to owner delivery");
+        require(waitFor([&]() { return !receiver->sending() && receiver->draft().isEmpty() && !find(ownerChat, "friend reply").isEmpty(); }), "friend to owner delivery");
         const auto reply = find(ownerChat, "friend reply"); ownerChat.deleteMessage(reply);
-        require(waitFor([&]() { return model(*receiver)->find(reply) && model(*receiver)->find(reply)->deletedMs; }), "owner deletion reaches friend as tombstone");
+        require(waitFor([&]() { return !ownerChat.sending() && model(*receiver)->find(reply) && model(*receiver)->find(reply)->deletedMs; }), "owner deletion reaches friend as tombstone");
         // Tear down an actual subscriber while messages change, then construct a
         // fresh one. Forced interruption/resync of a retained controller is in
         // chat_tests; here the real API must provide the full current snapshot.
@@ -97,8 +97,12 @@ int main(int argc, char **argv) {
         ownerRooms.chooseTextChannel(general);
         require(waitFor([&]() { return ownerChat.canMutate() && !ownerChat.loading(); }), "restore general");
         receiver->setDraft("do not send after revocation");
+        // The existing directory intentionally has no live member updates.
+        // Reload after the friend's join before invoking its guarded removal.
+        ownerRooms.loadManagement();
+        require(waitFor([&]() { return !ownerRooms.busy() && ownerRooms.members().size() == 2; }), "refresh current members");
         ownerRooms.removeMember(friendAccount.userId());
-        require(waitFor([&]() { return !ownerRooms.busy(); }), "member removal");
+        require(waitFor([&]() { return !ownerRooms.busy() && ownerRooms.members().size() == 1; }), "member removal");
         receiver->refreshLatest();
         require(waitFor([&]() { return !receiver->loading() && !receiver->canMutate() && model(*receiver)->rowCount() == 0 && receiver->draft().isEmpty(); }), "real authorization loss purges peer history and draft");
         receiver->sendDraft(); require(!receiver->sending(), "no automatic delivery after access removal");

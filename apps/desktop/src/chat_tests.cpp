@@ -289,11 +289,16 @@ int main(int argc, char **argv) {
         AccountSession account2; ChannelDirectory directory2(&account2);
         ChatSession chat2(&account2, &directory2, nullptr, {50, 60000, 2000});
         choose(account2, directory2, rotating);
-        require(waitFor([&]() { return chat2.live() && chat2.canMutate(); }), "initial short-lived session");
+        require(waitFor([&]() { return chat2.live() && chat2.canMutate() && !chat2.loading(); }), "initial short-lived session");
         chat2.setDraft("keep across rotation");
+        rotating.holdPage = true; chat2.refreshLatest();
+        require(waitFor([&]() { return rotating.held && chat2.loading(); }), "old-token history in flight before rotation");
         require(waitFor([&]() { return rotating.refreshes == 1 && account2.busy(); }), "real account refresh timer");
-        chat2.refreshLatest(); // Server has already invalidated the old access token.
+        // Simulate the actual server's atomic old-token invalidation while the
+        // replacement token's response has not reached AccountSession yet.
+        Api::respond(rotating.held, 401); rotating.holdPage = false;
         require(waitFor([&]() { return !chat2.loading(); }), "read during refresh");
+        require(chat2.draft() == "keep across rotation", "expected refresh 401 does not purge draft");
         Api::respond(rotating.refresh, 200, rotating.session()); rotating.holdRefresh = false;
         require(waitFor([&]() { return chat2.live() && chat2.canMutate() && rotating.headers.last() == "Bearer " + rotating.token; }), "socket replaced after token rotation");
         require(chat2.draft() == "keep across rotation" && account2.userId() == self, "rotation preserves draft and identity");
