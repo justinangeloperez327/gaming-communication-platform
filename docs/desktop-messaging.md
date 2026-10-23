@@ -3,6 +3,9 @@
 [PR #83](https://github.com/justinangeloperez327/gaming-communication-platform/pull/83)
 connects the Qt desktop to the existing Rust/PostgreSQL text-message API and
 identifier-only channel WebSocket. It preserves the native LiveKit voice path.
+Use matching Group 5 API and desktop builds: the desktop requires the additive
+`created_at_us` response field and client-message-ID support. Existing HTTP clients
+can still omit the optional ID; no new database migration is needed.
 
 ## Use
 

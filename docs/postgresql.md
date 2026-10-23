@@ -54,4 +54,4 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --locked
 ```
 
-The Windows Qt/LiveKit build remains independent of PostgreSQL. Persistent backend sessions and text-message APIs exist; the desktop message composer is not connected. Production voice and gaming hardware certification remain incomplete.
+The Windows Qt/LiveKit build remains independent of PostgreSQL. Persistent backend sessions and the [desktop text client](desktop-messaging.md) use the authorized HTTP/WebSocket APIs. Production voice and gaming hardware certification remain incomplete.

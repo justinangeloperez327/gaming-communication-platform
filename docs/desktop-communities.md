@@ -31,7 +31,7 @@ does not remove someone who has already joined; use member management instead.
 | --- | --- |
 | Owner | Rename/delete the community; create/rename/reorder/delete channels; issue/revoke codes; promote/demote admins and remove non-owner members |
 | Admin | Rename the community; manage channels and codes; remove ordinary members; leave |
-| Member | View members and channels; use authorized voice channels; leave |
+| Member | View members and channels; use authorized text and voice channels; leave |
 
 Open details to load members and pending invitations. These lists are fetched on
 demand. Select a text or voice channel in the editor to change its name and
@@ -87,7 +87,7 @@ The API lists the first 100 communities and 200 channels/members. The desktop
 retains an explicitly selected community outside that first page after verifying
 it individually, so its community list can contain 101 entries. There is no
 pagination/search or live directory subscription. Details remain cached until
-refresh; other clients' role/member changes are not pushed immediately. Creating
-text channels is supported, but the desktop message composer remains disabled.
+refresh; other clients' role/member changes are not pushed immediately. The separate [Group 5 text client](desktop-messaging.md) provides history,
+composition and live recovery without changing the active voice selection.
 Owner transfer, member bans, moderation history and custom permission roles are
 not implemented. Earlier published alpha downloads are unchanged.
