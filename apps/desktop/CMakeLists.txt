@@ -51,6 +51,15 @@ set_target_properties(gcp-desktop PROPERTIES
 )
 
 if(BUILD_TESTING)
+    qt_add_executable(gcp-friends-tests
+        src/friends_tests.cpp src/FriendsDirectory.cpp src/FriendsDirectory.h
+        src/AccountSession.cpp src/AccountSession.h)
+    target_link_libraries(gcp-friends-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
+    target_compile_definitions(gcp-friends-tests PRIVATE GCP_FRIENDS_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+    add_test(NAME desktop_friends_and_private_scope COMMAND $<TARGET_FILE:gcp-friends-tests>)
+    set_tests_properties(desktop_friends_and_private_scope PROPERTIES
+        TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+
     qt_add_executable(gcp-chat-tests
         src/chat_tests.cpp src/ChatSession.cpp src/ChatSession.h src/MessageModel.cpp src/MessageModel.h
         src/FriendsDirectory.cpp src/FriendsDirectory.h
@@ -92,6 +101,9 @@ if(BUILD_TESTING)
     add_test(NAME desktop_binary_smoke
         COMMAND $<TARGET_FILE:gcp-desktop> --self-test
     )
+    add_test(NAME desktop_qml_startup COMMAND $<TARGET_FILE:gcp-desktop> --smoke-qml)
+    set_tests_properties(desktop_qml_startup PROPERTIES
+        TIMEOUT 15 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
 endif()
 
 if(BUILD_TESTING)

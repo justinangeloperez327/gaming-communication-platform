@@ -8,7 +8,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Method, Request, StatusCode, header},
 };
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use gaming_comms_server::{database::MIGRATOR, router_with_database};
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions, types::Uuid};
@@ -242,6 +242,19 @@ async fn direct_events_retries_and_bilateral_revocation() {
         assert_eq!(ready["conversation_id"], conversation);
         assert!(ready.get("channel_id").is_none());
     }
+    // A different authorized channel can have the same UUID as a DM. Its
+    // subscriber must not observe private IDs/actors through the shared code.
+    let (_, isolated) = req(&app, Method::POST, "/v1/communities", Some(json!({"name":"DM isolation"})), Some(&c)).await;
+    let isolated_id = isolated["id"].as_str().expect("community");
+    let (_, channel) = req(&app, Method::POST, &format!("/v1/communities/{isolated_id}/channels"),
+        Some(json!({"name":"isolated","channel_kind":"text","position":0})), Some(&c)).await;
+    sqlx::query("UPDATE channels SET id=$1 WHERE id=$2")
+        .bind(Uuid::parse_str(conversation).expect("id"))
+        .bind(Uuid::parse_str(channel["id"].as_str().expect("channel")).expect("id"))
+        .execute(&pool).await.expect("equal ID fixture");
+    let channel_url = format!("ws://127.0.0.1:{port}/v1/communities/{isolated_id}/channels/{conversation}/events");
+    let mut isolated_socket = connect(&channel_url, &c).await;
+    next_kind(&mut isolated_socket, "ready").await;
     let id = Uuid::from_u128(rand::random()).to_string();
     let input = json!({"body":"private 🎮 literal <b>text</b>","client_message_id":id});
     let (first, second) = tokio::join!(
@@ -265,6 +278,15 @@ async fn direct_events_retries_and_bilateral_revocation() {
             assert!(event.get(private).is_none());
         }
     }
+    assert!(timeout(Duration::from_millis(200), async {
+        loop {
+            if let WsMessage::Text(text) = isolated_socket.next().await.expect("open channel").expect("channel frame") {
+                let event: Value = serde_json::from_str(&text).expect("JSON");
+                assert_ne!(event["message_id"], id, "DM event leaked into an equal-ID community channel");
+            }
+        }
+    }).await.is_err());
+    drop(isolated_socket);
     let item = format!("{path}/{id}");
     assert_eq!(
         req(&app, Method::GET, &item, None, Some(&c)).await.0,
@@ -470,6 +492,27 @@ async fn direct_events_retries_and_bilateral_revocation() {
         connect_async(refused).await,
         Err(tokio_tungstenite::tungstenite::Error::Http(_))
     ));
+    befriend(&app, &a, &b, &bh).await;
+    let mut sa = connect(&url, &a).await;
+    let mut sb = connect(&url, &b).await;
+    next_kind(&mut sa, "ready").await;
+    next_kind(&mut sb, "ready").await;
+    assert_eq!(req(&app, Method::POST, "/v1/auth/logout", None, Some(&a)).await.0, StatusCode::NO_CONTENT);
+    let (_, after_logout) = req(&app, Method::POST, &path, Some(json!({"body":"not for the revoked session"})), Some(&b)).await;
+    assert_eq!(next_kind(&mut sb, "message_created").await["message_id"], after_logout["id"]);
+    timeout(Duration::from_secs(3), async {
+        loop {
+            match sa.next().await {
+                None | Some(Ok(WsMessage::Close(_))) | Some(Err(_)) => break,
+                Some(Ok(WsMessage::Text(text))) => {
+                    let event: Value = serde_json::from_str(&text).expect("JSON");
+                    assert_ne!(event["message_id"], after_logout["id"], "revoked session observed fresh private activity");
+                }
+                _ => {}
+            }
+        }
+    }).await.expect("session revocation closes before fresh activity");
+    assert_eq!(req(&app, Method::DELETE, &format!("/v1/communities/{isolated_id}"), None, Some(&c)).await.0, StatusCode::NO_CONTENT);
     sqlx::query("DELETE FROM dm_conversations WHERE id=$1")
         .bind(Uuid::parse_str(conversation).expect("id"))
         .execute(&pool)

@@ -358,7 +358,10 @@ async fn handle(
     }
     let ready = serde_json::json!({
         "type": "ready", (scope.key()): channel.to_string(),
-        "recovery": "GET current HTTP message history"
+        "recovery": match scope {
+            Subscription::Channel { .. } => "GET /v1/communities/{community_id}/channels/{channel_id}/messages",
+            Subscription::Direct(_) => "GET /v1/dms/{conversation_id}/messages",
+        }
     });
     if !send_text(&mut socket, ready.to_string()).await {
         hub.leave(channel, user).await;

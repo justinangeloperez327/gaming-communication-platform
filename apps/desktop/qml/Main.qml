@@ -289,6 +289,7 @@ ApplicationWindow {
                     VoicePanel {
                         Layout.fillWidth: true
                         voice: voiceSession
+                        directory: channelDirectory
                         account: accountSession
                         panel: root.panel
                         borderTone: root.borderTone

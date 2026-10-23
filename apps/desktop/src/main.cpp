@@ -11,6 +11,7 @@
 #include <QTimer>
 
 #include <cstdlib>
+#include <cstdio>
 #include <string_view>
 
 int main(int argc, char *argv[])
@@ -24,6 +25,13 @@ int main(int argc, char *argv[])
     bool smokeQml = false;
     for (int i = 1; i < argc; ++i) {
         if (std::string_view(argv[i]) == "--smoke-qml") smokeQml = true;
+    }
+    if (smokeQml) {
+        // GUI-subsystem applications otherwise send Qt diagnostics only to the
+        // Windows debugger. CTest can capture this startup-only stderr handler.
+        qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &message) {
+            std::fprintf(stderr, "%s\n", message.toUtf8().constData());
+        });
     }
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Gaming Communication Platform"));
