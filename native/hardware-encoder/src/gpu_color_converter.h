@@ -13,7 +13,8 @@ namespace gcp::media {
 class GpuColorConverter final {
 public:
     GpuColorConverter(ID3D11Device* device, ID3D11DeviceContext* context,
-                      UINT width, UINT height, UINT fps);
+                      UINT width, UINT height, UINT fps,
+                      UINT input_width = 0, UINT input_height = 0);
 
     Microsoft::WRL::ComPtr<IMFSample> convert(
         ID3D11Texture2D* bgra, LONGLONG timestamp_100ns,
@@ -22,6 +23,8 @@ public:
 private:
     UINT width_;
     UINT height_;
+    UINT input_width_;
+    UINT input_height_;
     Microsoft::WRL::ComPtr<ID3D11Device> device_;
     Microsoft::WRL::ComPtr<ID3D11VideoDevice> video_device_;
     Microsoft::WRL::ComPtr<ID3D11VideoContext> video_context_;

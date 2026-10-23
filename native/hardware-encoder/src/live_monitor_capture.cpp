@@ -56,9 +56,9 @@ struct State {
     std::atomic<std::uint64_t> failures{0};
 
     State(ID3D11Device* device, ID3D11DeviceContext* context,
-          UINT w, UINT h, UINT rate)
-        : converter(device, context, w, h, rate),
-          width(w), height(h), fps(rate) {}
+          UINT w, UINT h, UINT rate, UINT source_w, UINT source_h)
+        : converter(device, context, w, h, rate, source_w, source_h),
+          width(source_w), height(source_h), fps(rate) {}
 
     void receive(const Direct3D11CaptureFramePool& pool) {
         if (!active.load()) return;
@@ -118,39 +118,45 @@ struct LiveMonitorCapture::Impl {
     bool has_token = false;
     bool running = false;
 
-    Impl(ID3D11Device* device, ID3D11DeviceContext* context,
-         int monitor_index, UINT width, UINT height, UINT fps) {
-        if (!device || !context || fps == 0 || fps > 60 ||
-            width < 160 || height < 90 || width > 1920 || height > 1080 ||
-            width % 2 || height % 2 || monitor_index < 0) {
-            throw std::invalid_argument("Invalid monitor / GPU capture profile");
-        }
-        if (!GraphicsCaptureSession::IsSupported()) {
-            throw std::runtime_error("Windows Graphics Capture not supported");
-        }
+    GraphicsCaptureItem item{nullptr};
+    winrt::event_token closed_token{};
+    bool has_closed_token = false;
 
+    static GraphicsCaptureItem monitor_item(int index, UINT width, UINT height) {
+        if (index < 0) throw std::invalid_argument("Invalid monitor index");
         std::vector<HMONITOR> monitors;
         if (!EnumDisplayMonitors(nullptr, nullptr, collect_monitor,
-                                 reinterpret_cast<LPARAM>(&monitors))) {
-            throw std::runtime_error("EnumDisplayMonitors failed");
-        }
-        if (static_cast<std::size_t>(monitor_index) >= monitors.size()) {
+                                 reinterpret_cast<LPARAM>(&monitors)) ||
+            static_cast<std::size_t>(index) >= monitors.size())
             throw std::invalid_argument("Monitor index out of range");
-        }
-
         auto factory = winrt::get_activation_factory<
             GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
-        GraphicsCaptureItem item{nullptr};
+        GraphicsCaptureItem selected{nullptr};
         winrt::check_hresult(factory->CreateForMonitor(
-            monitors[static_cast<std::size_t>(monitor_index)],
-            winrt::guid_of<GraphicsCaptureItem>(), winrt::put_abi(item)));
+            monitors[static_cast<std::size_t>(index)],
+            winrt::guid_of<GraphicsCaptureItem>(), winrt::put_abi(selected)));
+        const auto size = selected.Size();
+        if (size.Width != static_cast<int>(width) ||
+            size.Height != static_cast<int>(height))
+            throw std::invalid_argument("Selected monitor dimensions differ from profile");
+        return selected;
+    }
+
+    Impl(ID3D11Device* device, ID3D11DeviceContext* context,
+         const GraphicsCaptureItem& selected, UINT width, UINT height, UINT fps)
+        : item(selected) {
+        if (!device || !context || !item || fps == 0 || fps > 60 ||
+            width < 160 || height < 90 || width > 1920 || height > 1080 ||
+            width % 2 || height % 2)
+            throw std::invalid_argument("Invalid GPU capture profile");
+        if (!GraphicsCaptureSession::IsSupported())
+            throw std::runtime_error("Windows Graphics Capture not supported");
         const auto dimensions = item.Size();
-        // Fail closed instead of publishing cropped/incorrect monitor content.
-        if (dimensions.Width != static_cast<int>(width) ||
-            dimensions.Height != static_cast<int>(height)) {
-            throw std::invalid_argument(
-                "Selected monitor's native dimensions differ from --width/--height");
-        }
+        if (dimensions.Width < 160 || dimensions.Height < 90 ||
+            dimensions.Width > 1920 || dimensions.Height > 1080 ||
+            (dimensions.Width + 1) / 2 * 2 != static_cast<int>(width) ||
+            (dimensions.Height + 1) / 2 * 2 != static_cast<int>(height))
+            throw std::invalid_argument("Selected source dimensions differ from profile");
 
         // Multi-thread access to the immediate D3D11 context is protected at
         // device level for interactions between WGC, VideoProcessor and MFT.
@@ -158,7 +164,8 @@ struct LiveMonitorCapture::Impl {
         winrt::check_hresult(context->QueryInterface(
             IID_PPV_ARGS(multithread.GetAddressOf())));
         multithread->SetMultithreadProtected(TRUE);
-        state = std::make_shared<State>(device, context, width, height, fps);
+        state = std::make_shared<State>(device, context, width, height, fps,
+                                              dimensions.Width, dimensions.Height);
 
         ComPtr<IDXGIDevice> dxgi_device;
         winrt::check_hresult(device->QueryInterface(
@@ -186,6 +193,11 @@ struct LiveMonitorCapture::Impl {
             }
         });
         has_token = true;
+        closed_token = item.Closed([shared](const auto&, const auto&) {
+            shared->active.store(false);
+            shared->changed.notify_all();
+        });
+        has_closed_token = true;
     }
 
     ~Impl() {
@@ -193,9 +205,12 @@ struct LiveMonitorCapture::Impl {
             state->active.store(false);
             state->changed.notify_all();
         }
-        if (has_token) frame_pool.FrameArrived(token);
-        if (session) session.Close();
-        if (frame_pool) frame_pool.Close();
+        // Close/unsubscribe can throw on device removal or OS source teardown.
+        // Each operation must still be attempted; destructors must never throw.
+        try { if (has_closed_token) item.Closed(closed_token); } catch (...) {}
+        try { if (has_token) frame_pool.FrameArrived(token); } catch (...) {}
+        try { if (session) session.Close(); } catch (...) {}
+        try { if (frame_pool) frame_pool.Close(); } catch (...) {}
     }
 };
 
@@ -203,7 +218,13 @@ LiveMonitorCapture::LiveMonitorCapture(
     ID3D11Device* device, ID3D11DeviceContext* context,
     int monitor_index, UINT width, UINT height, UINT fps)
     : impl_(std::make_unique<Impl>(
-          device, context, monitor_index, width, height, fps)) {}
+          device, context, Impl::monitor_item(monitor_index, width, height),
+          width, height, fps)) {}
+
+LiveMonitorCapture::LiveMonitorCapture(
+    ID3D11Device* device, ID3D11DeviceContext* context,
+    const GraphicsCaptureItem& item, UINT width, UINT height, UINT fps)
+    : impl_(std::make_unique<Impl>(device, context, item, width, height, fps)) {}
 
 LiveMonitorCapture::~LiveMonitorCapture() = default;
 
