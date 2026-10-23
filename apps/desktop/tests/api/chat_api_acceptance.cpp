@@ -2,6 +2,15 @@
 #include "ChannelDirectory.h"
 #include "ChatSession.h"
 #include "FriendsDirectory.h"
+#include "ScreenSession.h"
+#include "BoundedReply.h"
+#include <QNetworkProxy>
+#include <QNetworkRequest>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QTemporaryFile>
+#include <QFile>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -27,6 +36,15 @@ QString channel(const ChannelDirectory &directory, const QString &name) {
         if (row.value("name").toString() == name) return row.value("id").toString();
     }
     return {};
+}
+QJsonArray publishers(AccountSession& account, ChannelDirectory& rooms) {
+    QNetworkAccessManager network; network.setProxy(QNetworkProxy::NoProxy);
+    QUrl url(account.apiOrigin()); url.setPath(QStringLiteral("/v1/communities/%1/channels/%2/screen-sessions").arg(rooms.communityId(), rooms.channelId()));
+    QNetworkRequest request(url); request.setRawHeader("Authorization", "Bearer " + account.accessToken().toUtf8());
+    auto* reply = network.get(request); boundReply(reply, 16384, 5000);
+    require(waitFor([&] { return reply->isFinished(); }), "screen directory response deadline");
+    require(reply->error() == QNetworkReply::NoError, "real screen directory authorized");
+    return QJsonDocument::fromJson(reply->readAll()).array();
 }
 QString find(ChatSession &chat, const QString &body) {
     for (const auto &row : model(chat)->rows()) if (row.body == body) return row.id;
@@ -65,6 +83,27 @@ int main(int argc, char **argv) {
         require(waitFor([&]() { return !friendRooms.busy(); }) && friendRooms.communityId() == ownerRooms.communityId(), "friend community membership");
         const auto general = channel(ownerRooms, "general"), games = channel(ownerRooms, "games"), voice = channel(ownerRooms, "team-voice");
         ownerRooms.chooseVoiceChannel(voice);
+        const auto fixture = qEnvironmentVariable("GCP_SCREEN_FIXTURE_PROGRAM");
+        require(!fixture.isEmpty(), "test-only screen protocol fixture required");
+        QTemporaryFile screenTrace; require(screenTrace.open(), "screen trace file");
+        qputenv("GCP_SCREEN_FIXTURE_LOG", screenTrace.fileName().toUtf8());
+        ScreenSession ownerScreen(&owner, &ownerRooms, nullptr, {fixture, 200});
+        require(publishers(owner, ownerRooms).isEmpty(), "no publisher before consent");
+        ownerScreen.chooseSource();
+        require(waitFor([&] { return ownerScreen.awaitingConsent(); }), "test source retained by child");
+        require(publishers(owner, ownerRooms).isEmpty(), "source selection alone creates no real lease");
+        ownerScreen.confirmShare(true);
+        require(waitFor([&] { return ownerScreen.sharing(); }), "real Qt grant validates Rust signature payload and starts fixture");
+        auto current = publishers(owner, ownerRooms);
+        require(current.size() == 1 && current[0].toObject().value("user_id").toString() == owner.userId(), "real directory identifies current publishing account");
+        require(waitFor([&] {
+            QFile file(screenTrace.fileName()); if (!file.open(QIODevice::ReadOnly)) return false;
+            return file.readAll().count("renew\n") >= 2;
+        }), "actual Rust screen lease renewed twice through native control protocol");
+        ownerScreen.stop(); require(waitFor([&] { return !ownerScreen.busy(); }), "real lease Stop and child exit");
+        require(publishers(owner, ownerRooms).isEmpty() && ownerRooms.channelId() == voice, "real stopped lease removed without changing voice selection");
+        friendRooms.chooseVoiceChannel(voice);
+        ScreenSession friendScreen(&friendAccount, &friendRooms, nullptr, {fixture, 200});
         int voiceSelections = 0;
         QObject::connect(&ownerRooms, &ChannelDirectory::selectionChanged, &app, [&]() { ++voiceSelections; });
         ownerRooms.chooseTextChannel(general); friendRooms.chooseTextChannel(general);
@@ -104,8 +143,14 @@ int main(int argc, char **argv) {
         // Reload after the friend's join before invoking its guarded removal.
         ownerRooms.loadManagement();
         require(waitFor([&]() { return !ownerRooms.busy() && ownerRooms.members().size() == 2; }), "refresh current members");
+        friendScreen.chooseSource();
+        require(waitFor([&] { return friendScreen.awaitingConsent(); }), "friend source selection");
+        friendScreen.confirmShare(true);
+        require(waitFor([&] { return friendScreen.sharing(); }), "friend screen lease before membership removal");
         ownerRooms.removeMember(friendAccount.userId());
         require(waitFor([&]() { return !ownerRooms.busy() && ownerRooms.members().size() == 1; }), "member removal");
+        require(waitFor([&] { return !friendScreen.busy(); }) && !friendScreen.sharing() && friendScreen.status().contains("access"), "real membership removal denies renewal and terminates native peer");
+        require(publishers(owner, ownerRooms).isEmpty(), "revoked publisher disappears from real directory");
         receiver->refreshLatest();
         require(waitFor([&]() { return !receiver->loading() && !receiver->canMutate() && model(*receiver)->rowCount() == 0 && receiver->draft().isEmpty(); }), "real authorization loss purges peer history and draft");
         receiver->sendDraft(); require(!receiver->sending(), "no automatic delivery after access removal");
@@ -179,7 +224,7 @@ int main(int argc, char **argv) {
         ownerRooms.deleteCommunity();
         require(waitFor([&]() { return !ownerRooms.busy() && ownerRooms.communityId().isEmpty(); }), "test community cleanup");
         friendAccount.signOut(); owner.signOut();
-        std::cout << "Real Qt controllers -> Rust HTTP/WebSockets -> PostgreSQL channel/friends/DM acceptance passed. No physical media or deployed service tested.\n";
+        std::cout << "Real Qt controllers -> Rust HTTP/WebSockets -> PostgreSQL channel/friends/DM acceptance passed. Real screen lease create/renew/stop/revocation also passed with a test-only native protocol peer. No physical capture, media or deployed service tested.\n";
         return 0;
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }
 }
