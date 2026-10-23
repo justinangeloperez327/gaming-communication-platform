@@ -367,6 +367,137 @@ async fn authorized_message_lifecycle_and_privacy() {
 }
 
 #[tokio::test]
+async fn client_message_ids_deduplicate_retries_without_rewriting_or_disclosing() {
+    let Some(pool) = test_db().await else { return };
+    MIGRATOR.run(&pool).await.expect("migrations");
+    let app = router_with_database(Some(pool.clone()));
+    let (owner, owner_id) = register(&app, &pool, "retryown").await;
+    let (other, other_id) = register(&app, &pool, "retryout").await;
+    let space = community(&app, &owner).await;
+    let room = channel(&app, &space, &owner, "text", "retry-room").await;
+    let second = channel(&app, &space, &owner, "text", "other-room").await;
+    let (status, invitation) = req(
+        &app,
+        Method::POST,
+        &format!("/v1/communities/{space}/invitations"),
+        None,
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, _) = req(
+        &app,
+        Method::POST,
+        "/v1/invitations/accept",
+        Some(json!({"token": invitation["token"]})),
+        Some(&other),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let url = format!("/v1/communities/{space}/channels/{room}/messages");
+    let id = Uuid::from_u128(rand::random()).to_string();
+    let input = json!({"body":"one durable send", "client_message_id":id});
+    let (a, b) = tokio::join!(
+        req(&app, Method::POST, &url, Some(input.clone()), Some(&owner)),
+        req(&app, Method::POST, &url, Some(input), Some(&owner))
+    );
+    assert!(
+        (a.0 == StatusCode::CREATED && b.0 == StatusCode::OK)
+            || (b.0 == StatusCode::CREATED && a.0 == StatusCode::OK)
+    );
+    assert_eq!(a.1["id"], id);
+    assert_eq!(a.1, b.1);
+    assert_eq!(
+        a.1["created_at_us"].as_i64().expect("microseconds") / 1000,
+        a.1["created_at_ms"].as_i64().expect("milliseconds")
+    );
+    let (status, page) = req(&app, Method::GET, &url, None, Some(&owner)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(page["messages"].as_array().expect("page").len(), 1);
+    let item = format!("{url}/{id}");
+    let (status, _) = req(
+        &app,
+        Method::PATCH,
+        &item,
+        Some(json!({"body":"edited later"})),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, existing) = req(
+        &app,
+        Method::POST,
+        &url,
+        Some(json!({"body":"must not rewrite", "client_message_id":id})),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(existing["body"], "edited later");
+    assert_eq!(
+        req(&app, Method::DELETE, &item, None, Some(&owner))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let (status, deleted) = req(
+        &app,
+        Method::POST,
+        &url,
+        Some(json!({"body":"original retry", "client_message_id":id})),
+        Some(&owner),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(deleted["body"].is_null());
+    assert!(deleted["deleted_at_ms"].is_i64());
+    for (target, token) in [
+        (url.clone(), &other),
+        (format!("/v1/communities/{space}/channels/{second}/messages"), &owner),
+    ] {
+        assert_eq!(
+            req(
+                &app,
+                Method::POST,
+                &target,
+                Some(json!({"body":"collision", "client_message_id":id})),
+                Some(token),
+            )
+            .await
+            .0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    for invalid in ["not-a-uuid", "00000000-0000-0000-0000-000000000000"] {
+        assert_eq!(
+            req(
+                &app,
+                Method::POST,
+                &url,
+                Some(json!({"body":"bad ID", "client_message_id":invalid})),
+                Some(&owner),
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        req(&app, Method::DELETE, &format!("/v1/communities/{space}"), None, Some(&owner))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    for id in [owner_id, other_id] {
+        sqlx::query("DELETE FROM users WHERE id=$1")
+            .bind(Uuid::parse_str(&id).expect("uuid"))
+            .execute(&pool)
+            .await
+            .expect("cleanup");
+    }
+}
+
+#[tokio::test]
 async fn message_routes_without_db_are_unavailable() {
     let app = router_with_database(None);
     let c = Uuid::nil();
