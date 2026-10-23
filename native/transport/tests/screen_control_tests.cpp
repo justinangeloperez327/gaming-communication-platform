@@ -30,6 +30,19 @@ int main() {
         require(duplicate.accept(grant,1000)); require(!duplicate.accept(grant,1001));
         ScreenControl extended(1000); extended.selected();
         require(!extended.accept("publish 999999 " + grant.substr(grant.find("wss://")),1000));
+        ScreenControl renewed(1000); renewed.selected();
+        require(renewed.accept(grant,1000));
+        require(renewed.accept("ping",5000));
+        require(renewed.accept("renew 64000",5000));
+        require(renewed.accept("ping",62000) == false); // no heartbeat in between
+        ScreenControl early(1000); early.selected();
+        require(!early.accept("renew 61000",1000));
+        for (const auto& bad : {std::string(""), std::string("unknown"), grant + " ",
+             std::string("publish 999 ") + grant.substr(grant.find("wss://")),
+             std::string("publish 61000 ws://remote.example ") + grant.substr(grant.find(' ', grant.find("wss://")) + 1)}) {
+            ScreenControl invalid(1000); invalid.selected();
+            require(!invalid.accept(bad,1000) && !invalid.alive(1001));
+        }
         ScreenControl oversized(1000); oversized.selected();
         require(!oversized.accept(std::string(20000,'x'),1000));
         require(!screen_jwt("bad") && !screen_uuid("00000000-0000-0000-0000-000000000000"));

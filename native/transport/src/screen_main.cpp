@@ -152,11 +152,24 @@ void publish(ScreenControl& control, const gcp::transport::ScreenGrant& grant,
 GraphicsCaptureItem pick(ScreenControl& control) {
     using namespace winrt::Windows::Graphics::Capture;
     if (!GraphicsCaptureSession::IsSupported()) throw std::runtime_error("Capture unsupported");
-    const auto owner = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC", L"Choose what to share — GCP",
+    WNDCLASSW type{};
+    type.hInstance = GetModuleHandleW(nullptr);
+    type.lpszClassName = L"GcpScreenPickerOwner";
+    type.lpfnWndProc = [](HWND window, UINT message, WPARAM wparam, LPARAM lparam) -> LRESULT {
+        if (message == WM_CLOSE) {
+            auto* state = reinterpret_cast<ScreenControl*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+            if (state) state->stop();
+            DestroyWindow(window); return 0;
+        }
+        return DefWindowProcW(window, message, wparam, lparam);
+    };
+    if (!RegisterClassW(&type)) throw std::runtime_error("Picker class unavailable");
+    const auto owner = CreateWindowExW(WS_EX_TOOLWINDOW, type.lpszClassName, L"Choose what to share — GCP",
         WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 420, 180,
-        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        nullptr, nullptr, type.hInstance, nullptr);
     if (!owner) throw std::runtime_error("Picker owner unavailable");
     struct Window { HWND value; ~Window() { DestroyWindow(value); } } window{owner};
+    SetWindowLongPtrW(owner, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&control));
     ShowWindow(owner, SW_SHOWNORMAL);
     SetForegroundWindow(owner);
     if (!SetTimer(owner, 1, 100, nullptr)) throw std::runtime_error("Picker timer unavailable");

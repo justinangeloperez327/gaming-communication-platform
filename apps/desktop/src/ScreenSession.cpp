@@ -3,6 +3,7 @@
 #include "ChannelDirectory.h"
 #include "ChatProtocol.h"
 #include "BoundedReply.h"
+#include "NativeProcessEnvironment.h"
 #include "../../../native/transport/src/screen_control.h"
 #include <QCoreApplication>
 #include <QDir>
@@ -18,17 +19,6 @@
 
 namespace {
 using gcp::transport::screen_now_ms;
-QProcessEnvironment environment() {
-    auto result = QProcessEnvironment::systemEnvironment();
-    for (const auto& name : result.keys()) {
-        const auto upper = name.toUpper();
-        if (upper == "DATABASE_URL" || upper.startsWith("LIVEKIT_") ||
-            upper.startsWith("GCP_MEDIA_") || upper == "GCP_ACCESS_TOKEN" ||
-            upper == "GCP_REFRESH_TOKEN" || upper == "GCP_BOOTSTRAP_TOKEN" ||
-            upper == "GCP_OWNER_PASSWORD") result.remove(name);
-    }
-    return result;
-}
 bool grantsMatch(const QString& token, const QString& identity, const QString& room) {
     const auto encoded = token.toLatin1();
     if (!gcp::transport::screen_jwt(encoded.toStdString())) return false;
@@ -64,7 +54,7 @@ ScreenSession::ScreenSession(AccountSession* account, ChannelDirectory* director
         if (!sameScope()) { stopWithReason(QStringLiteral("Screen sharing stopped: account or channel changed.")); return; }
         if (!control("ping")) stopWithReason(QStringLiteral("Screen sharing stopped: the capture process is unavailable."));
     });
-    connect(&renewal_, &QTimer::timeout, this, [this] { requestGrant(true); });
+    connect(&renewal_, &QTimer::timeout, this, [this] { requestGrant(!lease_.isEmpty()); });
     connect(&deadline_, &QTimer::timeout, this, [this] {
         stopWithReason(QStringLiteral("Screen sharing stopped: authorization expired. Choose a source again."));
     });
@@ -124,7 +114,7 @@ void ScreenSession::chooseSource() {
     community_ = directory_->communityId(); channel_ = directory_->channelId();
     scopeLabel_ = directory_->communityName() + QStringLiteral(" / ") + directory_->channelName();
     sourceName_.clear(); width_ = height_ = 0; output_.clear();
-    process_.setProcessEnvironment(environment());
+    process_.setProcessEnvironment(nativeProcessEnvironment());
     process_.setProcessChannelMode(QProcess::SeparateChannels);
     process_.setStandardErrorFile(QProcess::nullDevice());
     process_.setProgram(program()); process_.setArguments({QStringLiteral("--pick-source")});
@@ -135,7 +125,7 @@ void ScreenSession::confirmShare(bool consent) {
     if (!awaitingConsent_ || stopping_) return;
     if (!consent || !sameScope()) { stop(); return; }
     awaitingConsent_ = false; consent_ = true; emit consentInvalidated();
-    status_ = QStringLiteral("Authorizing screen sharing…"); emit changed(); requestGrant(false);
+    status_ = QStringLiteral("Authorizing screen sharing…"); startup_.start(runtime_.startMs); emit changed(); requestGrant(false);
 }
 bool ScreenSession::control(const QByteArray& line) {
     if (process_.state() != QProcess::Running || line.size() > 12288 || process_.bytesToWrite() > 16384) return false;
@@ -148,7 +138,7 @@ void ScreenSession::requestGrant(bool renew) {
     if (!consent_ || stopping_ || pending_ || !sameScope() || (renew && lease_.isEmpty())) return;
     // A rotation may temporarily make the old bearer invalid. Never replay a
     // create automatically: its outcome could already contain a live lease.
-    if (account_->busy()) { stopWithReason(QStringLiteral("Screen sharing stopped while your session refreshed. Choose a source again.")); return; }
+    if (account_->busy()) { renewal_.start(100); return; }
     QUrl url(origin_); url.setPath(path() + (renew ? QStringLiteral("/%1/renew").arg(lease_) : QString{}));
     QNetworkRequest request(url);
     request.setRawHeader("Authorization", "Bearer " + account_->accessToken().toUtf8());

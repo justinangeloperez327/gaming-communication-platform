@@ -14,7 +14,7 @@ void record(const char* text) {
 }
 int main(int argc, char** argv) {
     if (argc != 2 || std::string_view(argv[1]) != "--pick-source") return 1;
-    for (const auto* key : {"DATABASE_URL", "LIVEKIT_API_KEY", "LiVeKiT_ApI_SeCrEt", "LIVEKIT_TOKEN", "LIVEKIT_URL", "GCP_MEDIA_SECRET", "GCP_ACCESS_TOKEN", "GCP_REFRESH_TOKEN"})
+    for (const auto* key : {"DATABASE_URL", "LIVEKIT_API_KEY", "LiVeKiT_ApI_SeCrEt", "LIVEKIT_TOKEN", "LIVEKIT_URL", "GCP_MEDIA_SECRET", "GCP_POSTGRES_ADMIN_PASSWORD", "GCP_ACCESS_TOKEN", "GCP_REFRESH_TOKEN"})
         if (std::getenv(key)) return 2;
     record("start");
     const std::string mode = std::getenv("GCP_SCREEN_FIXTURE_MODE") ? std::getenv("GCP_SCREEN_FIXTURE_MODE") : "";

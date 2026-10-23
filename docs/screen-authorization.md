@@ -191,3 +191,12 @@ executions. They do not establish a complete desktop→API→Windows capture→r
 viewer flow. Physical two-PC screen sharing, visual quality, gaming performance,
 OS picker/permission UX and deployed-network recovery remain unverified. No
 release, deployment, version bump or installer implementation is included.
+
+## Desktop publisher integration
+
+[Group 8 / PR #86](https://github.com/justinangeloperez327/gaming-communication-platform/pull/86)
+connects this API to the Windows picker and exact-source native publisher. See
+[desktop screen publisher](desktop-screen-publisher.md) for consent, supported
+profile, bounded fail-closed controls and physical verification limits. Group 9
+still supplies the desktop viewer. The new real Qt/Rust lease acceptance uses
+a protocol-only native fixture; the existing synthetic SDK/SFU run is separate.

@@ -9,7 +9,7 @@
 int main(int argc, char **argv) {
     if (std::getenv("GCP_FIXTURE_VALIDATE_ENV")) {
         for (const auto *name : {"DATABASE_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET",
-                                 "GCP_ACCESS_TOKEN", "GCP_REFRESH_TOKEN"}) {
+                                 "GCP_ACCESS_TOKEN", "GCP_REFRESH_TOKEN", "GCP_MEDIA_SECRET", "GCP_POSTGRES_ADMIN_PASSWORD"}) {
             if (std::getenv(name)) return 10;
         }
         const auto *runtime = std::getenv("GCP_FIXTURE_RUNTIME_VALUE");

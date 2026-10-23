@@ -1,4 +1,5 @@
 #include "BoundedReply.h"
+#include "NativeProcessEnvironment.h"
 #include "VoiceSession.h"
 #include "AccountSession.h"
 #include "ChannelDirectory.h"
@@ -17,21 +18,6 @@
 #include <utility>
 
 namespace {
-QProcessEnvironment nativeProcessEnvironment() {
-    auto env = QProcessEnvironment::systemEnvironment();
-    const QStringList credentials{
-        QStringLiteral("DATABASE_URL"), QStringLiteral("LIVEKIT_API_KEY"),
-        QStringLiteral("LIVEKIT_API_SECRET"), QStringLiteral("GCP_ACCESS_TOKEN"),
-        QStringLiteral("GCP_REFRESH_TOKEN"), QStringLiteral("LIVEKIT_URL"),
-        QStringLiteral("LIVEKIT_TOKEN")
-    };
-    // Windows environment names are case-insensitive. Remove the actual key
-    // spelling, including mixed-case values inherited from a developer shell.
-    for (const auto &key : env.keys()) {
-        if (credentials.contains(key, Qt::CaseInsensitive)) env.remove(key);
-    }
-    return env;
-}
 constexpr qsizetype deviceScanOutputLimit = 64 * 1024;
 bool permittedUrl(const QUrl &url) {
     if (!url.isValid() || url.userInfo().size() || url.hasFragment() || url.hasQuery()) return false;

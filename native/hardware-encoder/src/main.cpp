@@ -554,17 +554,18 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
     pump->start(events);
 
     // Construct only after the MFT has accepted this exact GPU device and
-    // media format. This is strictly local and requires explicit CLI consent.
+    // media format. Consent comes from the retained desktop session or the
+    // explicit diagnostic CLI; no source is selected implicitly.
     std::unique_ptr<gcp::media::LiveMonitorCapture> monitor_capture;
     std::uint64_t monitor_sequence = 0;
     try {
     if (options.use_monitor_capture) {
         if (controlled) {
-            if (!controlled->keep_running()) return true;
+            if (!controlled->keep_running()) { pump->stop(); return true; }
             monitor_capture = std::make_unique<gcp::media::LiveMonitorCapture>(
                 gpu.device.Get(), gpu.context.Get(), controlled->item,
                 options.width, options.height, options.fps);
-            if (!controlled->keep_running()) return true;
+            if (!controlled->keep_running()) { pump->stop(); return true; }
             if (controlled->capture_started) controlled->capture_started();
         } else {
             monitor_capture = std::make_unique<gcp::media::LiveMonitorCapture>(

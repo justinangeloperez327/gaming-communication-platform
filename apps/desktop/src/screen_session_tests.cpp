@@ -38,6 +38,18 @@ struct Api {
     int creates = 0, renews = 0, deletes = 0, deny = 0, ttl = 60;
     bool hold = false, oversized = false;
     QString malformed;
+    int loginTtl = 900, refreshes = 0;
+    bool holdRefresh = false;
+    QString access = QString(64, 'a'), lastLeaseAccess;
+    QPointer<QTcpSocket> refreshReply;
+    QByteArray session(int ttl) const {
+        return QJsonDocument(QJsonObject{{"access_token", access}, {"refresh_token", QString(64, 'b')}, {"expires_in", ttl}, {"user", QJsonObject{{"id", "00000000-0000-0000-0000-000000000010"}, {"display_name", "Test"}}}}).toJson();
+    }
+    void finishRefresh() {
+        access = QString(64, 'c'); holdRefresh = false;
+        if (refreshReply) respond(refreshReply, 200, session(900));
+        refreshReply = nullptr;
+    }
     QList<QPointer<QTcpSocket>> held;
     static void respond(QTcpSocket* socket, int code, const QByteArray& body) {
         socket->write("HTTP/1.1 " + QByteArray::number(code) + " Fixture\r\nContent-Type: application/json\r\nContent-Length: " + QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
@@ -78,14 +90,23 @@ struct Api {
                     socket->setProperty("answered", true);
                     const auto path = bytes.split(' ').value(1); const auto method = bytes.split(' ').value(0);
                     QByteArray body; int code = 200;
-                    if (path == "/v1/auth/login") body = QJsonDocument(QJsonObject{{"access_token", QString(64, 'a')}, {"refresh_token", QString(64, 'b')}, {"expires_in", 900}, {"user", QJsonObject{{"id", "00000000-0000-0000-0000-000000000010"}, {"display_name", "Test"}}}}).toJson();
+                    if (path == "/v1/auth/login") body = session(loginTtl);
+                    else if (path == "/v1/auth/refresh") {
+                        ++refreshes;
+                        if (holdRefresh) { refreshReply = socket; return; }
+                        access = QString(64, 'c'); body = session(900);
+                    }
                     else if (path == "/v1/auth/logout") code = 204;
+                    else if (!bytes.toLower().contains("authorization: bearer " + access.toUtf8())) code = 401;
                     else if (path == "/v1/communities") body = "[{\"id\":\"" + community.toUtf8() + "\",\"name\":\"Test\",\"role\":\"member\"}]";
                     else if (path == "/v1/communities/" + community.toUtf8()) body = "{\"id\":\"" + community.toUtf8() + "\",\"name\":\"Test\",\"role\":\"member\"}";
-                    else if (path.endsWith("/channels")) body = "[{\"id\":\"" + channel.toUtf8() + "\",\"name\":\"team\",\"channel_kind\":\"voice\",\"position\":0}]";
+                    else if (path.endsWith("/channels")) body = QJsonDocument(QJsonArray{
+                        QJsonObject{{"id", channel}, {"name", "team"}, {"channel_kind", "voice"}, {"position", 0}},
+                        QJsonObject{{"id", "00000000-0000-0000-0000-000000000004"}, {"name", "other"}, {"channel_kind", "voice"}, {"position", 1}}}).toJson();
                     else if (method == "DELETE" && path.endsWith("/" + lease.toUtf8())) { ++deletes; code = 204; }
                     else if (path.endsWith("/screen-sessions") || path.endsWith("/renew")) {
                         require(bytes.mid(headerEnd + 4).contains("\"consent\":true"), "explicit consent in real HTTP request");
+                        lastLeaseAccess = access;
                         if (path.endsWith("/renew")) ++renews; else ++creates;
                         if (hold) { held.append(socket); return; }
                         code = deny ? deny : path.endsWith("/renew") ? 200 : 201; body = grant();
@@ -102,13 +123,13 @@ struct Api {
 int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
     try {
-        for (const auto* key : {"DATABASE_URL", "LIVEKIT_API_KEY", "LiVeKiT_ApI_SeCrEt", "LIVEKIT_TOKEN", "LIVEKIT_URL", "GCP_MEDIA_SECRET", "GCP_ACCESS_TOKEN", "GCP_REFRESH_TOKEN"}) qputenv(key, "dummy-sensitive-value");
+        for (const auto* key : {"DATABASE_URL", "LIVEKIT_API_KEY", "LiVeKiT_ApI_SeCrEt", "LIVEKIT_TOKEN", "LIVEKIT_URL", "GCP_MEDIA_SECRET", "GCP_POSTGRES_ADMIN_PASSWORD", "GCP_ACCESS_TOKEN", "GCP_REFRESH_TOKEN"}) qputenv(key, "dummy-sensitive-value");
         QTemporaryFile log; require(log.open(), "fixture trace"); qputenv("GCP_SCREEN_FIXTURE_LOG", log.fileName().toUtf8());
         Api api; AccountSession account; ChannelDirectory directory(&account);
         const auto program = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("gcp-screen-process-fixture.exe"));
         ScreenSession screen(&account, &directory, nullptr, {program, 200, 700, 1000});
         QQmlEngine engine; int warnings = 0;
-        QObject::connect(&engine, &QQmlEngine::warnings, &engine, [&](const QList<QQmlError>&) { ++warnings; });
+        QObject::connect(&engine, &QQmlEngine::warnings, &engine, [&](const QList<QQmlError>& errors) { warnings += errors.size(); for (const auto& error : errors) std::cerr << error.toString().toStdString() << '\n'; });
         engine.rootContext()->setContextProperty("controller", &screen);
         engine.rootContext()->setContextProperty("rooms", &directory);
         engine.rootContext()->setContextProperty("login", &account);
@@ -132,7 +153,10 @@ int main(int argc, char** argv) {
         login();
         const auto pick = [&] { click("screenChoose"); require(waitFor([&] { return screen.awaitingConsent(); }), "source selected without capture"); };
         const auto confirm = [&] { field("screenConsent")->setProperty("checked", true); click("screenConfirm"); };
-        const auto stopped = [&] { require(waitFor([&] { return !screen.busy(); }), "bounded child teardown and lease cleanup"); require(!screen.sharing() && !screen.awaitingConsent(), "stopped consent and indicator cleared"); };
+        const auto stopped = [&] {
+            const bool finished = waitFor([&] { return !screen.busy(); });
+            if (!finished) std::cerr << "screen stop status: " << screen.status().toStdString() << "; creates=" << api.creates << "; renews=" << api.renews << "; deletes=" << api.deletes << '\n';
+            require(finished, "bounded child teardown and lease cleanup"); require(!screen.sharing() && !screen.awaitingConsent(), "stopped consent and indicator cleared"); };
         pick(); require(api.creates == 0 && !screen.sharing() && screen.sourceName() == "<b>Window</b>" && !field("screenConfirm")->property("enabled").toBool(), "picker alone never authorizes capture; plain source metadata");
         click("screenCancel"); stopped(); require(api.creates == 0, "cancel has no server side effect");
         pick(); screen.confirmShare(false); stopped(); require(api.creates == 0, "C++ consent gate also refuses false");
@@ -156,8 +180,18 @@ int main(int argc, char** argv) {
         for (const auto* mode : {"interrupted", "stopped_alive", "no_frame"}) { qputenv("GCP_SCREEN_FIXTURE_MODE", mode); pick(); confirm(); stopped(); }
         qputenv("GCP_SCREEN_FIXTURE_MODE", "hang"); pick(); confirm(); require(waitFor([&] { return screen.sharing(); }), "hanging child starts"); screen.stop(); stopped();
         qunsetenv("GCP_SCREEN_FIXTURE_MODE");
-        pick(); confirm(); require(waitFor([&] { return screen.sharing(); }), "channel change setup"); directory.chooseVoiceChannel({}); stopped();
+        pick(); confirm(); require(waitFor([&] { return screen.sharing(); }), "channel change setup"); directory.chooseVoiceChannel(QStringLiteral("00000000-0000-0000-0000-000000000004")); stopped();
         directory.chooseVoiceChannel(channel); pick(); confirm(); require(waitFor([&] { return screen.sharing(); }), "logout setup"); account.signOut(); stopped();
+        require(waitFor([&] { return !account.busy(); }), "logout request completed");
+        api.loginTtl = 60; api.holdRefresh = true; login(); pick(); confirm();
+        require(waitFor([&] { return screen.sharing(); }), "share before account rotation");
+        const auto createsBeforeRefresh = api.creates;
+        require(waitFor([&] { return api.refreshes == 1 && account.busy(); }), "actual timed account refresh held");
+        QElapsedTimer refreshWait; refreshWait.start();
+        require(waitFor([&] { return refreshWait.elapsed() > 350; }) && screen.sharing(), "renewal waits within lease while refresh is pending");
+        api.finishRefresh();
+        require(waitFor([&] { return !account.busy() && api.lastLeaseAccess == QString(64, 'c'); }) && screen.sharing() && api.creates == createsBeforeRefresh, "renewal uses rotated bearer without new consent or duplicate create");
+        screen.stop(); stopped();
         require(warnings == 0, "ScreenPanel has no QML warnings");
         std::cout << "Screen Qt/QML HTTP/subprocess consent, lease, cancellation, expiry, revocation, output limits and kill watchdog passed. No actual capture or media tested.\n";
         return 0;
