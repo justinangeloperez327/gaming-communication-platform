@@ -17,7 +17,7 @@ use axum::{
     http::HeaderMap,
     response::IntoResponse,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::{PgPool, types::Uuid};
 use tokio::{
     sync::{Mutex, broadcast},
@@ -27,7 +27,7 @@ use tokio::{
 use crate::{
     AppState,
     auth::{self, AuthError},
-    messages,
+    messages, direct_messages,
 };
 
 const EVENT_QUEUE_CAPACITY: usize = 256;
@@ -46,6 +46,7 @@ pub(crate) enum EventKind {
     Typing,
     Joined,
     Left,
+    AccessChanged,
 }
 
 impl EventKind {
@@ -57,6 +58,7 @@ impl EventKind {
             Self::Typing => "typing",
             Self::Joined => "presence_joined",
             Self::Left => "presence_left",
+            Self::AccessChanged => "access_changed",
         }
     }
 }
@@ -154,6 +156,10 @@ impl EventHub {
         }
     }
 
+    pub fn access_changed(&self, room: Uuid, actor: Uuid) {
+        self.publish(Event::presence(room, actor, EventKind::AccessChanged));
+    }
+
     fn listen(&self, channel: Uuid) -> ChannelListener {
         let mut queues = self.queues.lock().unwrap_or_else(|err| err.into_inner());
         let queue = queues.entry(channel).or_insert_with(|| {
@@ -216,24 +222,28 @@ struct ClientCommand {
     active: Option<bool>,
 }
 
-#[derive(Serialize)]
-struct ServerEvent<'a> {
-    #[serde(rename = "type")]
-    kind: &'a str,
-    channel_id: String,
-    user_id: Option<String>,
-    message_id: Option<String>,
-    active: Option<bool>,
+// Separate hubs keep DM and community topic IDs isolated even if equal.
+#[derive(Clone, Copy)]
+enum Subscription {
+    Channel { community: Uuid, channel: Uuid },
+    Direct(Uuid),
 }
-
-fn encode(event: &Event) -> Result<String, serde_json::Error> {
-    serde_json::to_string(&ServerEvent {
-        kind: event.kind.name(),
-        channel_id: event.channel.to_string(),
-        user_id: Some(event.actor.to_string()),
-        message_id: event.message.map(|id| id.to_string()),
-        active: event.active,
-    })
+impl Subscription {
+    fn room(self) -> Uuid { match self { Self::Channel {channel, ..} => channel, Self::Direct(id) => id } }
+    fn key(self) -> &'static str { match self { Self::Channel {..} => "channel_id", Self::Direct(_) => "conversation_id" } }
+    async fn allowed(self, pool: &PgPool, user: Uuid) -> bool {
+        match self {
+            Self::Channel {community, channel} => messages::text_channel(pool, community, channel, user).await.is_ok(),
+            Self::Direct(id) => direct_messages::authorize(pool, id, user).await.is_ok(),
+        }
+    }
+}
+fn encode(event: &Event, scope: Subscription) -> Result<String, serde_json::Error> {
+    serde_json::to_string(&serde_json::json!({
+        "type": event.kind.name(), (scope.key()): event.channel.to_string(),
+        "user_id": event.actor.to_string(), "message_id": event.message.map(|id| id.to_string()),
+        "active": event.active,
+    }))
 }
 
 async fn send_text(socket: &mut WebSocket, payload: String) -> bool {
@@ -246,17 +256,13 @@ async fn send_text(socket: &mut WebSocket, payload: String) -> bool {
 async fn valid_subscriber(
     pool: &PgPool,
     headers: &HeaderMap,
-    community: Uuid,
-    channel: Uuid,
+    scope: Subscription,
     user: Uuid,
 ) -> bool {
     let Ok((current, _)) = auth::authenticated_user(pool, headers).await else {
         return false;
     };
-    current == user
-        && messages::text_channel(pool, community, channel, user)
-            .await
-            .is_ok()
+    current == user && scope.allowed(pool, user).await
 }
 
 pub(crate) async fn subscribe(
@@ -277,7 +283,19 @@ pub(crate) async fn subscribe(
     Ok(upgrade
         .max_message_size(2048)
         .max_frame_size(2048)
-        .on_upgrade(move |socket| handle(socket, hub, pool, headers, community, channel, user)))
+        .on_upgrade(move |socket| handle(socket, hub, pool, headers, Subscription::Channel {community, channel}, user)))
+}
+
+pub(crate) async fn subscribe_direct(
+    State(state): State<AppState>, headers: HeaderMap, Path(raw): Path<String>, upgrade: WebSocketUpgrade,
+) -> Result<impl IntoResponse, AuthError> {
+    let conversation = Uuid::parse_str(&raw).map_err(|_| AuthError::InvalidRequest)?;
+    let pool = auth::database(&state)?;
+    let (user, _) = auth::authenticated_user(pool, &headers).await?;
+    direct_messages::authorize(pool, conversation, user).await?;
+    let pool = pool.clone(); let hub = state.dm_realtime.clone();
+    Ok(upgrade.max_message_size(2048).max_frame_size(2048)
+        .on_upgrade(move |socket| handle(socket, hub, pool, headers, Subscription::Direct(conversation), user)))
 }
 
 async fn handle(
@@ -285,10 +303,10 @@ async fn handle(
     hub: EventHub,
     pool: PgPool,
     headers: HeaderMap,
-    community: Uuid,
-    channel: Uuid,
+    scope: Subscription,
     user: Uuid,
 ) {
+    let channel = scope.room();
     // Subscribe before registration, so the channel_join event is observable.
     let mut listener = hub.listen(channel);
     if !hub.join(channel, user).await {
@@ -301,8 +319,8 @@ async fn handle(
         return;
     }
     let ready = serde_json::json!({
-        "type": "ready", "channel_id": channel.to_string(),
-        "recovery": "GET /v1/communities/{community_id}/channels/{channel_id}/messages"
+        "type": "ready", (scope.key()): channel.to_string(),
+        "recovery": "GET current HTTP message history"
     });
     if !send_text(&mut socket, ready.to_string()).await {
         hub.leave(channel, user).await;
@@ -317,7 +335,7 @@ async fn handle(
         tokio::select! {
             _ = periodic.tick() => {
                 if last_inbound.elapsed() >= IDLE_TIMEOUT
-                    || !valid_subscriber(&pool, &headers, community, channel, user).await {
+                    || !valid_subscriber(&pool, &headers, scope, user).await {
                     break;
                 }
                 if time::timeout(OUTGOING_TIMEOUT,
@@ -337,7 +355,7 @@ async fn handle(
                             && let Some(active) = cmd.active
                             && last_typing.elapsed() >= TYPING_THROTTLE
                         {
-                            if !valid_subscriber(&pool, &headers, community, channel, user).await {
+                            if !valid_subscriber(&pool, &headers, scope, user).await {
                                 break;
                             }
                             hub.publish(Event::typing(channel, user, active));
@@ -355,10 +373,10 @@ async fn handle(
                 Ok(event) if event.channel == channel => {
                     // Re-authorize for EACH outbound event so a removed user or
                     // revoked session cannot continue observing activity.
-                    if !valid_subscriber(&pool, &headers, community, channel, user).await {
+                    if !valid_subscriber(&pool, &headers, scope, user).await {
                         break;
                     }
-                    match encode(&event) {
+                    match encode(&event, scope) {
                         Ok(payload) => {
                             if !send_text(&mut socket, payload).await {
                                 break;
@@ -486,7 +504,7 @@ mod tests {
             Uuid::from_u128(5),
             EventKind::Created,
         );
-        let encoded = encode(&ev).expect("JSON");
+        let encoded = encode(&ev, Subscription::Channel {community: Uuid::from_u128(1), channel: ev.channel}).expect("JSON");
         assert!(encoded.contains("message_created"));
         assert!(!encoded.contains("body"));
         assert!(!encoded.contains("token"));

@@ -29,6 +29,7 @@ pub(crate) struct AppState {
     pub(crate) database: Option<PgPool>,
     pub(crate) livekit: Option<livekit_tokens::LiveKitConfig>,
     pub(crate) realtime: realtime::EventHub,
+    pub(crate) dm_realtime: realtime::EventHub,
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -188,8 +189,10 @@ pub fn router_with_livekit(
         )
         .route(
             "/v1/dms/{conversation_id}/messages/{message_id}",
-            axum::routing::patch(direct_messages::edit).delete(direct_messages::delete),
+            get(direct_messages::get).patch(direct_messages::edit).delete(direct_messages::delete),
         )
+        .route("/v1/dms/{conversation_id}/events", get(realtime::subscribe_direct))
+        .route("/v1/friends/requests/{request_id}", axum::routing::delete(friends::cancel_request))
         // Session credentials and private API responses must not be cached by
         // browsers or reverse proxies, including authentication error replies.
         .layer(axum::middleware::map_response(no_store))
@@ -198,6 +201,7 @@ pub fn router_with_livekit(
             database,
             livekit,
             realtime: realtime::EventHub::new(),
+            dm_realtime: realtime::EventHub::new(),
         })
 }
 
