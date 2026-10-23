@@ -381,7 +381,10 @@ bool ChatSession::applyPage(const QByteArray &bytes, bool older, const QString &
         model_.replace(std::move(combined));
     } else {
         model_.replace(std::move(parsed)); followingLatest_ = true; newerAvailable_ = false; authorized_ = true;
-        if (retrySend()) queueMessage(drafts_.value(draftKey()).attempt);
+        // An uncertain POST may never have reached the server. Do not probe
+        // its missing ID here: a 404 would request another snapshot forever.
+        // Recent history/events can confirm it; explicit Retry safely resolves
+        // an older or still-unconfirmed send using the same client UUID.
         emit historyReset();
     }
     before_ = next.toString(); hasOlder_ = !next.isNull();

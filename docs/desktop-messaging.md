@@ -83,7 +83,8 @@ UI as the security boundary. See [messages](messages.md) and [events](realtime.m
   loopback HTTP/WebSocket fixtures: pagination/microsecond ordering, bounded
   history, literal Unicode text, edits, confirmed deletes, uncertain send/retry,
   socket gaps, stale-channel cancellation, malformed/oversized replies,
-  membership loss, logout and the real account refresh timer.
+  membership loss, logout and the real account refresh timer. Refresh after an
+  uncommitted send cannot loop between a missing-ID lookup and another snapshot.
 - `desktop_voice_control_and_reauthorization` selects a text channel while the
   controlled voice child remains connected, without another voice grant.
 - `messages_access` exercises actual PostgreSQL authorization and concurrent

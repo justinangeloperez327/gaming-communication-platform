@@ -55,7 +55,7 @@ struct Api {
     QPointer<QTcpSocket> held, refresh;
     QByteArray heldBody;
     QString token = QString(64, 'a');
-    bool offline = false, holdPage = false, lostPost = false, deny = false, malformed = false, oversized = false, holdRefresh = false;
+    bool offline = false, holdPage = false, lostPost = false, rejectPost = false, deny = false, malformed = false, oversized = false, holdRefresh = false;
     int posts = 0, reads = 0, connections = 0, refreshes = 0, ttl = 900;
     QStringList attempts, headers;
     static void respond(QTcpSocket *socket, int status, const QByteArray &body = {}) {
@@ -121,6 +121,7 @@ struct Api {
         }
         if (path.endsWith("/messages") && method == "POST") {
             ++posts; const auto id = body.value("client_message_id").toString(); attempts.append(id);
+            if (rejectPost) { respond(socket, 503); return; }
             const bool exists = records.contains(id);
             if (!exists) {
                 auto row = message(1000 + posts, body.value("body").toString(), self);
@@ -257,6 +258,14 @@ int main(int argc, char **argv) {
         require(QMetaObject::invokeMethod(panel.get(), "askDelete", Q_ARG(QVariant, sent)), "open delete confirmation");
         require(QMetaObject::invokeMethod(field("chatDeleteConfirmation"), "accept"), "confirm delete");
         require(waitFor([&]() { return model->find(sent)->deletedMs != 0; }), "delete fetches server tombstone");
+        api.rejectPost = true; chat.setDraft("server never committed this send"); click("chatSend");
+        require(waitFor([&]() { return !chat.sending(); }) && chat.retrySend() && !api.records.contains(api.attempts.last()), "uncommitted send retains explicit retry");
+        const auto readsBeforeRetryRefresh = api.reads, postsBeforeRetryRefresh = api.posts;
+        chat.refreshLatest();
+        require(waitFor([&]() { return api.reads > readsBeforeRetryRefresh && !chat.loading(); }), "refresh after uncommitted send");
+        waitFor([]() { return false; }, 400); // Observe several coalescing intervals.
+        require(api.reads <= readsBeforeRetryRefresh + 2 && api.posts == postsBeforeRetryRefresh && chat.retrySend(), "missing send ID cannot create a resync/request loop or automatic write");
+        chat.clearDraft(); api.rejectPost = false;
         chat.editMessage(uuid(500), "forbidden"); require(!chat.sending(), "cannot edit another author's message");
 
         auto changed = api.records[uuid(500)]; changed.insert("body", "live edit"); changed.insert("edited_at_ms", 1700000000020LL);
