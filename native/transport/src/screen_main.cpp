@@ -90,7 +90,8 @@ struct Events final : livekit::RoomDelegate {
 };
 void publish(ScreenControl& control, const gcp::transport::ScreenGrant& grant,
              const GraphicsCaptureItem& item, int source_width, int source_height) {
-    livekit::initialize(livekit::LogLevel::Off);
+    if (!livekit::initialize(livekit::LogLevel::Off))
+        throw std::runtime_error("SDK initialization failed");
     struct Shutdown { ~Shutdown() { livekit::shutdown(); } } shutdown;
     Events events(control); // Must outlive Room, including asynchronous teardown.
     livekit::Room room;

@@ -252,6 +252,9 @@ void ScreenSession::stopWithReason(const QString& reason) {
     awaitingConsent_ = consent_ = sharing_ = connected_ = capturing_ = false;
     heartbeat_.stop(); renewal_.stop(); deadline_.stop(); startup_.stop(); abortPending();
     emit consentInvalidated(); revoke();
+    sourceName_.clear(); scopeLabel_.clear(); width_ = height_ = 0;
+    access_.fill(QChar(0)); access_.clear(); user_.clear();
+    community_.clear(); channel_.clear(); origin_.clear();
     if (process_.state() != QProcess::NotRunning) {
         status_ = QStringLiteral("Stopping screen capture…");
         control("stop"); process_.closeWriteChannel(); process_.closeReadChannel(QProcess::StandardOutput);

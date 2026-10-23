@@ -89,8 +89,9 @@ a baseline, not complete attribution. No stable-distribution approval is implied
 ## Checks and evidence
 
 The [PR #86 checks](https://github.com/justinangeloperez327/gaming-communication-platform/pull/86/checks)
-are authoritative for the exact tested head. Final checked-head evidence is added
-once the required Windows and Linux runs complete. The editing host has no
+record the exact tested head and each required result. The PR description is the
+checked-head audit record, including run links, counts and any failures fixed;
+this maintained guide records capability and acceptance boundaries. The editing host has no
 Rust/Qt/Windows toolchains; those checks execute in CI. Local portable native
 control/parser checks and all 50 Python tests pass. Address/undefined sanitizer
 checks run locally with LeakSanitizer disabled because this host runs under
