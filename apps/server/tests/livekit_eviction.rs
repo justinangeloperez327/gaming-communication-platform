@@ -193,6 +193,7 @@ async fn call(
         .await
         .expect("response");
     let status = response.status();
+    assert_eq!(response.headers()["cache-control"], "no-store");
     let bytes = axum::body::to_bytes(response.into_body(), 16384)
         .await
         .expect("body");
@@ -548,4 +549,163 @@ async fn revoked_sessions_memberships_and_deleted_channels_are_evicted_and_retri
         .execute(&pool)
         .await
         .expect("cleanup");
+}
+
+fn screen_claims(grant: &Value, channel: Uuid, purpose: &str) -> String {
+    let id = grant["id"].as_str().expect("lease ID");
+    let expected_identity = format!("gcp-screen-{purpose}-{id}");
+    let expected_room = format!("gcp-screen-{channel}");
+    assert_eq!(grant["purpose"], purpose);
+    assert_eq!(grant["participant_identity"], expected_identity);
+    assert_eq!(grant["room"], expected_room);
+    let parts: Vec<_> = grant["participant_token"].as_str().expect("JWT").split('.').collect();
+    let mut mac = Hmac::<Sha256>::new_from_slice(SECRET.as_bytes()).expect("HMAC");
+    mac.update(format!("{}.{}", parts[0], parts[1]).as_bytes());
+    mac.verify_slice(&URL_SAFE_NO_PAD.decode(parts[2]).expect("signature"))
+        .expect("actual server signature");
+    let claims: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).expect("claims"))
+        .expect("JSON claims");
+    assert_eq!(claims["sub"], expected_identity);
+    assert_eq!(claims["video"], json!({"roomJoin":true,"room":expected_room,
+        "canPublish":purpose=="publish", "canPublishSources":if purpose=="publish" {json!(["screen_share"])} else {json!([])},
+        "canSubscribe":purpose=="view","canPublishData":false,"canUpdateOwnMetadata":false}));
+    let expiry = claims["exp"].as_u64().expect("expiry");
+    assert!(expiry > now() && expiry <= now()+60);
+    assert!(grant["expires_in"].as_u64().expect("lifetime")<=60);
+    assert!(claims.get("email").is_none());
+    expected_identity
+}
+
+#[tokio::test]
+async fn screen_consent_leases_ownership_revocation_and_voice_coexistence() {
+    let Ok(url) = std::env::var("GCP_TEST_DATABASE_URL") else { return };
+    let pool = PgPoolOptions::new().max_connections(6).connect(&url).await.expect("PostgreSQL");
+    MIGRATOR.run(&pool).await.expect("migrations");
+    let sfu = SfuFixture::new().await;
+    let config = sfu.config();
+    let app = router_with_livekit(Some(pool.clone()), Some(config.clone()));
+    let owner = user(&pool).await;
+    let member = user(&pool).await;
+    let outsider = user(&pool).await;
+    let (_, owner_token, _) = session(&pool, owner).await;
+    let (login, token, refresh) = session(&pool, member).await;
+    let (_, other_login, _) = session(&pool, member).await;
+    let (_, outsider_token, _) = session(&pool, outsider).await;
+    let (status, community) = call(&app,"POST","/v1/communities",Some(&owner_token),
+        Some(json!({"name":"Screen authorization"}))).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let community = Uuid::parse_str(community["id"].as_str().expect("community")).expect("UUID");
+    sqlx::query("INSERT INTO community_memberships(community_id,user_id,role) VALUES($1,$2,'member')")
+        .bind(community).bind(member).execute(&pool).await.expect("member");
+    let mut channels = Vec::new();
+    for kind in ["voice","voice","text"] {
+        let (_, channel) = call(&app,"POST",&format!("/v1/communities/{community}/channels"),
+            Some(&owner_token), Some(json!({"name":format!("screen-{}",channels.len()),"channel_kind":kind,"position":channels.len()}))).await;
+        channels.push(Uuid::parse_str(channel["id"].as_str().expect("channel")).expect("UUID"));
+    }
+    let channel = channels[0];
+    let path = format!("/v1/communities/{community}/channels/{channel}/screen-sessions");
+    let create = json!({"purpose":"publish","consent":true});
+    assert_eq!(call(&app,"POST",&path,None,Some(create.clone())).await.0,StatusCode::UNAUTHORIZED);
+    assert_eq!(call(&app,"POST",&path,Some(&outsider_token),Some(create.clone())).await.0,StatusCode::SERVICE_UNAVAILABLE);
+    // Readiness blocks all creation; no lease is persisted before SFU health.
+    assert_eq!(call(&app,"POST",&path,Some(&token),Some(create.clone())).await.0,StatusCode::SERVICE_UNAVAILABLE);
+    config.reconcile_voice_access(&pool).await.expect("initial health");
+    assert_eq!(call(&app,"POST",&path,Some(&outsider_token),Some(create.clone())).await.0,StatusCode::NOT_FOUND);
+    for invalid in [json!({"purpose":"publish","consent":false}),json!({"purpose":"publish"}),
+        json!({"purpose":"camera","consent":true}),json!({"purpose":"publish","consent":true,"identity":"chosen"})] {
+        assert!(matches!(call(&app,"POST",&path,Some(&token),Some(invalid)).await.0.as_u16(),400|422));
+    }
+    for invalid_path in [format!("/v1/communities/{community}/channels/{}/screen-sessions",channels[2]),
+        format!("/v1/communities/{outsider}/channels/{channel}/screen-sessions")] {
+        assert_eq!(call(&app,"POST",&invalid_path,Some(&token),Some(create.clone())).await.0,StatusCode::NOT_FOUND);
+    }
+    // Simultaneous creates must yield exactly one lease, not identity takeover.
+    let (first, second) = tokio::join!(call(&app,"POST",&path,Some(&token),Some(create.clone())),
+        call(&app,"POST",&path,Some(&token),Some(create.clone())));
+    let (grant, denied) = if first.0==StatusCode::CREATED {(first,second)} else {(second,first)};
+    assert_eq!(grant.0,StatusCode::CREATED);
+    assert_eq!(denied.0,StatusCode::CONFLICT);
+    let publisher = screen_claims(&grant.1,channel,"publish");
+    let lease = grant.1["id"].as_str().expect("lease");
+    let lease_path = format!("{path}/{lease}");
+    let renew_path = format!("{lease_path}/renew");
+    let (_, viewer_grant) = call(&app,"POST",&path,Some(&token),Some(json!({"purpose":"view","consent":true}))).await;
+    let viewer = screen_claims(&viewer_grant,channel,"view");
+    assert_ne!(publisher,viewer);
+    let voice_path = format!("/v1/communities/{community}/channels/{channel}/livekit-token");
+    let (voice_status, voice_grant) = call(&app,"POST",&voice_path,Some(&token),None).await;
+    assert_eq!(voice_status,StatusCode::CREATED);
+    assert_eq!(voice_grant["room"],room(channel));
+    let voice_claims: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(voice_grant["participant_token"]
+        .as_str().expect("voice JWT").split('.').nth(1).expect("claims")).expect("base64")).expect("JSON");
+    assert_eq!(voice_claims["sub"],identity(login));
+    assert_eq!(voice_claims["video"]["canPublishSources"],json!(["microphone"]));
+    let screen_room = format!("gcp-screen-{channel}");
+    {
+        let mut state = sfu.state.lock().await;
+        state.rooms.insert(room(channel),vec![identity(login),publisher.clone()]);
+        state.rooms.insert(screen_room.clone(),vec![publisher.clone(),viewer.clone(),identity(login),
+            publisher.replace("-publish-","-view-")]);
+        state.rooms.insert(format!("gcp-screen-{}",channels[1]),vec![publisher.clone()]);
+        state.rooms.insert("operator-diagnostic-room".into(),vec!["operator-peer".into()]);
+    }
+    assert_eq!(config.reconcile_voice_access(&pool).await.expect("scope and purpose isolation").removed,4);
+    let (listed_status, listed) = call(&app,"GET",&path,Some(&owner_token),None).await;
+    assert_eq!(listed_status,StatusCode::OK);
+    assert_eq!(listed.as_array().expect("publishers").len(),1);
+    assert_eq!(listed[0]["user_id"],member.to_string());
+    assert_eq!(listed[0]["participant_identity"],publisher);
+    assert!(listed[0].get("participant_token").is_none());
+    assert!(listed[0].get("session_id").is_none());
+    assert_eq!(call(&app,"GET",&path,Some(&outsider_token),None).await.0,StatusCode::NOT_FOUND);
+    // Same account on another login and community owner cannot renew/stop it.
+    for other in [&other_login,&owner_token,&outsider_token] {
+        assert_eq!(call(&app,"POST",&renew_path,Some(other),Some(json!({"consent":true}))).await.0,StatusCode::NOT_FOUND);
+        assert_eq!(call(&app,"DELETE",&lease_path,Some(other),None).await.0,StatusCode::NO_CONTENT);
+    }
+    assert!(sfu.state.lock().await.rooms[&screen_room].contains(&publisher));
+    assert_eq!(call(&app,"POST",&renew_path,Some(&token),Some(json!({"consent":false}))).await.0,StatusCode::BAD_REQUEST);
+    let (status, rotated) = call(&app,"POST","/v1/auth/refresh",None,Some(json!({"refresh_token":refresh}))).await;
+    assert_eq!(status,StatusCode::OK);
+    let fresh = rotated["access_token"].as_str().expect("rotated token");
+    assert_eq!(call(&app,"POST",&renew_path,Some(&token),Some(json!({"consent":true}))).await.0,StatusCode::UNAUTHORIZED);
+    let (status, renewed) = call(&app,"POST",&renew_path,Some(fresh),Some(json!({"consent":true}))).await;
+    assert_eq!(status,StatusCode::OK);
+    assert_eq!(screen_claims(&renewed,channel,"publish"),publisher);
+    assert_ne!(renewed["participant_token"],grant.1["participant_token"]);
+    // Lost control plane cannot prevent durable Stop; next pass removes only it.
+    sfu.state.lock().await.failure=Some("RemoveParticipant".into());
+    assert_eq!(call(&app,"DELETE",&lease_path,Some(fresh),None).await.0,StatusCode::NO_CONTENT);
+    assert_eq!(call(&app,"POST",&path,Some(fresh),Some(create.clone())).await.0,StatusCode::SERVICE_UNAVAILABLE);
+    sfu.state.lock().await.failure=None;
+    let restarted = sfu.config();
+    assert_eq!(restarted.reconcile_voice_access(&pool).await.expect("restart/stop retry").removed,1);
+    assert_eq!(sfu.state.lock().await.rooms[&room(channel)],vec![identity(login)]);
+    assert_eq!(sfu.state.lock().await.rooms[&screen_room],vec![viewer.clone()]);
+    config.reconcile_voice_access(&pool).await.expect("health recovered");
+    assert_eq!(call(&app,"POST",&renew_path,Some(fresh),Some(json!({"consent":true}))).await.0,StatusCode::NOT_FOUND);
+    assert_eq!(call(&app,"DELETE",&lease_path,Some(fresh),None).await.0,StatusCode::NO_CONTENT);
+    let (_, replacement) = call(&app,"POST",&path,Some(fresh),Some(create.clone())).await;
+    let replacement_identity = screen_claims(&replacement,channel,"publish");
+    assert_ne!(replacement_identity,publisher);
+    // Expired leases cannot be renewed; a new explicit create gets a new ID.
+    sqlx::query("UPDATE screen_leases SET expires_at=clock_timestamp()-interval '1 second' WHERE session_id=$1")
+        .bind(login).execute(&pool).await.expect("expire leases");
+    assert_eq!(call(&app,"POST",&format!("{path}/{}/renew",replacement["id"].as_str().expect("id")),
+        Some(fresh),Some(json!({"consent":true}))).await.0,StatusCode::NOT_FOUND);
+    sfu.state.lock().await.rooms.get_mut(&screen_room).expect("room").push(replacement_identity);
+    assert_eq!(config.reconcile_voice_access(&pool).await.expect("expired publisher/viewer").removed,2);
+    let (_, renewed_publisher) = call(&app,"POST",&path,Some(fresh),Some(create.clone())).await;
+    let active = screen_claims(&renewed_publisher,channel,"publish");
+    sfu.state.lock().await.rooms.get_mut(&screen_room).expect("room").push(active);
+    // Membership removal revokes both scopes; Stop still works without membership.
+    assert_eq!(call(&app,"DELETE",&format!("/v1/communities/{community}/members/{member}"),Some(&owner_token),None).await.0,StatusCode::NO_CONTENT);
+    assert_eq!(call(&app,"POST",&format!("{path}/{}/renew",renewed_publisher["id"].as_str().expect("id")),Some(fresh),Some(json!({"consent":true}))).await.0,StatusCode::NOT_FOUND);
+    assert_eq!(config.reconcile_voice_access(&pool).await.expect("membership revoked").removed,2);
+    assert_eq!(call(&app,"DELETE",&format!("{path}/{}",renewed_publisher["id"].as_str().expect("id")),Some(fresh),None).await.0,StatusCode::NO_CONTENT);
+    assert_eq!(sfu.state.lock().await.rooms["operator-diagnostic-room"],vec!["operator-peer"]);
+    assert_eq!(call(&app,"POST",&path,Some(fresh),Some(create)).await.0,StatusCode::NOT_FOUND);
+    sqlx::query("DELETE FROM communities WHERE id=$1").bind(community).execute(&pool).await.expect("cleanup community");
+    sqlx::query("DELETE FROM users WHERE id=ANY($1)").bind(vec![owner,member,outsider]).execute(&pool).await.expect("cleanup users");
 }

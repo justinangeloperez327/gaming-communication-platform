@@ -390,7 +390,7 @@ pub(crate) async fn login(
     Ok(Json(session_response(user, access, refresh, owner)))
 }
 
-fn bearer_digest(headers: &HeaderMap) -> Result<String, AuthError> {
+pub(crate) fn bearer_digest(headers: &HeaderMap) -> Result<String, AuthError> {
     let raw = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
