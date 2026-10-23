@@ -2,11 +2,11 @@
 
 GCP retains three separate runtime boundaries:
 
-- **Qt/C++20 desktop:** in-memory account session, asynchronous authenticated HTTP requests, community/channel/member/invitation management, independent text/voice selection, bounded text history/composition, authenticated event sockets, subprocess lifecycle and consent UI.
+- **Qt/C++20 desktop:** in-memory account session, asynchronous authenticated HTTP requests, community/channel/member/invitation and friend/block/conversation management, independent text/voice selection, bounded text history/composition, authenticated event sockets, subprocess lifecycle and consent UI.
 - **Rust/Axum modular monolith:** PostgreSQL-backed accounts/sessions, community roles, messages, friends/DMs, channel event sockets and restricted LiveKit voice JWT issuance.
 - **Native LiveKit/Windows media:** a voice child process uses WebRTC platform audio. Separate diagnostic executables exercise Windows Graphics Capture, CPU readback or same-device D3D11 BGRA→NV12 conversion, asynchronous hardware-class Media Foundation H.264 output and encoded LiveKit transport.
 
-LiveKit SFU media bypasses the Rust application API. PostgreSQL stores durable metadata and messages; there is no implemented Redis/object-storage dependency. Desktop friends/DM flows, stream viewing, screen-sharing controls and window selection remain incomplete. Synthetic video and pre-encoded files are explicit diagnostic inputs.
+LiveKit SFU media bypasses the Rust application API. PostgreSQL stores durable metadata and messages; there is no implemented Redis/object-storage dependency. Stream viewing, screen-sharing controls and window selection remain incomplete. Synthetic video and pre-encoded files are explicit diagnostic inputs.
 
 Account ownership is bootstrapped by an explicit local operator command. The
 server enforces owner-only, email-bound invitations for new accounts; the Qt
@@ -39,6 +39,15 @@ ID refetches. Client-generated message UUIDs reuse the existing database primary
 key for safe explicit POST retries; no new table or broker is needed. Text
 selection has its own signal and does not emit the voice selection-change
 signal. See [desktop messaging](desktop-messaging.md).
+
+Group 6 reuses that message model/controller/composer for private conversations.
+A separate directory stages bounded friend/request/block/conversation refreshes;
+its selection does not touch community or voice selection. DM notifications use
+the same transport logic with a separate hub, preventing equal conversation and
+channel UUIDs from sharing activity. Ordered pair locks serialize private writes
+with block/unfriend, which wake active subscriptions only after commit. Current
+friendship and bilateral block checks remain server-side; community roles never
+grant DM moderation rights. See [desktop friends](desktop-friends.md).
 
 Builds use CMake/Qt and Cargo. PR/manual CI validates the application, API, real
 disposable server stack, portable ZIP and per-user alpha installer. A separate
