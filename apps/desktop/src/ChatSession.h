@@ -12,11 +12,17 @@
 
 class AccountSession;
 class ChannelDirectory;
+class FriendsDirectory;
 struct ChatRuntime { int retryBaseMs = 1000; int pollMs = 30000; int deadlineMs = 10000; };
 
 class ChatSession final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QAbstractItemModel *messages READ messages CONSTANT)
+    Q_PROPERTY(QString scopeId READ scopeId NOTIFY scopeChanged)
+    Q_PROPERTY(QString scopeKey READ scopeKey NOTIFY scopeChanged)
+    Q_PROPERTY(QString title READ title NOTIFY changed)
+    Q_PROPERTY(bool direct READ direct CONSTANT)
+    Q_PROPERTY(bool canModerate READ canModerate NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(bool live READ live NOTIFY changed)
     Q_PROPERTY(bool loading READ loading NOTIFY changed)
@@ -31,7 +37,13 @@ class ChatSession final : public QObject {
     Q_PROPERTY(bool retrySend READ retrySend NOTIFY draftChanged)
 public:
     explicit ChatSession(AccountSession *account, ChannelDirectory *directory, QObject *parent = nullptr, ChatRuntime runtime = {});
+    explicit ChatSession(AccountSession *account, FriendsDirectory *friends, QObject *parent = nullptr, ChatRuntime runtime = {});
     ~ChatSession() override;
+    QString scopeId() const { return channel_; }
+    QString scopeKey() const { return draftKey(); }
+    QString title() const;
+    bool direct() const { return friends_ != nullptr; }
+    bool canModerate() const;
     QAbstractItemModel *messages() { return &model_; }
     QString status() const { return status_; }
     bool live() const { return socketReady_; }
@@ -56,6 +68,7 @@ public:
     Q_INVOKABLE int utf8Bytes(const QString &text) const { return static_cast<int>(text.toUtf8().size()); }
 signals:
     void changed();
+    void scopeChanged();
     void draftChanged();
     void historyReset();
     void accessRevoked();
@@ -63,7 +76,11 @@ signals:
 private:
     enum class Read { Members, Latest, Older, Message };
     enum class Mutation { Create, Edit, Delete };
-    struct Draft { QString body, attempt; };
+    struct Draft { QString body, attempt, peer; };
+    ChatSession(AccountSession *account, ChannelDirectory *directory, FriendsDirectory *friends, QObject *parent, ChatRuntime runtime);
+    void directAuthors();
+    QString scopeField() const;
+    QString choiceStatus() const;
     void selection();
     void accountChanged();
     void stopTransport();
@@ -87,6 +104,7 @@ private:
     QString draftKey() const;
     AccountSession *account_;
     ChannelDirectory *directory_;
+    FriendsDirectory *friends_;
     ChatRuntime runtime_;
     MessageModel model_;
     QNetworkAccessManager network_;

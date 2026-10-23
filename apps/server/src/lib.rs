@@ -189,10 +189,18 @@ pub fn router_with_livekit(
         )
         .route(
             "/v1/dms/{conversation_id}/messages/{message_id}",
-            get(direct_messages::get).patch(direct_messages::edit).delete(direct_messages::delete),
+            get(direct_messages::get)
+                .patch(direct_messages::edit)
+                .delete(direct_messages::delete),
         )
-        .route("/v1/dms/{conversation_id}/events", get(realtime::subscribe_direct))
-        .route("/v1/friends/requests/{request_id}", axum::routing::delete(friends::cancel_request))
+        .route(
+            "/v1/dms/{conversation_id}/events",
+            get(realtime::subscribe_direct),
+        )
+        .route(
+            "/v1/friends/requests/{request_id}",
+            axum::routing::delete(friends::cancel_request),
+        )
         // Session credentials and private API responses must not be cached by
         // browsers or reverse proxies, including authentication error replies.
         .layer(axum::middleware::map_response(no_store))

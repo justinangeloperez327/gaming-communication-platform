@@ -170,7 +170,14 @@ pub(crate) async fn requests(
     .await
     .map_err(err)?;
     Ok(Json(
-        rows.iter().map(|row| Ok(PendingRequestView {request: request_view(row)?, other: user_view(row)?})).collect::<Result<_, AuthError>>()?,
+        rows.iter()
+            .map(|row| {
+                Ok(PendingRequestView {
+                    request: request_view(row)?,
+                    other: user_view(row)?,
+                })
+            })
+            .collect::<Result<_, AuthError>>()?,
     ))
 }
 
@@ -244,22 +251,43 @@ pub(crate) async fn decline(
 }
 
 pub(crate) async fn cancel_request(
-    State(state): State<AppState>, headers: HeaderMap, Path(raw): Path<String>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(raw): Path<String>,
 ) -> Result<StatusCode, AuthError> {
     let (pool, user) = actor(&state, &headers).await?;
     let request = id(&raw)?;
-    let other: Uuid = sqlx::query_scalar("SELECT receiver_id FROM friend_requests WHERE id=$1 AND sender_id=$2 AND status='pending'")
-        .bind(request).bind(user).fetch_optional(&pool).await.map_err(err)?.ok_or(AuthError::NotFound)?;
+    let other: Uuid = sqlx::query_scalar(
+        "SELECT receiver_id FROM friend_requests WHERE id=$1 AND sender_id=$2 AND status='pending'",
+    )
+    .bind(request)
+    .bind(user)
+    .fetch_optional(&pool)
+    .await
+    .map_err(err)?
+    .ok_or(AuthError::NotFound)?;
     let mut tx = pool.begin().await.map_err(err)?;
     lock_pair(&mut tx, user, other).await?;
-    let removed = sqlx::query("DELETE FROM friend_requests WHERE id=$1 AND sender_id=$2 AND status='pending'")
-        .bind(request).bind(user).execute(&mut *tx).await.map_err(err)?;
-    if removed.rows_affected() != 1 { return Err(AuthError::NotFound); }
+    let removed = sqlx::query(
+        "DELETE FROM friend_requests WHERE id=$1 AND sender_id=$2 AND status='pending'",
+    )
+    .bind(request)
+    .bind(user)
+    .execute(&mut *tx)
+    .await
+    .map_err(err)?;
+    if removed.rows_affected() != 1 {
+        return Err(AuthError::NotFound);
+    }
     tx.commit().await.map_err(err)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn direct_room(tx: &mut Transaction<'_, Postgres>, user: Uuid, other: Uuid) -> Result<Option<Uuid>, AuthError> {
+async fn direct_room(
+    tx: &mut Transaction<'_, Postgres>,
+    user: Uuid,
+    other: Uuid,
+) -> Result<Option<Uuid>, AuthError> {
     sqlx::query_scalar("SELECT id FROM dm_conversations WHERE user_low=LEAST($1::uuid,$2::uuid) AND user_high=GREATEST($1::uuid,$2::uuid)")
         .bind(user).bind(other).fetch_optional(&mut **tx).await.map_err(err)
 }
@@ -306,7 +334,9 @@ pub(crate) async fn remove_friend(
         return Err(AuthError::NotFound);
     }
     tx.commit().await.map_err(err)?;
-    if let Some(room) = room { state.dm_realtime.access_changed(room, user); }
+    if let Some(room) = room {
+        state.dm_realtime.access_changed(room, user);
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -349,7 +379,9 @@ pub(crate) async fn block(
     .await
     .map_err(err)?;
     tx.commit().await.map_err(err)?;
-    if let Some(room) = room { state.dm_realtime.access_changed(room, user); }
+    if let Some(room) = room {
+        state.dm_realtime.access_changed(room, user);
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

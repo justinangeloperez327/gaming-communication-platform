@@ -27,7 +27,7 @@ use tokio::{
 use crate::{
     AppState,
     auth::{self, AuthError},
-    messages, direct_messages,
+    direct_messages, messages,
 };
 
 const EVENT_QUEUE_CAPACITY: usize = 256;
@@ -229,11 +229,25 @@ enum Subscription {
     Direct(Uuid),
 }
 impl Subscription {
-    fn room(self) -> Uuid { match self { Self::Channel {channel, ..} => channel, Self::Direct(id) => id } }
-    fn key(self) -> &'static str { match self { Self::Channel {..} => "channel_id", Self::Direct(_) => "conversation_id" } }
+    fn room(self) -> Uuid {
+        match self {
+            Self::Channel { channel, .. } => channel,
+            Self::Direct(id) => id,
+        }
+    }
+    fn key(self) -> &'static str {
+        match self {
+            Self::Channel { .. } => "channel_id",
+            Self::Direct(_) => "conversation_id",
+        }
+    }
     async fn allowed(self, pool: &PgPool, user: Uuid) -> bool {
         match self {
-            Self::Channel {community, channel} => messages::text_channel(pool, community, channel, user).await.is_ok(),
+            Self::Channel { community, channel } => {
+                messages::text_channel(pool, community, channel, user)
+                    .await
+                    .is_ok()
+            }
             Self::Direct(id) => direct_messages::authorize(pool, id, user).await.is_ok(),
         }
     }
@@ -283,19 +297,43 @@ pub(crate) async fn subscribe(
     Ok(upgrade
         .max_message_size(2048)
         .max_frame_size(2048)
-        .on_upgrade(move |socket| handle(socket, hub, pool, headers, Subscription::Channel {community, channel}, user)))
+        .on_upgrade(move |socket| {
+            handle(
+                socket,
+                hub,
+                pool,
+                headers,
+                Subscription::Channel { community, channel },
+                user,
+            )
+        }))
 }
 
 pub(crate) async fn subscribe_direct(
-    State(state): State<AppState>, headers: HeaderMap, Path(raw): Path<String>, upgrade: WebSocketUpgrade,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(raw): Path<String>,
+    upgrade: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, AuthError> {
     let conversation = Uuid::parse_str(&raw).map_err(|_| AuthError::InvalidRequest)?;
     let pool = auth::database(&state)?;
     let (user, _) = auth::authenticated_user(pool, &headers).await?;
     direct_messages::authorize(pool, conversation, user).await?;
-    let pool = pool.clone(); let hub = state.dm_realtime.clone();
-    Ok(upgrade.max_message_size(2048).max_frame_size(2048)
-        .on_upgrade(move |socket| handle(socket, hub, pool, headers, Subscription::Direct(conversation), user)))
+    let pool = pool.clone();
+    let hub = state.dm_realtime.clone();
+    Ok(upgrade
+        .max_message_size(2048)
+        .max_frame_size(2048)
+        .on_upgrade(move |socket| {
+            handle(
+                socket,
+                hub,
+                pool,
+                headers,
+                Subscription::Direct(conversation),
+                user,
+            )
+        }))
 }
 
 async fn handle(
@@ -504,7 +542,14 @@ mod tests {
             Uuid::from_u128(5),
             EventKind::Created,
         );
-        let encoded = encode(&ev, Subscription::Channel {community: Uuid::from_u128(1), channel: ev.channel}).expect("JSON");
+        let encoded = encode(
+            &ev,
+            Subscription::Channel {
+                community: Uuid::from_u128(1),
+                channel: ev.channel,
+            },
+        )
+        .expect("JSON");
         assert!(encoded.contains("message_created"));
         assert!(!encoded.contains("body"));
         assert!(!encoded.contains("token"));

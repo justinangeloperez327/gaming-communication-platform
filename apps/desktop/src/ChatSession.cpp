@@ -2,6 +2,8 @@
 #include "AccountSession.h"
 #include "BoundedReply.h"
 #include "ChannelDirectory.h"
+#include "FriendsDirectory.h"
+#include "ChatProtocol.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkProxy>
@@ -16,22 +18,9 @@ namespace {
 constexpr int pageSize = 50;
 constexpr int maximumEvents = 256;
 constexpr int maximumDrafts = 10;
-bool uuid(const QString &value) {
-    const QUuid id(value);
-    return !id.isNull() && id.toString(QUuid::WithoutBraces) == value;
-}
-bool bodyValid(const QString &body) {
-    if (body.trimmed().isEmpty() || body.toUtf8().size() > 4000) return false;
-    for (const auto c : body)
-        if (c.category() == QChar::Other_Control && c != QChar('\n') && c != QChar('\t')) return false;
-    return true;
-}
-bool originValid(const QUrl &url) {
-    return url.isValid() && !url.host().isEmpty() && url.userInfo().isEmpty() && !url.hasQuery() && !url.hasFragment() &&
-        (url.path().isEmpty() || url.path() == QStringLiteral("/")) &&
-        (url.scheme() == QStringLiteral("https") || (url.scheme() == QStringLiteral("http") &&
-            (url.host() == QStringLiteral("localhost") || url.host() == QStringLiteral("127.0.0.1"))));
-}
+using ChatProtocol::uuid;
+using ChatProtocol::bodyValid;
+using ChatProtocol::originValid;
 std::optional<qint64> timestamp(const QJsonValue &value, bool nullable) {
     if (nullable && value.isNull()) return 0;
     if (!value.isDouble()) return std::nullopt;
@@ -42,7 +31,11 @@ std::optional<qint64> timestamp(const QJsonValue &value, bool nullable) {
 }
 
 ChatSession::ChatSession(AccountSession *account, ChannelDirectory *directory, QObject *parent, ChatRuntime runtime)
-    : QObject(parent), account_(account), directory_(directory), runtime_(runtime) {
+    : ChatSession(account, directory, nullptr, parent, runtime) {}
+ChatSession::ChatSession(AccountSession *account, FriendsDirectory *friends, QObject *parent, ChatRuntime runtime)
+    : ChatSession(account, nullptr, friends, parent, runtime) {}
+ChatSession::ChatSession(AccountSession *account, ChannelDirectory *directory, FriendsDirectory *friends, QObject *parent, ChatRuntime runtime)
+    : QObject(parent), account_(account), directory_(directory), friends_(friends), runtime_(runtime) {
     runtime_.retryBaseMs = qBound(10, runtime_.retryBaseMs, 30000);
     runtime_.pollMs = qMax(100, runtime_.pollMs);
     runtime_.deadlineMs = qBound(100, runtime_.deadlineMs, 10000);
@@ -64,13 +57,24 @@ ChatSession::ChatSession(AccountSession *account, ChannelDirectory *directory, Q
     connect(&heartbeatTimer_, &QTimer::timeout, this, [this]() {
         if (socketReady_ && socket_) { socketDeadline_.start(runtime_.deadlineMs); socket_->ping(); }
     });
-    connect(directory_, &ChannelDirectory::textSelectionChanged, this, &ChatSession::selection);
-    connect(directory_, &ChannelDirectory::changed, this, [this]() { selection(); emit changed(); });
+    if (directory_) {
+        connect(directory_, &ChannelDirectory::textSelectionChanged, this, &ChatSession::selection);
+        connect(directory_, &ChannelDirectory::changed, this, [this]() { selection(); emit changed(); });
+    } else {
+        connect(friends_, &FriendsDirectory::selectionChanged, this, &ChatSession::selection);
+        connect(friends_, &FriendsDirectory::changed, this, [this]() { selection(); emit changed(); });
+        connect(friends_, &FriendsDirectory::relationshipLost, this, [this](const QString &peer) {
+            for (auto it = drafts_.begin(); it != drafts_.end(); ) {
+                if (it.value().peer == peer) it = drafts_.erase(it); else ++it;
+            }
+            emit draftChanged(); emit changed();
+        });
+    }
     connect(account_, &AccountSession::changed, this, &ChatSession::accountChanged);
     connect(account_, &AccountSession::signedOut, this, [this]() {
         drafts_.clear(); selection(); emit draftChanged();
     });
-    accountChanged(); selection();
+    status_ = choiceStatus(); accountChanged(); selection();
 }
 ChatSession::~ChatSession() {
     stopTransport();
@@ -93,35 +97,48 @@ void ChatSession::stopTransport() {
     awaitingAccount_ = false; abortReply(read_); stopSocket(); events_.clear();
 }
 QString ChatSession::path() const {
-    return QStringLiteral("/v1/communities/%1/channels/%2").arg(community_, channel_);
+    return friends_ ? QStringLiteral("/v1/dms/") + channel_ : QStringLiteral("/v1/communities/%1/channels/%2").arg(community_, channel_);
+}
+QString ChatSession::scopeField() const { return friends_ ? QStringLiteral("conversation_id") : QStringLiteral("channel_id"); }
+QString ChatSession::choiceStatus() const { return friends_ ? QStringLiteral("Choose a private conversation") : QStringLiteral("Choose a text channel"); }
+QString ChatSession::title() const {
+    if (friends_) return friends_->conversationId().isEmpty() ? QStringLiteral("Direct messages") : friends_->peerName();
+    return directory_->textChannelName().isEmpty() ? QStringLiteral("Text messages") : QStringLiteral("# ") + directory_->textChannelName();
+}
+bool ChatSession::canModerate() const { return directory_ && directory_->canManage(); }
+void ChatSession::directAuthors() {
+    if (!friends_) return;
+    names_.clear(); names_.insert(account_->userId(), account_->displayName());
+    if (!friends_->peerId().isEmpty()) names_.insert(friends_->peerId(), friends_->peerName());
+    model_.authors(names_);
 }
 QString ChatSession::draftKey() const { return community_ + QChar('/') + channel_; }
 QString ChatSession::draft() const { return drafts_.value(draftKey()).body; }
 bool ChatSession::retrySend() const { return !drafts_.value(draftKey()).attempt.isEmpty(); }
 bool ChatSession::canMutate() const {
-    return authorized_ && !blocked_ && !channel_.isEmpty() && account_->signedIn() && uuid(account_->userId()) && !account_->busy() && !directory_->busy() && !sending();
+    return authorized_ && !blocked_ && !channel_.isEmpty() && account_->signedIn() && uuid(account_->userId()) && !account_->busy() && (friends_ ? friends_->verified() && !friends_->mutating() : !directory_->busy()) && !sending();
 }
 bool ChatSession::canSubmit() const { return canMutate() && bodyValid(draft()); }
 void ChatSession::setStatus(const QString &status) { status_ = status; emit changed(); }
 void ChatSession::selection() {
-    const auto community = account_->signedIn() ? directory_->communityId() : QString{};
-    const auto channel = account_->signedIn() ? directory_->textChannelId() : QString{};
-    if (community == community_ && channel == channel_) return;
-    if (!community_.isEmpty() && community.isEmpty()) {
+    const auto community = account_->signedIn() ? (friends_ ? QStringLiteral("dm") : directory_->communityId()) : QString{};
+    const auto channel = account_->signedIn() ? (friends_ ? friends_->conversationId() : directory_->textChannelId()) : QString{};
+    if (community == community_ && channel == channel_) { directAuthors(); return; }
+    if (!friends_ && !community_.isEmpty() && community.isEmpty()) {
         for (auto it = drafts_.begin(); it != drafts_.end(); ) {
             if (it.key().startsWith(community_ + QChar('/'))) it = drafts_.erase(it); else ++it;
         }
-    } else if (community == community_ && channel.isEmpty()) {
+    } else if (!friends_ && community == community_ && channel.isEmpty()) {
         drafts_.remove(draftKey()); // The selected text channel was removed.
     }
     ++generation_; stopTransport(); abortReply(mutation_);
     community_ = community; channel_ = channel;
     authorized_ = false; blocked_ = false; before_.clear(); hasOlder_ = false;
     followingLatest_ = true; newerAvailable_ = false; failures_ = 0;
-    wantLatest_ = !channel_.isEmpty(); wantMembers_ = wantLatest_; wantOlder_ = false;
-    names_.clear(); model_.authors(names_); model_.replace({});
-    emit draftChanged();
-    if (!uuid(community_) || !uuid(channel_)) { setStatus(QStringLiteral("Choose a text channel")); return; }
+    wantLatest_ = !channel_.isEmpty(); wantMembers_ = wantLatest_ && directory_; wantOlder_ = false;
+    names_.clear(); model_.authors(names_); model_.replace({}); directAuthors();
+    emit scopeChanged(); emit draftChanged();
+    if ((!friends_ && !uuid(community_)) || !uuid(channel_)) { setStatus(choiceStatus()); return; }
     setStatus(QStringLiteral("Loading messages…"));
     pollTimer_.start(); openSocket(); pump();
 }
@@ -134,7 +151,7 @@ void ChatSession::accountChanged() {
         // A login rotation must replace the socket's old Authorization header.
         // Pending writes retain their IDs and are never automatically repeated.
         stopTransport(); authorized_ = false; blocked_ = false;
-        wantLatest_ = !channel_.isEmpty(); wantMembers_ = wantLatest_; wantOlder_ = false;
+        wantLatest_ = !channel_.isEmpty(); wantMembers_ = wantLatest_ && directory_; wantOlder_ = false;
         if (!channel_.isEmpty()) { pollTimer_.start(); openSocket(); pump(); }
     } else if (awaitingAccount_ && !account_->busy()) {
         accountDeadline_.stop(); awaitingAccount_ = false;
@@ -148,9 +165,12 @@ bool ChatSession::setDraft(const QString &body) {
     if (drafts_.value(key).body == body) return true;
     if (retrySend()) { setStatus(QStringLiteral("Retry this send or clear the draft before editing.")); return false; }
     if (!body.isEmpty() && !drafts_.contains(key) && drafts_.size() >= maximumDrafts) {
-        setStatus(QStringLiteral("Ten channels already have drafts. Clear one before composing here.")); return false;
+        setStatus(QStringLiteral("Ten chats already have drafts. Clear one before composing here.")); return false;
     }
-    if (body.isEmpty()) drafts_.remove(key); else drafts_[key].body = body;
+    if (body.isEmpty()) drafts_.remove(key); else {
+        drafts_[key].body = body;
+        if (friends_) drafts_[key].peer = friends_->peerId();
+    }
     emit draftChanged(); emit changed(); return true;
 }
 void ChatSession::clearDraft() {
@@ -175,12 +195,12 @@ void ChatSession::editMessage(const QString &id, const QString &body) {
 }
 void ChatSession::deleteMessage(const QString &id) {
     const auto row = model_.find(id);
-    if (!canMutate() || !row || row->deletedMs || (row->author != account_->userId() && !directory_->canManage())) return;
+    if (!canMutate() || !row || row->deletedMs || (row->author != account_->userId() && !canModerate())) return;
     mutate(Mutation::Delete, id);
 }
 void ChatSession::refreshLatest() {
     if (channel_.isEmpty() || !account_->signedIn()) return;
-    blocked_ = false; wantLatest_ = true; wantMembers_ = true; wantOlder_ = false;
+    blocked_ = false; wantLatest_ = true; wantMembers_ = directory_ != nullptr; wantOlder_ = false;
     pollTimer_.start();
     if (!socket_) openSocket();
     pump();
@@ -193,7 +213,7 @@ void ChatSession::reconnect() {
     if (channel_.isEmpty()) return;
     blocked_ = false; stopSocket(); retryTimer_.stop(); failures_ = 0;
     pollTimer_.start();
-    wantLatest_ = true; wantMembers_ = true; openSocket(); pump();
+    wantLatest_ = true; wantMembers_ = directory_ != nullptr; openSocket(); pump();
 }
 void ChatSession::openSocket() {
     if (channel_.isEmpty() || blocked_ || socket_ || !account_->signedIn() || awaitingAccount_) return;
@@ -236,24 +256,24 @@ void ChatSession::socketEvent(const QString &text) {
     const auto object = document.object();
     const auto type = object.value(QStringLiteral("type")).toString();
     if (type == QStringLiteral("resync_required")) { socketFailed(); return; }
-    if (object.value(QStringLiteral("channel_id")).toString() != channel_) { socketFailed(); return; }
+    if (object.value(scopeField()).toString() != channel_) { socketFailed(); return; }
     if (type == QStringLiteral("ready")) {
         if (socketReady_) { socketFailed(); return; }
         socketReady_ = true; failures_ = 0; socketDeadline_.stop(); heartbeatTimer_.start();
         // Subscribe before the authoritative snapshot, then reconcile queued IDs.
-        wantLatest_ = true; wantMembers_ = true; pump(); emit changed(); return;
+        wantLatest_ = true; wantMembers_ = directory_ != nullptr; pump(); emit changed(); return;
     }
     if (!socketReady_) { socketFailed(); return; }
     const auto user = object.value(QStringLiteral("user_id")).toString();
-    if (!uuid(user)) { socketFailed(); return; }
+    if (!uuid(user) || (friends_ && user != account_->userId() && user != friends_->peerId())) { socketFailed(); return; }
     if (type == QStringLiteral("message_created") || type == QStringLiteral("message_edited") || type == QStringLiteral("message_deleted")) {
         const auto id = object.value(QStringLiteral("message_id")).toString();
         if (!uuid(id)) { socketFailed(); return; }
         if (followingLatest_ || model_.find(id) || drafts_.value(draftKey()).attempt == id) queueMessage(id);
         else { newerAvailable_ = true; emit changed(); }
-        if (!names_.contains(user)) wantMembers_ = true;
+        if (!names_.contains(user)) wantMembers_ = directory_ != nullptr;
     } else if (type == QStringLiteral("presence_joined") && !names_.contains(user)) {
-        wantMembers_ = true; pumpTimer_.start();
+        wantMembers_ = directory_ != nullptr; pumpTimer_.start();
     } // Typing/presence are supported by the API, not displayed as chat messages.
 }
 void ChatSession::queueMessage(const QString &id) {
@@ -294,7 +314,7 @@ void ChatSession::read(Read operation, const QString &id) {
         const auto error = reply->error(); auto bytes = reply->readAll(); reply->deleteLater();
         if (http == 401 && account_->signedIn() && (account_->busy() || account_->accessToken() != access)) {
             awaitingAccount_ = account_->busy(); accountDeadline_.start(runtime_.deadlineMs);
-            wantLatest_ = true; wantMembers_ = true;
+            wantLatest_ = true; wantMembers_ = directory_ != nullptr;
             bytes.fill(0); emit changed();
             if (!awaitingAccount_) { accountDeadline_.stop(); pumpTimer_.start(); }
             return;
@@ -328,13 +348,14 @@ void ChatSession::read(Read operation, const QString &id) {
 }
 std::optional<MessageRow> ChatSession::parseMessage(const QJsonObject &object) const {
     MessageRow row;
-    row.id = object.value(QStringLiteral("id")).toString(); row.channel = object.value(QStringLiteral("channel_id")).toString();
+    row.id = object.value(QStringLiteral("id")).toString(); row.channel = object.value(scopeField()).toString();
     row.author = object.value(QStringLiteral("author_id")).toString();
     const auto created = timestamp(object.value(QStringLiteral("created_at_us")), false);
     const auto millis = timestamp(object.value(QStringLiteral("created_at_ms")), false);
     const auto edited = timestamp(object.value(QStringLiteral("edited_at_ms")), true);
     const auto deleted = timestamp(object.value(QStringLiteral("deleted_at_ms")), true);
-    if (!uuid(row.id) || row.channel != channel_ || !uuid(row.author) || !created || !millis || !edited || !deleted ||
+    if (!uuid(row.id) || row.channel != channel_ || !uuid(row.author) ||
+        (friends_ && row.author != account_->userId() && row.author != friends_->peerId()) || !created || !millis || !edited || !deleted ||
         *created / 1000 != *millis || (*edited && *edited < *millis) || (*deleted && *deleted < *millis)) return std::nullopt;
     row.createdUs = *created; row.editedMs = *edited; row.deletedMs = *deleted;
     const auto body = object.value(QStringLiteral("body"));
@@ -451,11 +472,13 @@ void ChatSession::mutate(Mutation operation, const QString &id, const QString &b
 void ChatSession::accessLost() {
     stopTransport(); abortReply(mutation_); authorized_ = false; blocked_ = true;
     wantLatest_ = false; wantMembers_ = false; wantOlder_ = false; hasOlder_ = false;
-    for (auto it = drafts_.begin(); it != drafts_.end(); ) {
+    if (friends_) drafts_.remove(draftKey());
+    else for (auto it = drafts_.begin(); it != drafts_.end(); ) {
         if (it.key().startsWith(community_ + QChar('/'))) it = drafts_.erase(it); else ++it;
     }
     model_.replace({}); names_.clear(); model_.authors(names_);
     emit accessRevoked();
     emit draftChanged(); setStatus(QStringLiteral("Channel access expired or was removed. Refresh communities or sign in again."));
-    if (!directory_->busy() && account_->signedIn() && !account_->busy()) directory_->refresh();
+    if (friends_) friends_->invalidateConversation(channel_);
+    else if (!directory_->busy() && account_->signedIn() && !account_->busy()) directory_->refresh();
 }

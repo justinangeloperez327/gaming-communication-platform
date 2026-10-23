@@ -7,6 +7,7 @@ qt_add_executable(gcp-desktop
     src/ChannelDirectory.cpp
     src/ChannelDirectory.h
     src/ChatSession.cpp src/ChatSession.h src/MessageModel.cpp src/MessageModel.h
+    src/FriendsDirectory.cpp src/FriendsDirectory.h src/ChatProtocol.h
 )
 
 set_source_files_properties(qml/Main.qml PROPERTIES
@@ -22,6 +23,7 @@ set_source_files_properties(qml/AccountPanel.qml PROPERTIES QT_RESOURCE_ALIAS Ac
 set_source_files_properties(qml/CommunityPanel.qml PROPERTIES QT_RESOURCE_ALIAS CommunityPanel.qml)
 set_source_files_properties(qml/VoicePanel.qml PROPERTIES QT_RESOURCE_ALIAS VoicePanel.qml)
 set_source_files_properties(qml/ChatPanel.qml PROPERTIES QT_RESOURCE_ALIAS ChatPanel.qml)
+set_source_files_properties(qml/FriendsPanel.qml PROPERTIES QT_RESOURCE_ALIAS FriendsPanel.qml)
 
 qt_add_qml_module(gcp-desktop
     URI Gcp.Desktop
@@ -34,6 +36,7 @@ qt_add_qml_module(gcp-desktop
         qml/CommunityPanel.qml
         qml/VoicePanel.qml
         qml/ChatPanel.qml
+        qml/FriendsPanel.qml
 )
 
 target_link_libraries(gcp-desktop PRIVATE
@@ -50,6 +53,7 @@ set_target_properties(gcp-desktop PROPERTIES
 if(BUILD_TESTING)
     qt_add_executable(gcp-chat-tests
         src/chat_tests.cpp src/ChatSession.cpp src/ChatSession.h src/MessageModel.cpp src/MessageModel.h
+        src/FriendsDirectory.cpp src/FriendsDirectory.h
         src/AccountSession.cpp src/AccountSession.h src/ChannelDirectory.cpp src/ChannelDirectory.h)
     target_link_libraries(gcp-chat-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::WebSockets)
     target_compile_definitions(gcp-chat-tests PRIVATE GCP_CHAT_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
