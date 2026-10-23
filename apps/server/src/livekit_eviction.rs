@@ -95,10 +95,13 @@ struct Track {
 fn screen_tracks_allowed(participant: &Participant) -> bool {
     match screen_sessions::parse_identity(&participant.identity) {
         Some((_, Purpose::View)) => participant.tracks.is_empty(),
-        Some((_, Purpose::Publish)) => participant.tracks.len() <= 1 && participant.tracks.iter().all(|track| {
-            (track.source == json!(3) || track.source == json!("SCREEN_SHARE"))
-                && (track.kind == json!(1) || track.kind == json!("VIDEO"))
-        }),
+        Some((_, Purpose::Publish)) => {
+            participant.tracks.len() <= 1
+                && participant.tracks.iter().all(|track| {
+                    (track.source == json!(3) || track.source == json!("SCREEN_SHARE"))
+                        && (track.kind == json!(1) || track.kind == json!("VIDEO"))
+                })
+        }
         None => false,
     }
 }

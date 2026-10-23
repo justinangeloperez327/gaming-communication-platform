@@ -789,19 +789,46 @@ async fn screen_consent_leases_ownership_revocation_and_voice_coexistence() {
     );
     {
         let mut state = sfu.state.lock().await;
-        state.tracks.insert(publisher.clone(),vec![json!({"source":"SCREEN_SHARE","type":"VIDEO"})]);
+        state.tracks.insert(
+            publisher.clone(),
+            vec![json!({"source":"SCREEN_SHARE","type":"VIDEO"})],
+        );
     }
-    assert_eq!(config.reconcile_voice_access(&pool).await.expect("valid owned screen track").removed,0);
+    assert_eq!(
+        config
+            .reconcile_voice_access(&pool)
+            .await
+            .expect("valid owned screen track")
+            .removed,
+        0
+    );
     {
         let mut state = sfu.state.lock().await;
-        state.tracks.get_mut(&publisher).expect("track").push(json!({"source":3,"type":1}));
-        state.tracks.insert(viewer.clone(),vec![json!({"source":3,"type":1})]);
+        state
+            .tracks
+            .get_mut(&publisher)
+            .expect("track")
+            .push(json!({"source":3,"type":1}));
+        state
+            .tracks
+            .insert(viewer.clone(), vec![json!({"source":3,"type":1})]);
     }
-    assert_eq!(config.reconcile_voice_access(&pool).await.expect("publisher count and viewer track enforcement").removed,2);
+    assert_eq!(
+        config
+            .reconcile_voice_access(&pool)
+            .await
+            .expect("publisher count and viewer track enforcement")
+            .removed,
+        2
+    );
     {
         let mut state = sfu.state.lock().await;
         state.tracks.clear();
-        state.rooms.get_mut(&screen_room).expect("screen room").extend([publisher.clone(),viewer.clone()]);
+        state
+            .rooms
+            .get_mut(&screen_room)
+            .expect("screen room")
+            .extend([publisher.clone(), viewer.clone()]);
     }
     let (listed_status, listed) = call(&app, "GET", &path, Some(&owner_token), None).await;
     assert_eq!(listed_status, StatusCode::OK);
@@ -973,16 +1000,41 @@ async fn screen_consent_leases_ownership_revocation_and_voice_coexistence() {
         .get_mut(&screen_room)
         .expect("room")
         .push(active);
-    let (status, racing) = call(&app,"POST",&path,Some(&other_login),Some(create.clone())).await;
-    assert_eq!(status,StatusCode::CREATED);
-    let racing_path=format!("{path}/{}",racing["id"].as_str().expect("racing lease"));
-    let racing_renew=format!("{racing_path}/renew");
-    let (renewed, stopped)=tokio::join!(
-        call(&app,"POST",&racing_renew,Some(&other_login),Some(json!({"consent":true}))),
-        call(&app,"DELETE",&racing_path,Some(&other_login),None));
-    assert!(matches!(renewed.0,StatusCode::OK|StatusCode::NOT_FOUND));
-    assert_eq!(stopped.0,StatusCode::NO_CONTENT);
-    assert_eq!(call(&app,"POST",&racing_renew,Some(&other_login),Some(json!({"consent":true}))).await.0,StatusCode::NOT_FOUND);
+    let (status, racing) = call(
+        &app,
+        "POST",
+        &path,
+        Some(&other_login),
+        Some(create.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let racing_path = format!("{path}/{}", racing["id"].as_str().expect("racing lease"));
+    let racing_renew = format!("{racing_path}/renew");
+    let (renewed, stopped) = tokio::join!(
+        call(
+            &app,
+            "POST",
+            &racing_renew,
+            Some(&other_login),
+            Some(json!({"consent":true}))
+        ),
+        call(&app, "DELETE", &racing_path, Some(&other_login), None)
+    );
+    assert!(matches!(renewed.0, StatusCode::OK | StatusCode::NOT_FOUND));
+    assert_eq!(stopped.0, StatusCode::NO_CONTENT);
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &racing_renew,
+            Some(&other_login),
+            Some(json!({"consent":true}))
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
     // Membership removal revokes both scopes; Stop still works without membership.
     assert_eq!(
         call(
@@ -1039,13 +1091,48 @@ async fn screen_consent_leases_ownership_revocation_and_voice_coexistence() {
         call(&app, "POST", &path, Some(fresh), Some(create)).await.0,
         StatusCode::NOT_FOUND
     );
-    let (_, owner_share)=call(&app,"POST",&path,Some(&owner_token),Some(json!({"purpose":"publish","consent":true}))).await;
-    let owner_identity=screen_claims(&owner_share,channel,"publish");
-    sfu.state.lock().await.rooms.get_mut(&screen_room).expect("screen room").push(owner_identity);
-    assert_eq!(call(&app,"POST","/v1/auth/logout",Some(&owner_token),None).await.0,StatusCode::NO_CONTENT);
-    assert_eq!(config.reconcile_voice_access(&pool).await.expect("screen logout eviction").removed,1);
-    assert_eq!(call(&app,"POST",&format!("{path}/{}/renew",owner_share["id"].as_str().expect("id")),
-        Some(&owner_token),Some(json!({"consent":true}))).await.0,StatusCode::UNAUTHORIZED);
+    let (_, owner_share) = call(
+        &app,
+        "POST",
+        &path,
+        Some(&owner_token),
+        Some(json!({"purpose":"publish","consent":true})),
+    )
+    .await;
+    let owner_identity = screen_claims(&owner_share, channel, "publish");
+    sfu.state
+        .lock()
+        .await
+        .rooms
+        .get_mut(&screen_room)
+        .expect("screen room")
+        .push(owner_identity);
+    assert_eq!(
+        call(&app, "POST", "/v1/auth/logout", Some(&owner_token), None)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        config
+            .reconcile_voice_access(&pool)
+            .await
+            .expect("screen logout eviction")
+            .removed,
+        1
+    );
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &format!("{path}/{}/renew", owner_share["id"].as_str().expect("id")),
+            Some(&owner_token),
+            Some(json!({"consent":true}))
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
     sqlx::query("DELETE FROM communities WHERE id=$1")
         .bind(community)
         .execute(&pool)
