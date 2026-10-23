@@ -255,11 +255,26 @@ ApplicationWindow {
                         textTone: root.textTone
                         mutedTone: root.mutedTone
                     }
+                    FriendsPanel {
+                        Layout.fillWidth: true
+                        visible: accountSession.signedIn
+                        social: friendsDirectory
+                        account: accountSession
+                        textTone: root.textTone
+                        mutedTone: root.mutedTone
+                    }
+                    ChatPanel {
+                        Layout.fillWidth: true
+                        visible: accountSession.signedIn && friendsDirectory.conversationId.length > 0
+                        chat: directChatSession
+                        account: accountSession
+                        textTone: root.textTone
+                        mutedTone: root.mutedTone
+                    }
                     ChatPanel {
                         Layout.fillWidth: true
                         visible: accountSession.signedIn
                         chat: chatSession
-                        directory: channelDirectory
                         account: accountSession
                         textTone: root.textTone
                         mutedTone: root.mutedTone

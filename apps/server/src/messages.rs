@@ -57,7 +57,7 @@ fn parse_id(raw: &str) -> Result<Uuid, AuthError> {
     Uuid::parse_str(raw).map_err(|_| AuthError::InvalidRequest)
 }
 
-fn valid_body(body: &str) -> bool {
+pub(crate) fn valid_body(body: &str) -> bool {
     (1..=4000).contains(&body.len())
         && !body.trim().is_empty()
         && !body

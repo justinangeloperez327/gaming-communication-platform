@@ -235,7 +235,7 @@ int main(int argc, char **argv) {
         engine.rootContext()->setContextProperty("directoryController", &directory);
         engine.rootContext()->setContextProperty("accountController", &account);
         QQmlComponent component(&engine);
-        component.setData("import QtQuick\nimport \".\"\nChatPanel { chat: chatController; directory: directoryController; account: accountController; width: 700 }",
+        component.setData("import QtQuick\nimport \".\"\nChatPanel { chat: chatController; account: accountController; width: 700 }",
             QUrl::fromLocalFile(QStringLiteral(GCP_CHAT_QML_DIR) + "/ChatHarness.qml"));
         const std::unique_ptr<QObject> panel(component.create());
         if (!panel) for (const auto &error : component.errors()) std::cerr << error.toString().toStdString() << '\n';

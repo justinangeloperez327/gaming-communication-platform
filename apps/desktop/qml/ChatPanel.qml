@@ -5,14 +5,12 @@ import QtQuick.Layouts
 Rectangle {
     id: panel
     required property var chat
-    required property var directory
     required property var account
     property color textTone: "#e7edf5"
     property color mutedTone: "#9aabba"
     property string editingId: ""
     property string deleteId: ""
-    property string actionCommunity: ""
-    property string actionChannel: ""
+    property string actionScope: ""
     color: "#151e2b"
     radius: 6
     implicitHeight: contents.implicitHeight + 32
@@ -24,24 +22,18 @@ Rectangle {
         confirmDelete.close()
     }
     function currentAction() {
-        return actionCommunity === directory.communityId && actionChannel === directory.textChannelId
+        return actionScope === chat.scopeKey
     }
     function beginEdit(id, body) {
-        actionCommunity = directory.communityId
-        actionChannel = directory.textChannelId
+        actionScope = chat.scopeKey
         editingId = id
         editBody.text = body
         editBody.forceActiveFocus()
     }
     function askDelete(id) {
-        actionCommunity = directory.communityId
-        actionChannel = directory.textChannelId
+        actionScope = chat.scopeKey
         deleteId = id
         confirmDelete.open()
-    }
-    Connections {
-        target: panel.directory
-        function onTextSelectionChanged() { panel.clearActions() }
     }
     Connections {
         target: panel.account
@@ -49,6 +41,7 @@ Rectangle {
     }
     Connections {
         target: panel.chat
+        function onScopeChanged() { panel.clearActions() }
         function onDraftChanged() { composer.text = panel.chat.draft }
         function onHistoryReset() { Qt.callLater(function() { history.positionViewAtEnd() }) }
         function onAccessRevoked() { panel.clearActions() }
@@ -63,7 +56,7 @@ Rectangle {
             Layout.fillWidth: true
             Text {
                 Layout.fillWidth: true
-                text: panel.directory.textChannelName.length ? "# " + panel.directory.textChannelName : "Text messages"
+                text: panel.chat.title
                 textFormat: Text.PlainText
                 color: panel.textTone
                 font.pixelSize: 17
@@ -71,7 +64,7 @@ Rectangle {
                 elide: Text.ElideRight
             }
             Label { text: panel.chat.live ? "Live" : "Reconnecting"; color: panel.mutedTone }
-            Button { text: "Refresh"; objectName: "chatRefresh"; enabled: panel.directory.textChannelId.length > 0; onClicked: panel.chat.refreshLatest() }
+            Button { text: "Refresh"; objectName: "chatRefresh"; enabled: panel.chat.scopeId.length > 0; onClicked: panel.chat.refreshLatest() }
         }
         Label {
             Layout.fillWidth: true
@@ -104,7 +97,7 @@ Rectangle {
             Label {
                 anchors.centerIn: parent
                 visible: history.count === 0 && !panel.chat.loading
-                text: panel.directory.textChannelId.length ? "No messages to show." : "Choose a text channel to start."
+                text: panel.chat.scopeId.length ? "No messages to show." : (panel.chat.direct ? "Choose a private conversation to start." : "Choose a text channel to start.")
                 color: panel.mutedTone
             }
             delegate: Rectangle {
@@ -137,7 +130,7 @@ Rectangle {
                         }
                         Button {
                             text: "Delete"
-                            visible: !message.deleted && (message.authorId === panel.account.userId || panel.directory.canManage)
+                            visible: !message.deleted && (message.authorId === panel.account.userId || panel.chat.canModerate)
                             enabled: panel.chat.canMutate
                             onClicked: panel.askDelete(message.messageId)
                         }
@@ -182,7 +175,7 @@ Rectangle {
             text: panel.chat.draft
             textFormat: TextEdit.PlainText
             wrapMode: TextEdit.Wrap
-            enabled: panel.account.signedIn && panel.directory.textChannelId.length > 0 && !panel.chat.sending && !panel.chat.retrySend
+            enabled: panel.account.signedIn && panel.chat.scopeId.length > 0 && !panel.chat.sending && !panel.chat.retrySend
             placeholderText: "Write a message…"
             onTextChanged: {
                 if (length > 4000) remove(4000, length)

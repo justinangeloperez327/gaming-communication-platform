@@ -10,6 +10,7 @@ add_executable(gcp-chat-api-acceptance
     ../../src/AccountSession.cpp ../../src/AccountSession.h
     ../../src/ChannelDirectory.cpp ../../src/ChannelDirectory.h
     ../../src/ChatSession.cpp ../../src/ChatSession.h
-    ../../src/MessageModel.cpp ../../src/MessageModel.h)
+    ../../src/MessageModel.cpp ../../src/MessageModel.h
+    ../../src/FriendsDirectory.cpp ../../src/FriendsDirectory.h)
 target_include_directories(gcp-chat-api-acceptance PRIVATE ../../src)
 target_link_libraries(gcp-chat-api-acceptance PRIVATE Qt6::Core Qt6::Network Qt6::WebSockets)

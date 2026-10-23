@@ -38,10 +38,16 @@ Maintain isolated feature branches. Build and test locally before merging. Keep 
 
 The separate Linux **Qt to Rust messaging acceptance** job compiles the real
 AccountSession, ChannelDirectory, ChatSession and MessageModel without the GUI or
-media SDK, then runs two disposable accounts through the actual API/PostgreSQL
-and channel sockets. Its `scripts/verify_desktop_chat.py` runner explicitly
+media SDK, then runs two disposable accounts through the actual API/PostgreSQL,
+channel sockets, friend requests, private sockets and bilateral revocation. Its `scripts/verify_desktop_chat.py` runner explicitly
 migrates and bootstraps only a loopback database named `gcp_chat_test`; it is not
 an operator tool for an existing service. The Windows `desktop_text_messaging`
 CTest exercises the shipped ChatPanel with controlled reply loss, socket gaps,
 malformed/oversized replies and actual access-token rotation. See
 [desktop messaging](desktop-messaging.md) for behavior and limits.
+
+The `desktop_friends_and_private_scope` CTest loads the shipped FriendsPanel and
+covers staged refreshes, action direction, malformed/oversized responses,
+cancellation/destruction, peer validation and a refresh-timer 401 race. The
+complete `desktop_qml_startup` test runs the real Main window before deployment;
+`--smoke-qml` sends startup diagnostics to captured stderr for GUI builds.
