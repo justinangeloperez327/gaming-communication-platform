@@ -47,8 +47,9 @@ remain microphone-only. Media-quality defaults and diagnostics are unchanged.
 Protected operations use current database sessions and community/friend access.
 Community roles never grant DM moderation. Private/channel event payloads carry
 IDs, not message bodies or credentials, and clients reauthorize current records.
-All API requests remain on the approved origin with bearer headers. Backend keys
-stay server-side; credentials belong in no URL, log or native command line.
+All API requests remain on the approved origin with bearer headers. Signing
+secrets/admin grants stay server-side; the public issuer identifier is included
+in participant JWTs. Credentials belong in no URL, log or native command line.
 Messages are plain text to the server/database, without application E2EE.
 
 Registration requires owner invitations; email verification, recovery, MFA and

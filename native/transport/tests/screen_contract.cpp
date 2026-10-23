@@ -27,7 +27,10 @@ constexpr char voice_track_name[] = "gcp-contract-voice-during-screen";
 struct Failure final : std::runtime_error { using std::runtime_error::runtime_error; };
 void require(bool value, const char* message) { if (!value) throw Failure(message); }
 
-struct Seen { std::atomic<unsigned> subscriptions{0}, departures{0}, disconnected{0}, frames{0}, invalid{0}, audio{0}; };
+struct Seen {
+    std::atomic<unsigned> subscriptions{0}, departures{0}, disconnected{0}, frames{0}, synthetic{0}, invalid{0}, audio{0};
+    std::atomic<int> width{0}, height{0};
+};
 struct Events final : livekit::RoomDelegate {
     explicit Events(Seen& state) : seen(state) {}
     Seen& seen;
@@ -89,7 +92,26 @@ int contract() {
     video_options.capacity = 2;
     viewer.room.setOnVideoFrameCallback(screen_identity, track_name,
         [&](const livekit::VideoFrame& frame, std::int64_t) {
-            if (frame.width() != 160 || frame.height() != 90) ++viewer.seen.invalid;
+            // WebRTC can adapt dimensions even with one encoding layer.
+            // Validate real negotiated RGBA storage/content, not source size.
+            viewer.seen.width = frame.width();
+            viewer.seen.height = frame.height();
+            const bool valid = frame.width() > 0 && frame.height() > 0 &&
+                frame.width() <= 1920 && frame.height() <= 1080 &&
+                frame.type() == livekit::VideoBufferType::RGBA &&
+                frame.dataSize() == static_cast<std::size_t>(frame.width()) *
+                    static_cast<std::size_t>(frame.height()) * 4;
+            if (!valid) {
+                ++viewer.seen.invalid;
+            } else {
+                const auto pixel = (static_cast<std::size_t>(frame.height() / 2) *
+                    static_cast<std::size_t>(frame.width()) + static_cast<std::size_t>(frame.width() / 2)) * 4;
+                // Lossy encoding permits small color differences; zero-filled
+                // frames and subscription-only events cannot pass this check.
+                if (frame.data()[pixel + 1] >= 100 && frame.data()[pixel + 1] <= 220 &&
+                    frame.data()[pixel + 2] >= 30 && frame.data()[pixel + 2] <= 150)
+                    ++viewer.seen.synthetic;
+            }
             ++viewer.seen.frames;
         }, video_options);
     const auto local = publisher.room.localParticipant().lock();
@@ -137,8 +159,10 @@ int contract() {
     }
     std::cout << "GCP_SCREEN_STAGE:observed subscriptions=" << viewer.seen.subscriptions
               << " decoded=" << viewer.seen.frames << " invalid=" << viewer.seen.invalid
+              << " synthetic=" << viewer.seen.synthetic
+              << " width=" << viewer.seen.width << " height=" << viewer.seen.height
               << " voice=" << listener.seen.audio << std::endl;
-    require(viewer.seen.frames >= 5 && viewer.seen.invalid == 0, "no valid decoded synthetic video");
+    require(viewer.seen.synthetic >= 5 && viewer.seen.invalid == 0, "no valid decoded synthetic video");
     require(publisher.seen.subscriptions == 0 && other.seen.subscriptions == 0,
         "publish-only identity received another share");
     require(voice.seen.subscriptions == 0 && voice.seen.disconnected == 0,
@@ -161,6 +185,7 @@ int contract() {
     viewer.room.disconnect();
     other.room.disconnect();
     std::cout << "GCP_SCREEN_CONTRACT:passed decoded_frames=" << viewer.seen.frames
+              << " synthetic_frames=" << viewer.seen.synthetic
               << " voice_frames=" << listener.seen.audio
               << " physical_capture_verified=false desktop_sharing_verified=false" << std::endl;
     return 0;

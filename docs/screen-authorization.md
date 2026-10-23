@@ -44,7 +44,8 @@ See LiveKit's [grant reference](https://docs.livekit.io/frontends/reference/toke
 All routes require `Authorization: Bearer ACCESS_TOKEN`; responses, including
 errors, use `Cache-Control:no-store`. Successful grants also use
 `Pragma:no-cache`. Only HTTPS is appropriate for a shared host; loopback HTTP is
-for disposable development. API keys and secrets remain on the server.
+for disposable development. Signing secrets and admin grants remain on the
+server; the public issuer key identifier appears in a join JWT's `iss` claim.
 
 The collection path is:
 
@@ -180,6 +181,10 @@ synthetic voice continues decoding and unrelated screen peers remain connected.
 The video fixture selects one software VP8 layer for deterministic authorization
 checks; product encoder/quality defaults remain unchanged. The existing synthetic PCM
 contract still runs. Neither contract opens a real screen or audio device.
+
+The decoded-video check validates bounded negotiated dimensions, RGBA storage
+and the expected synthetic pixel content. It does not assume decoder dimensions
+equal the input: WebRTC may adapt the frame size even with one encoding layer.
 
 The Rust lease API/DB tests and Windows SDK/SFU media contract are separate
 executions. They do not establish a complete desktop→API→Windows capture→remote
