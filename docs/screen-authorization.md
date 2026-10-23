@@ -176,7 +176,9 @@ synthetic pixels and fixture grants matching the separately tested Rust claims.
 It attempts forbidden camera/microphone/viewer/voice-screen publication, verifies
 decoded video and publish-only subscription denial, checks the actual owning
 participant/track through RoomService, and removes that screen publisher while
-voice and unrelated screen peers remain connected. The existing synthetic PCM
+synthetic voice continues decoding and unrelated screen peers remain connected.
+The video fixture selects one software VP8 layer for deterministic authorization
+checks; product encoder/quality defaults remain unchanged. The existing synthetic PCM
 contract still runs. Neither contract opens a real screen or audio device.
 
 The Rust lease API/DB tests and Windows SDK/SFU media contract are separate

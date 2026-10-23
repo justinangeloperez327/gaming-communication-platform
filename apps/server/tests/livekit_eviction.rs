@@ -203,7 +203,13 @@ async fn call(
         if bytes.is_empty() {
             Value::Null
         } else {
-            serde_json::from_slice(&bytes).expect("JSON")
+            match serde_json::from_slice(&bytes) {
+                Ok(value) => value,
+                // Axum's typed JSON extractor returns a plain-text 422 for
+                // missing/unknown fields, before the handler can run.
+                Err(_) if status == StatusCode::UNPROCESSABLE_ENTITY => Value::Null,
+                Err(_) => panic!("expected JSON response for {status}"),
+            }
         },
     )
 }

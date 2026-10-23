@@ -1,4 +1,4 @@
-"""Windows x64 loopback SFU + pinned C++ SDK media contract, synthetic PCM only.
+"""Windows x64 loopback SFU + pinned C++ SDK contracts, synthetic PCM/pixels.
 
 No backend/user secrets, microphone, speakers, physical peers or public service.
 The Rust/stack suites separately exercise token authorization and reconciliation.
@@ -101,9 +101,12 @@ def control(secret, room, action, identity=IDENTITY):
     # Literal loopback, fixed methods, no redirects or inherited proxy settings.
     if action not in ("GetParticipant", "RemoveParticipant"):
         raise ValueError("Unsupported fixture control operation")
+    body = {"room": room, "identity": identity}
+    if action == "RemoveParticipant":
+        body["revoke_token_ts"] = int(time.time()) + 1
     request = urllib.request.Request(
         f"{ORIGIN}/twirp/livekit.RoomService/{action}", method="POST",
-        data=json.dumps({"room": room, "identity": identity, "revoke_token_ts": int(time.time()) + 1}).encode(),
+        data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json", "Authorization": "Bearer " +
                  token(secret, "gcp-media-ci-control", room, admin=True)})
 
