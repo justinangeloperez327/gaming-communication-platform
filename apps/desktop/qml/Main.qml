@@ -12,17 +12,11 @@ ApplicationWindow {
     minimumHeight: 580
     color: "#0e141d"
 
-    property bool microphoneConsent: false
     readonly property color panel: "#151e2b"
     readonly property color borderTone: "#293649"
     readonly property color textTone: "#e7edf5"
     readonly property color mutedTone: "#9aabba"
     readonly property color accent: "#5e9fea"
-
-    Connections {
-        target: channelDirectory
-        function onSelectionChanged() { root.microphoneConsent = false }
-    }
 
     RowLayout {
         anchors.fill: parent
@@ -257,117 +251,15 @@ ApplicationWindow {
                         textTone: root.textTone
                         mutedTone: root.mutedTone
                     }
-                    Rectangle {
+                    VoicePanel {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 440
-                        radius: 6
-                        color: root.panel
-                        border.color: root.borderTone
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            spacing: 8
-                            Text {
-                                text: "Voice connection · experimental"
-                                color: root.textTone
-                                font.pixelSize: 14
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: voiceSession.status
-                                color: root.mutedTone
-                                wrapMode: Text.Wrap
-                                font.pixelSize: 12
-                            }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Button {
-                                    text: voiceSession.scanning ? "Scanning…" : "Scan audio devices"
-                                    enabled: !voiceSession.busy && !voiceSession.scanning
-                                    onClicked: voiceSession.scanDevices()
-                                }
-                                Text { text: "Device choices apply on next join"; color: root.mutedTone; font.pixelSize: 11 }
-                            }
-                            AudioDevicePicker {
-                                id: microphoneDevice
-                                Layout.fillWidth: true
-                                enabled: !voiceSession.busy && !voiceSession.scanning
-                                devices: voiceSession.inputs
-                                selectedDeviceId: voiceSession.inputId
-                                defaultLabel: "Default microphone"
-                                onActivated: voiceSession.selectInput(currentValue)
-                            }
-                            AudioDevicePicker {
-                                id: speakerDevice
-                                Layout.fillWidth: true
-                                enabled: !voiceSession.busy && !voiceSession.scanning
-                                devices: voiceSession.outputs
-                                selectedDeviceId: voiceSession.outputId
-                                defaultLabel: "Default speaker"
-                                onActivated: voiceSession.selectOutput(currentValue)
-                            }
-                            CheckBox {
-                                text: "Push-to-talk · hold F8 (works outside this window)"
-                                checked: voiceSession.pushToTalk
-                                enabled: !voiceSession.busy || voiceSession.connected
-                                onToggled: voiceSession.setPushToTalk(checked)
-                            }
-                            RowLayout {
-                                Button {
-                                    text: voiceSession.muted ? "Enable mic" : "Mute mic"
-                                    enabled: voiceSession.connected && voiceSession.microphoneEnabled
-                                    onClicked: voiceSession.setMuted(!voiceSession.muted)
-                                }
-                                Text {
-                                    text: !voiceSession.microphoneEnabled ? "Listen only" :
-                                          voiceSession.transmitting ? "Microphone transmitting" :
-                                          voiceSession.muted ? "Microphone muted" : "PTT armed · hold F8"
-                                    color: root.mutedTone
-                                }
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Mic calls start muted. Enable mic after joining. Muting stops transmission; the audio device may remain open until Leave."
-                                color: root.mutedTone
-                                wrapMode: Text.Wrap
-                                font.pixelSize: 11
-                            }
-                            CheckBox {
-                                id: micPermission
-                                text: "I authorize microphone capture for this call"
-                                checked: root.microphoneConsent
-                                enabled: !voiceSession.busy
-                                onToggled: root.microphoneConsent = checked
-                            }
-                            RowLayout {
-                                spacing: 8
-                                Button {
-                                    text: "Listen only"
-                                    enabled: voiceSession.available && accountSession.signedIn && channelDirectory.channelId.length > 0 && !channelDirectory.busy && !voiceSession.busy
-                                    onClicked: voiceSession.joinListenOnly()
-                                }
-                                Button {
-                                    text: "Join with mic"
-                                    enabled: voiceSession.available && accountSession.signedIn && channelDirectory.channelId.length > 0 && !channelDirectory.busy && !voiceSession.busy && root.microphoneConsent
-                                    onClicked: {
-                                        voiceSession.joinWithMicrophone(root.microphoneConsent)
-                                        root.microphoneConsent = false
-                                    }
-                                }
-                                Button {
-                                    text: "Leave"
-                                    enabled: voiceSession.busy
-                                    onClicked: voiceSession.leave()
-                                }
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Fetches a short-lived voice token from the Rust backend for each join. Choose your community and voice channel above before joining."
-                                color: root.mutedTone
-                                font.pixelSize: 11
-                                wrapMode: Text.Wrap
-                            }
-                        }
+                        voice: voiceSession
+                        directory: channelDirectory
+                        account: accountSession
+                        panel: root.panel
+                        borderTone: root.borderTone
+                        textTone: root.textTone
+                        mutedTone: root.mutedTone
                     }
                 }
 

@@ -41,7 +41,7 @@ public:
     Q_INVOKABLE void setPushToTalk(bool enabled);
     bool connected() const { return connected_; }
     bool running() const { return process_.state() != QProcess::NotRunning; }
-    bool busy() const { return pending_ != nullptr || running(); }
+    bool busy() const { return pending_ != nullptr || authorizationWaiting_ || running(); }
     bool microphoneEnabled() const { return microphoneEnabled_; }
     QString status() const { return status_; }
     bool available() const;
@@ -66,11 +66,14 @@ signals:
 private:
     void start(bool publishMicrophone);
     void launch(bool publishMicrophone, const QString &url, const QString &token);
-    void requestAuthorization(bool publishMicrophone, bool recheck);
+    void requestAuthorization(bool publishMicrophone, bool recheck, bool rotationRetry = false);
+    void waitForAccountAuthorization(bool publishMicrophone, bool recheck, const QString &previousAccess);
     bool sendControl(const QByteArray &command);
     void stopWithReason(const QString &reason);
     void resetControls();
+    void cancelAuthorization();
     void readDeviceScanOutput();
+    void readStatusOutput();
     void setStatus(const QString &value);
     VoiceRuntime runtime_;
     QString nativeProgram() const;
@@ -84,6 +87,8 @@ private:
     QString inputId_, outputId_;
     QNetworkAccessManager network_;
     QNetworkReply *pending_ = nullptr;
+    QMetaObject::Connection accountWait_;
+    bool authorizationWaiting_ = false;
     QTimer heartbeatTimer_;
     QTimer authorizationTimer_;
     QTimer authorizationWatchdog_;
@@ -102,6 +107,7 @@ private:
     bool connectionTimedOut_ = false;
     bool deviceLost_ = false;
     bool connected_ = false;
+    bool recovering_ = false;
     QByteArray outputBuffer_;
     bool microphoneEnabled_ = false;
     QString status_ = QStringLiteral("Disconnected");

@@ -9,13 +9,15 @@ GCP is an experimental Windows x64 communication application for private gaming 
 | Desktop accounts | Invited account creation, owner invitation controls, sign-in, in-memory tokens, timed rotation and sign-out | PostgreSQL, real-stack and Qt tests; no email delivery/recovery or persistent login |
 | Communities | Desktop create/join/leave, channel editing, invitations and role-aware member administration; API ownership enforcement | PostgreSQL, container and Qt tests; capped lists, no live directory updates or owner transfer |
 | Text and friends | Authorized channel messages, friendships, blocks, DMs and text-channel WebSocket events | Backend integration tests; desktop message composer remains disabled |
-| Voice | Listen-only, explicit microphone opt-in, mute/F8 push-to-talk, device selection, room events, bounded recovery and Leave | Real SDK integration; managed desktop calls continue until Leave; mute/F8 PTT and periodic access checks; physical audibility unverified |
+| Voice | Listen-only, per-call mic consent, mute/F8 PTT, device selection, muted recovery with immediate access recheck, and Leave | Qt/QProcess policy tests and real loopback synthetic PCM transport/mute/isolation/rejoin/active-eviction contract; physical audibility unverified |
 | Screen sharing | Separate consent-gated monitor diagnostics: CPU-readback publishing and GPU BGRA→NV12→hardware-class H.264→LiveKit bridge | No desktop sharing/viewing UI; hardware, remote playback and driver compatibility unverified |
 | Test video | Synthetic RGBA/NV12/BGRA patterns and externally encoded H.264 file publishing | Diagnostic fixtures; not evidence of screen capture or gaming performance |
 | Windows distribution | Qt/QML + voice executable + LiveKit DLL staging, portable ZIP, per-user alpha installer, SHA-256 inventory and installed/extracted startup checks | Unsigned preview; clean consumer Windows PC still untested |
 | Performance | Process CPU/private memory samples, capture/encoder timing, exported game frame-time analysis | No measured gaming resource budget or advantage over other apps established |
 
 See [long-session voice and controls](docs/long-session-voice.md) for the latest voice behavior and tests.
+Group 4's [voice evidence and acceptance guide](docs/usable-voice.md) separates
+synthetic media checks from the owner's pending two-PC test.
 Use [desktop communities](docs/desktop-communities.md) to create a private space,
 add a voice channel and invite existing accounts. Text-channel creation works;
 desktop text messaging remains incomplete.
@@ -69,4 +71,10 @@ CI additionally tests staged and extracted Qt/QML startup, native SDK initializa
 
 ## Verification boundaries
 
-CI builds Windows media code, tests offline logic, and checks the actual pinned LiveKit server's control API on loopback with no media peers. It does not verify an active media-room join, hear a friend's audio, exercise physical capture/headsets, test a clean consumer PC, or measure gaming CPU/GPU/RAM/FPS. Those acceptance checks remain outstanding. See [physical GPU acceptance](docs/physical-gpu-acceptance.md) and [gaming benchmark](docs/gaming-voice-benchmark.md).
+CI builds Windows media code and runs a real loopback LiveKit synthetic-audio
+contract: room joins, decoded PCM, mute/unmute, isolation, explicit rejoin and
+active publisher eviction. The Rust control contract and stack tests run
+separately. CI does not hear a friend's audio, exercise physical capture/headsets,
+force actual SDK network interruption, test a clean consumer PC, or measure gaming
+CPU/GPU/RAM/FPS. Those checks remain outstanding. See [voice acceptance](docs/usable-voice.md),
+[physical GPU acceptance](docs/physical-gpu-acceptance.md) and [gaming benchmark](docs/gaming-voice-benchmark.md).

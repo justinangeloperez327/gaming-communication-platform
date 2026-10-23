@@ -9,7 +9,7 @@ The desktop voice process no longer uses the five-minute JWT join lifetime as it
 3. Microphone calls **start muted before publication**. After joining, select **Enable mic**.
 4. With push-to-talk disabled, Enable mic permits continuous transmission until Mute mic or Leave.
 5. Enable **Push-to-talk · hold F8**, then Enable mic to arm it. Release F8 first, then hold it to transmit; release it to stop transmission. The native process polls F8, so the Qt window does not need focus. Switching modes mutes the call and requires Enable mic again.
-6. Mute mic overrides PTT. Leave stops the call. A reconnect resets the F8 release gate; a stopped call always requires a manual rejoin and fresh microphone consent.
+6. Mute mic overrides PTT. Leave stops the call. A reconnect clears both open-mic and PTT arming; after fresh backend reauthorization, Enable mic is required again. A stopped call requires a manual rejoin and fresh microphone consent. Either join action consumes any pending consent, including Listen only.
 
 The UI separates requested mute/armed state from native track mute acknowledgments. "Microphone transmitting" means the native SDK track reports unmuted, not proof that a remote user hears it. The SDK can keep the microphone device/source open while a track is muted; **mute/PTT stops transmission, not guaranteed device capture**. Use Leave to close the audio session. F8 is a fixed Windows virtual key in this increment; it may conflict with a game's binding. Configurable keys, alternate desktop/session behavior, elevated games, and physical stop latency still need validation.
 
@@ -19,6 +19,8 @@ The UI separates requested mute/armed state from native track mute acknowledgmen
 - A five-second heartbeat lapse, parent pipe closure, unknown/binary/oversized command or explicit stop ends the native session. This is checked by the same session thread; it is not a hard real-time guarantee if a driver/SDK call itself blocks.
 - Leave queues orderly mute/disconnect and closes stdin; a two-second Qt watchdog force-stops an unresponsive process. A transmitting call that fails to acknowledge a mute within one second is also stopped.
 - About once per minute Qt repeats the existing authenticated voice-token request, checking the current session and channel membership. An absolute ten-second request watchdog also covers slowly trickling responses. Denial, network failure or invalid responses stop voice; there is no automatic rejoin or silent microphone enable.
+- SDK reconnect cancels stale in-flight checks and immediately repeats authorization after recovery. Mic controls stay disabled until it succeeds. The native loop also clears arming on every observed interruption, including fast reconnects between polls. SDK callbacks and session-loop status lines are serialized.
+- If account-token rotation overlaps a voice authorization check, a 401 explained by pending/changed refresh credentials permits one retry with the new token. Waiting and retry retain the original ten-second deadline. A second denial stops voice; cancellation removes the account-change listener, preventing later refresh from reopening a call.
 - These checks normally stop this cooperative desktop client within approximately 70 seconds of losing backend access. They are **not server-side SFU eviction** and cannot constrain a modified client or someone using a copied JWT independently.
 - Recheck JWTs are discarded; this does not update the SDK's stored token. JWT join expiry remains five minutes. An established SFU session may continue beyond it, while reconnect after expiry can fail and require a new manually authorized join. Multi-hour physical calls and late reconnect have not been verified.
 - Account access/refresh rotation remains handled by the existing desktop account session. No refresh token or LiveKit API secret is sent to the voice child.
@@ -30,6 +32,16 @@ The implementation keeps the existing Qt subprocess/Rust/LiveKit architecture, b
 `voice_control_tests.cpp` checks fragmented commands, initial mute, consent isolation, release-before-PTT, reconnect reset, manual mute precedence, mode changes, heartbeat expiry/renewal, stop, malformed commands and a synthetic 12-hour monotonic heartbeat timeline. A synthetic timeline is not a 12-hour physical call.
 
 `voice_session_tests.cpp` uses a local HTTP fixture and a separate fake native child (no audio/LiveKit) to test real QProcess command/acknowledgment transport, account/channel setup, consent, mute, mode changes, authorization denial, listen-only isolation, Leave, pending-join cancellation and logout. The fixture executable is a test build target and is not included in the portable ZIP. Native CLI self-tests check zero-duration/managed/PTT argument restrictions. CI compiles against the pinned SDK and runs these tests plus staged/extracted ZIP startup.
+
+The test now loads the shipped VoicePanel and covers stale listen-only consent,
+immediate reconnect reauthorization, muted pending recovery, denial, missing mute
+acknowledgment, microphone failure, final buffered failure status, unsafe room
+origins and destruction during authorization. A separate [real synthetic PCM
+contract](usable-voice.md) exercises the SDK/SFU with no physical devices. Its
+explicit room rejoin does not verify the SDK's actual network-recovery path.
+Actual account refresh timer/HTTP fixtures also cover overlapping old-token
+denial, successful rotated-token retry without restarting voice, a second denial
+and cancellation while waiting for refresh.
 
 Before treating long calls/PTT as accepted, test two real users on Windows: microphone/source behavior, remote audibility, held/released F8 while gaming, mode switches, manual mute, headset loss, background/elevated games, desktop suspension/exit, network loss before/after JWT expiry, account refresh and backend membership removal. Measure the complete desktop/native process overhead during matched gaming runs. No physical audio, keyboard compatibility, long-call reliability or gaming-performance result is inferred from CI.
 

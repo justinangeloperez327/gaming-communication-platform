@@ -131,10 +131,7 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         if (running() && !connected_ && !stopRequested_) {
             // A running process is not evidence of room authorization or connectivity.
             connectionTimedOut_ = true;
-            setStatus(QStringLiteral("Voice room connection timed out; stopping"));
-            stopRequested_ = true;
-            process_.terminate();
-            stopWatchdog_.start(2000);
+            stopWithReason(QStringLiteral("Voice room connection timed out; join again manually"));
         }
     });
     connect(&startupWatchdog_, &QTimer::timeout, this, [this]() {
@@ -163,6 +160,7 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         emit runningChanged();
     });
     connect(&process_, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
+        readStatusOutput(); // A short-lived child's final failure event may still be buffered.
         resetControls();
         startupWatchdog_.stop();
         stopWatchdog_.stop();
@@ -172,6 +170,7 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         stopRequested_ = false;
         microphoneEnabled_ = false;
         connected_ = false;
+        recovering_ = false;
         outputBuffer_.clear();
         const bool deviceLost = deviceLost_;
         deviceLost_ = false;
@@ -195,6 +194,7 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
             process_.setProcessEnvironment(QProcessEnvironment());
             microphoneEnabled_ = false;
             connected_ = false;
+            recovering_ = false;
             outputBuffer_.clear();
             setStatus(QStringLiteral("Cannot start native voice executable"));
             emit runningChanged();
@@ -203,76 +203,90 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
     // Unused native diagnostics must not accumulate in an internal buffer.
     process_.setStandardErrorFile(QProcess::nullDevice());
     // Never log child output or backend tokens.
-    connect(&process_, &QProcess::readyReadStandardOutput, this, [this]() {
-        while (process_.bytesAvailable() > 0 && !stopRequested_) {
-            const QByteArray chunk = process_.read(4096);
-            if (chunk.isEmpty()) break;
-            outputBuffer_.append(chunk);
-            while (true) {
-                const auto newline = outputBuffer_.indexOf('\n');
-                if (newline < 0) break;
-                if (newline > 8192) {
-                    outputBuffer_.clear();
-                    process_.closeReadChannel(QProcess::StandardOutput);
-                    stopWithReason(QStringLiteral("Voice status output exceeded limit; stopping voice"));
-                    return;
-                }
-                const QByteArray line = outputBuffer_.left(newline).trimmed();
-                outputBuffer_.remove(0, newline + 1);
-                if (line == "GCP_VOICE_EVENT:muted") {
-                    transmitting_ = false;
-                    muteWatchdog_.stop();
-                    emit controlsChanged();
-                } else if (line == "GCP_VOICE_EVENT:unmuted" && !stopRequested_) {
-                    transmitting_ = true;
-                    emit controlsChanged();
-                } else if (line == "GCP_VOICE_EVENT:connected" && running() && !stopRequested_) {
-                    connected_ = true;
-                    connectWatchdog_.stop();
-                    if (!authorizationTimer_.isActive() && !pending_) authorizationTimer_.start(qMax(100, runtime_.authorizationIntervalMs));
-                    setStatus(QStringLiteral("Connected to LiveKit room (audio not verified)"));
-                } else if (line == "GCP_VOICE_EVENT:reconnecting" && connected_ && !stopRequested_) {
-                    connected_ = false;
-                    setStatus(QStringLiteral("Network interrupted · SDK reconnecting"));
-                    connectWatchdog_.start(15000);
-                } else if (line == "GCP_VOICE_EVENT:reconnected" && !stopRequested_ && running()) {
-                    connected_ = true;
-                    connectWatchdog_.stop();
-                    if (!authorizationTimer_.isActive() && !pending_) authorizationTimer_.start(qMax(100, runtime_.authorizationIntervalMs));
-                    setStatus(QStringLiteral("LiveKit reconnected (audio not verified)"));
-                } else if (line == "GCP_VOICE_EVENT:device_lost" && !stopRequested_) {
-                    connected_ = false;
-                    deviceLost_ = true;
-                    stopRequested_ = true;
-                    setStatus(QStringLiteral("Selected audio device disconnected; stopping voice"));
-                    connectWatchdog_.stop();
-                    process_.terminate();
-                    stopWatchdog_.start(2000);
-                } else if (line == "GCP_VOICE_EVENT:connection_lost" && !stopRequested_) {
-                    connected_ = false;
-                    setStatus(QStringLiteral("LiveKit connection lost · stopping voice"));
-                    stopRequested_ = true;
-                    connectWatchdog_.stop();
-                    process_.terminate();
-                    stopWatchdog_.start(2000);
-                } else if (line == "GCP_VOICE_EVENT:disconnected") {
-                    connected_ = false;
-                    setStatus(QStringLiteral("Disconnected from LiveKit room"));
-                }
-            }
-            if (outputBuffer_.size() > 8192) {
+    connect(&process_, &QProcess::readyReadStandardOutput, this, &VoiceSession::readStatusOutput);
+}
+
+void VoiceSession::readStatusOutput() {
+    while (process_.bytesAvailable() > 0 && !stopRequested_) {
+        const QByteArray chunk = process_.read(4096);
+        if (chunk.isEmpty()) break;
+        outputBuffer_.append(chunk);
+        while (true) {
+            const auto newline = outputBuffer_.indexOf('\n');
+            if (newline < 0) break;
+            if (newline > 8192) {
                 outputBuffer_.clear();
                 process_.closeReadChannel(QProcess::StandardOutput);
                 stopWithReason(QStringLiteral("Voice status output exceeded limit; stopping voice"));
                 return;
             }
+            const QByteArray line = outputBuffer_.left(newline).trimmed();
+            outputBuffer_.remove(0, newline + 1);
+            if (line == "GCP_VOICE_EVENT:muted") {
+                transmitting_ = false;
+                muteWatchdog_.stop();
+                emit controlsChanged();
+            } else if (line == "GCP_VOICE_EVENT:rearm_required" && !stopRequested_) {
+                muted_ = true;
+                transmitting_ = false;
+                muteWatchdog_.stop();
+                emit controlsChanged();
+            } else if (line == "GCP_VOICE_EVENT:unmuted" && connected_ && !muted_ && !stopRequested_) {
+                transmitting_ = true;
+                emit controlsChanged();
+            } else if (line == "GCP_VOICE_EVENT:connected" && !recovering_ && running() && !stopRequested_) {
+                connected_ = true;
+                connectWatchdog_.stop();
+                if (!authorizationTimer_.isActive() && !pending_) authorizationTimer_.start(qMax(100, runtime_.authorizationIntervalMs));
+                setStatus(QStringLiteral("Connected to LiveKit room (audio not verified)"));
+            } else if (line == "GCP_VOICE_EVENT:reconnecting" && running() && !stopRequested_) {
+                connected_ = false;
+                recovering_ = true;
+                muted_ = true;
+                cancelAuthorization();
+                authorizationTimer_.stop();
+                if (microphoneEnabled_) {
+                    if (!sendControl("mute\n")) {
+                        stopWithReason(QStringLiteral("Cannot mute interrupted voice; stopping"));
+                        return;
+                    }
+                    muteWatchdog_.start(1000);
+                }
+                setStatus(QStringLiteral("Network interrupted · SDK reconnecting"));
+                emit controlsChanged();
+                connectWatchdog_.start(15000);
+            } else if (line == "GCP_VOICE_EVENT:reconnected" && recovering_ && !stopRequested_ && running()) {
+                connectWatchdog_.stop();
+                setStatus(QStringLiteral("LiveKit reconnected · checking current room access…"));
+                requestAuthorization(microphoneEnabled_, true);
+            } else if (line == "GCP_VOICE_EVENT:microphone_failed" && !stopRequested_) {
+                stopWithReason(QStringLiteral("Microphone could not start; check Windows microphone permissions and the selected device, then join manually"));
+                return;
+            } else if (line == "GCP_VOICE_EVENT:device_lost" && !stopRequested_) {
+                deviceLost_ = true;
+                stopWithReason(QStringLiteral("Selected audio device disconnected; rescan and join manually"));
+                return;
+            } else if (line == "GCP_VOICE_EVENT:connection_lost" && !stopRequested_) {
+                stopWithReason(QStringLiteral("LiveKit connection lost; join again manually"));
+                return;
+            } else if (line == "GCP_VOICE_EVENT:disconnected" && !stopRequested_) {
+                stopWithReason(QStringLiteral("Disconnected from LiveKit room; join again manually"));
+                return;
+            }
         }
-    });
+        if (outputBuffer_.size() > 8192) {
+            outputBuffer_.clear();
+            process_.closeReadChannel(QProcess::StandardOutput);
+            stopWithReason(QStringLiteral("Voice status output exceeded limit; stopping voice"));
+            return;
+        }
+    }
 }
 
 VoiceSession::~VoiceSession() {
     // Destruction must not leave microphone capture in an orphan child. There is
     // no event loop left to deliver the asynchronous leave watchdog here.
+    cancelAuthorization();
     for (auto *child : {&process_, &devices_}) {
         child->disconnect(this);
         if (child->state() != QProcess::NotRunning) {
@@ -347,8 +361,8 @@ void VoiceSession::start(bool publishMicrophone) {
     requestAuthorization(publishMicrophone, false);
 }
 
-void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck) {
-    if (pending_ || (recheck && (!running() || stopRequested_))) return;
+void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck, bool rotationRetry) {
+    if (pending_ || authorizationWaiting_ || (recheck && (!running() || stopRequested_))) return;
     if (!account_->signedIn()) {
         stopWithReason(QStringLiteral("Sign-in required for voice"));
         return;
@@ -383,21 +397,32 @@ void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck) {
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setTransferTimeout(10000);
     if (!recheck) setStatus(QStringLiteral("Requesting authorized voice room…"));
+    // A credential-rotation retry shares the original absolute deadline.
+    const int deadline = authorizationWatchdog_.isActive() ? qMax(1, authorizationWatchdog_.remainingTime()) : 10000;
     pending_ = network_.post(request, QByteArray("{}"));
-    boundReply(pending_, 16384, 10000);
-    authorizationWatchdog_.start(10000);
+    boundReply(pending_, 16384, deadline);
+    authorizationWatchdog_.start(deadline);
     emit runningChanged();
     QNetworkReply *reply = pending_;
     const auto generation = generation_;
-    connect(reply, &QNetworkReply::finished, this, [this, reply, publishMicrophone, recheck, generation]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, publishMicrophone, recheck, generation, access, rotationRetry]() {
         // Cancellation takes precedence over completed replies.
         if (pending_ != reply || generation != generation_) { reply->deleteLater(); return; }
         pending_ = nullptr;
-        authorizationWatchdog_.stop();
         const auto status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         const auto error = reply->error();
         QByteArray response = reply->readAll();
         reply->deleteLater();
+        // Refresh atomically invalidates the old API token. Retry only this
+        // authorization read, once, when a concurrent rotation explains 401.
+        if (status == 401 && !rotationRetry && account_->signedIn() &&
+            (account_->busy() || account_->accessToken() != access)) {
+            response.fill(0);
+            if (account_->busy()) waitForAccountAuthorization(publishMicrophone, recheck, access);
+            else requestAuthorization(publishMicrophone, recheck, true);
+            return;
+        }
+        authorizationWatchdog_.stop();
         if (error != QNetworkReply::NoError || status != 201 || response.size() > 16384) {
             if (recheck) stopWithReason(QStringLiteral("Voice access recheck failed; join again manually"));
             else setStatus(QStringLiteral("Voice authorization failed or expired"));
@@ -421,7 +446,10 @@ void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck) {
         if ((voiceUrl.scheme() != QStringLiteral("wss") &&
              !(voiceUrl.scheme() == QStringLiteral("ws") &&
                (voiceUrl.host() == QStringLiteral("localhost") || voiceUrl.host() == QStringLiteral("127.0.0.1"))))
-            || !voiceUrl.userInfo().isEmpty() || !voiceUrl.isValid() ||
+            || !voiceUrl.userInfo().isEmpty() || !voiceUrl.isValid() || voiceUrl.host().isEmpty() ||
+            voiceUrl.hasQuery() || voiceUrl.hasFragment() || server.size() > 2048 ||
+            (voiceUrl.path() != QStringLiteral("/") && !voiceUrl.path().isEmpty()) ||
+            server.contains(QChar('@')) || server.contains(QChar(' ')) ||
             token.size() < 50 || token.size() > 8192 || ttl < 15 || ttl > 300) {
             if (recheck) stopWithReason(QStringLiteral("Voice access recheck failed; join again manually"));
             else setStatus(QStringLiteral("Rejected unsafe voice room credentials"));
@@ -432,11 +460,36 @@ void VoiceSession::requestAuthorization(bool publishMicrophone, bool recheck) {
             // Revalidate membership/session only. This JWT is not an SDK token
             // renewal and is never used to silently rejoin or enable a mic.
             authorizationTimer_.start(qMax(100, runtime_.authorizationIntervalMs));
+            if (recovering_) {
+                recovering_ = false;
+                connected_ = true;
+                setStatus(microphoneEnabled_
+                    ? QStringLiteral("LiveKit reconnected · microphone muted; Enable mic to resume")
+                    : QStringLiteral("LiveKit reconnected · listen only (audio not verified)"));
+            }
         } else {
             launch(publishMicrophone, server, token);
         }
         emit runningChanged();
     });
+}
+
+void VoiceSession::waitForAccountAuthorization(bool publishMicrophone, bool recheck, const QString &previousAccess) {
+    authorizationWaiting_ = true;
+    const auto generation = generation_;
+    accountWait_ = connect(account_, &AccountSession::changed, this,
+        [this, publishMicrophone, recheck, previousAccess, generation]() {
+            if (generation != generation_ || !authorizationWaiting_ || account_->busy()) return;
+            authorizationWaiting_ = false;
+            disconnect(accountWait_);
+            accountWait_ = {};
+            if (!account_->signedIn() || account_->accessToken() == previousAccess) {
+                stopWithReason(QStringLiteral("Voice session refresh failed; join again manually"));
+                return;
+            }
+            requestAuthorization(publishMicrophone, recheck, true);
+        });
+    emit runningChanged();
 }
 
 void VoiceSession::launch(bool publishMicrophone, const QString &url, const QString &token) {
@@ -452,6 +505,7 @@ void VoiceSession::launch(bool publishMicrophone, const QString &url, const QStr
     connectionTimedOut_ = false;
     deviceLost_ = false;
     connected_ = false;
+    recovering_ = false;
     outputBuffer_.clear();
     microphoneEnabled_ = publishMicrophone;
     process_.setProcessEnvironment(env);
@@ -477,20 +531,20 @@ void VoiceSession::joinWithMicrophone(bool consent) {
     start(true);
 }
 void VoiceSession::leave() {
-    ++generation_;
+    cancelAuthorization();
     heartbeatTimer_.stop();
     authorizationTimer_.stop();
     authorizationWatchdog_.stop();
     muteWatchdog_.stop();
-    if (pending_) {
-        auto *reply = pending_;
-        pending_ = nullptr;
-        reply->abort();
-        emit runningChanged();
-    }
+    emit runningChanged();
     if (!running()) { setStatus(QStringLiteral("Disconnected")); return; }
     stopRequested_ = true;
     connected_ = false;
+    recovering_ = false;
+    outputBuffer_.clear();
+    // No more status is needed once stopping. A noisy/stuck child must not
+    // fill QProcess's unread output buffer during the shutdown watchdog.
+    process_.closeReadChannel(QProcess::StandardOutput);
     startupWatchdog_.stop();
     connectWatchdog_.stop();
     setStatus(QStringLiteral("Disconnecting…"));
@@ -505,14 +559,23 @@ void VoiceSession::resetControls() {
     authorizationTimer_.stop();
     authorizationWatchdog_.stop();
     muteWatchdog_.stop();
-    if (pending_) {
-        auto *reply = pending_;
-        pending_ = nullptr;
-        reply->abort();
-    }
+    cancelAuthorization();
     muted_ = true;
     transmitting_ = false;
     emit controlsChanged();
+}
+
+void VoiceSession::cancelAuthorization() {
+    ++generation_;
+    authorizationWatchdog_.stop();
+    authorizationWaiting_ = false;
+    disconnect(accountWait_);
+    accountWait_ = {};
+    if (!pending_) return;
+    auto *reply = std::exchange(pending_, nullptr);
+    reply->disconnect(this);
+    reply->abort();
+    reply->deleteLater();
 }
 
 bool VoiceSession::sendControl(const QByteArray &command) {

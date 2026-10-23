@@ -31,6 +31,6 @@ To bind a different address in PowerShell: `$env:GCP_BIND_ADDRESS="127.0.0.1:900
 
 ## CI and contribution workflow
 
-GitHub Actions CI runs for pull requests, main pushes and manual dispatch. CI compiles the Windows media probe and tests CLI primitives but does **not** execute actual microphone/monitor capture on GitHub-hosted runners. CI stages and uploads private test ZIP artifacts. It does not deploy services, publish releases or change production databases.
+GitHub Actions CI runs for pull requests, main pushes and manual dispatch. CI compiles the Windows media probe and tests CLI primitives but does **not** execute actual microphone/monitor capture on GitHub-hosted runners. CI stages and uploads test ZIP artifacts and runs a real loopback synthetic-audio SDK/SFU contract; see [voice evidence](usable-voice.md). PR checks do not publish releases or deploy services. The existing main-branch alpha publication is version-gated; Group 4 does not change its version or release configuration. Tests do not change production databases.
 
 Maintain isolated feature branches. Build and test locally before merging. Keep documentation about existing capabilities accurate; planned functionality belongs in issues/PR descriptions rather than pretending to exist in the README.

@@ -60,14 +60,31 @@ int main(int argc, char **argv) {
         const std::string line(128, 'd');
         for (int index = 0; index < 256; ++index) std::cout << line << '\n';
     }
+    if (outputMode && std::string_view{outputMode} == "microphone-failed" && microphone) {
+        std::cout << "GCP_VOICE_EVENT:microphone_failed" << std::endl;
+        return 1;
+    }
+    if (outputMode && std::string_view{outputMode} == "delay-ready") {
+        std::cout << "GCP_VOICE_EVENT:muted" << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    }
     std::cout << "GCP_VOICE_EVENT:connected\nGCP_VOICE_EVENT:muted" << std::endl;
+    bool interrupted = false;
     std::string command;
     while (std::getline(std::cin, command)) {
         if (command == "stop") break;
+        if (command == "mute" && outputMode && std::string_view{outputMode} == "mute-timeout") continue;
         if (command == "mute" || command == "mode_ptt" || command == "mode_open")
             std::cout << "GCP_VOICE_EVENT:muted" << std::endl;
         else if (command == "unmute" && microphone) {
             std::cout << "GCP_VOICE_EVENT:unmuted" << std::endl;
+            if (outputMode && std::string_view{outputMode} == "reconnect" && !interrupted) {
+                interrupted = true;
+                std::cout << "GCP_VOICE_EVENT:reconnecting\nGCP_VOICE_EVENT:rearm_required\n"
+                             "GCP_VOICE_EVENT:muted\nGCP_VOICE_EVENT:reconnected" << std::endl;
+            } else if (outputMode && std::string_view{outputMode} == "lost") {
+                std::cout << "GCP_VOICE_EVENT:connection_lost" << std::endl;
+            }
             const auto *mode = std::getenv("GCP_FIXTURE_VOICE_OUTPUT");
             if (mode && std::string_view{mode} == "oversized")
                 std::cout << std::string(16384, 'x') << std::flush;

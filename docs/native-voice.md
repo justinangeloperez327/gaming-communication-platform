@@ -61,9 +61,9 @@ The diagnostic emits a sanitized JSON record with microphone opt-in state and re
 - Listen-only mode is default. Microphone publication requires BOTH --publish-mic and --confirm-microphone yes. A microphone source is created only after explicit consent.
 - Only wss:// endpoints (or loopback ws://localhost or ws://127.0.0.1 for developer tests) are accepted. Tokens must be short-lived, backend-issued, microphone-scoped. Never log real room JWTs.
 - SDK-provided PlatformAudio uses WebRTC ADM and may continue capturing while the local track is muted. To prevent further physical capture, end the session or disable microphone OS access; mute is not equivalent to hardware permission revocation.
-- The backend still does not eject already connected participants from the SFU when community membership is revoked. Group 27 does not add that security control.
-- No push-to-talk, participant mixer, per-user volume, microphone voice activity indicator or E2EE. A Qt control surface, bounded SDK reconnect handling and selected-device loss detection exist; default-device rerouting and physical recovery behavior remain unverified.
-- Native Windows CI compiles the executable, runs CLI consent/SDK self-tests and uploads the DLLs. CI neither joins a real LiveKit room nor verifies physical microphone/speaker operation. No production voice claim should be made from CI alone.
+- The backend now periodically reconciles SFU participants against sessions/membership and removes unauthorized peers. See [eviction and cached-token limits](server-voice-eviction.md).
+- Managed desktop mode supports F8 push-to-talk. There is no participant mixer, per-user volume, microphone voice activity indicator or E2EE. A Qt control surface, bounded SDK reconnect handling and selected-device loss detection exist; default-device rerouting and physical recovery behavior remain unverified.
+- Native Windows CI compiles the executable, runs consent/SDK self-tests and separately joins real loopback rooms with synthetic PCM peers. That contract verifies transport, mute, isolation, explicit rejoin and active eviction; it does not exercise PlatformAudio or physical microphone/speaker operation. See [Group 4 evidence](usable-voice.md).
 
 ## Managed desktop mode
 

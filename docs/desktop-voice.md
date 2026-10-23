@@ -10,7 +10,13 @@ Build Windows with `GCP_ENABLE_LIVEKIT=ON`, placing `gcp-livekit-voice.exe`, `li
 
 No desktop environment token configuration is required. The account controller rotates access/refresh tokens in memory; each join fetches a new authorized LiveKit token. Room credentials go to the native child's environment, not command-line arguments. This reduces accidental exposure but is not secure erasure of all Qt/SDK/environment memory copies.
 
-The UI distinguishes running process, SDK connected acknowledgment, reconnecting, device loss and timeout. SDK connection does not establish microphone transmission, speaker audibility or remote quality. Selected device loss is polled; default-device rerouting is not fully controlled. Fresh microphone consent is required after a stopped call.
+The UI distinguishes running process, SDK connected acknowledgment, reconnecting,
+device loss and timeout. An interruption clears mic/PTT arming; after SDK recovery
+a fresh backend access check must finish before mic controls return, and Enable
+mic is required again. Consent is cleared on either join action, Leave, logout
+and room changes. SDK connection does not establish speaker audibility or remote
+quality. Selected device loss is polled; default-device rerouting is not fully
+controlled. See [Group 4 evidence and physical acceptance](usable-voice.md).
 
 Desktop calls now continue until Leave using a leased native control pipe and periodic backend authorization. Microphone calls start muted; Enable mic permits transmission, and the optional F8 push-to-talk mode works outside the Qt window. Switching modes mutes the call and requires Enable mic again. Standalone diagnostics keep their bounded duration defaults. Read [long-session voice](long-session-voice.md) for control safety, token/reconnect boundaries and tests.
 

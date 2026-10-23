@@ -25,12 +25,21 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <mutex>
 #include <thread>
 #include <vector>
 
 namespace {
 using Clock = std::chrono::steady_clock;
 std::atomic<bool> running{true};
+std::mutex output_mutex;
+
+// SDK callbacks and the session loop run on different threads. Keep each
+// protocol line intact so a reconnect cannot splice a mute acknowledgment.
+void voice_event(std::string_view event) {
+    const std::scoped_lock lock(output_mutex);
+    std::cout << "GCP_VOICE_EVENT:" << event << std::endl;
+}
 
 void interrupted(int) {
     running.store(false);
@@ -244,18 +253,30 @@ struct VoiceEvents final : livekit::RoomDelegate {
     std::atomic<bool> network_lost{false};
     std::atomic<bool> reconnecting{false};
     std::atomic<std::uint64_t> interruptions{0};
+    std::mutex connection_events;
+    bool controls_ready = false; // guarded by connection_events
+    void beginProtocol() {
+        const std::scoped_lock lock(connection_events);
+        controls_ready = true;
+        voice_event("connected");
+        if (network_lost.load()) voice_event("connection_lost");
+        else if (reconnecting.load()) voice_event("reconnecting");
+    }
     void onReconnecting(livekit::Room&, const livekit::ReconnectingEvent&) override {
+        const std::scoped_lock lock(connection_events);
         interruptions.fetch_add(1);
         reconnecting.store(true);
-        std::cout << "GCP_VOICE_EVENT:reconnecting" << std::endl;
+        if (controls_ready) voice_event("reconnecting");
     }
     void onReconnected(livekit::Room&, const livekit::ReconnectedEvent&) override {
+        const std::scoped_lock lock(connection_events);
         reconnecting.store(false);
-        std::cout << "GCP_VOICE_EVENT:reconnected" << std::endl;
+        if (controls_ready) voice_event("reconnected");
     }
     void onDisconnected(livekit::Room&, const livekit::DisconnectedEvent&) override {
+        const std::scoped_lock lock(connection_events);
         network_lost.store(true);
-        std::cout << "GCP_VOICE_EVENT:connection_lost" << std::endl;
+        if (controls_ready) voice_event("connection_lost");
     }
 
     void onTrackSubscribed(livekit::Room&,
@@ -335,6 +356,10 @@ int join(const Options& o) {
 
     livekit::PlatformAudio audio;
     select_devices(audio, o);
+    // These owners outlive Room, even if disconnect itself throws during
+    // exception unwinding. Room must finish using the audio source first.
+    std::shared_ptr<livekit::PlatformAudioSource> mic_source;
+    std::shared_ptr<livekit::LocalAudioTrack> mic_track;
     VoiceEvents events;
     livekit::Room room;
     room.setDelegate(&events);
@@ -343,27 +368,28 @@ int join(const Options& o) {
     opts.connect_timeout = std::chrono::seconds(15);
     if (!room.connect(raw_url, raw_token, opts))
         throw std::runtime_error("Could not join LiveKit voice room");
-    std::cout << "GCP_VOICE_EVENT:connected" << std::endl;
 
-    // Ensure microphone source and track both remain alive until disconnect.
-    std::shared_ptr<livekit::PlatformAudioSource> mic_source;
-    std::shared_ptr<livekit::LocalAudioTrack> mic_track;
     try {
         bool muted = o.desktop_control;
         if (o.publish_mic) {
-            // Only reached after explicit CLI permission; no mic opened in
-            // listen-only mode. WebRTC ADM supplies AEC, NS and AGC.
-            mic_source = audio.createAudioSource();
-            mic_track = livekit::LocalAudioTrack::createLocalAudioTrack(
-                "gcp-voice-microphone", mic_source);
-            if (muted) mic_track->mute(); // before publication: no initial live burst
-            livekit::TrackPublishOptions publication;
-            publication.source = livekit::TrackSource::SOURCE_MICROPHONE;
-            auto participant = room.localParticipant().lock();
-            if (!participant)
-                throw std::runtime_error("Local participant is unavailable");
-            participant->publishTrack(mic_track, publication);
-            std::cout << (muted ? "GCP_VOICE_EVENT:muted" : "GCP_VOICE_EVENT:unmuted") << std::endl;
+            try {
+                // Only reached after explicit CLI permission; no mic opened in
+                // listen-only mode. WebRTC ADM supplies AEC, NS and AGC.
+                mic_source = audio.createAudioSource();
+                mic_track = livekit::LocalAudioTrack::createLocalAudioTrack(
+                    "gcp-voice-microphone", mic_source);
+                if (muted) mic_track->mute(); // before publication: no initial live burst
+                livekit::TrackPublishOptions publication;
+                publication.source = livekit::TrackSource::SOURCE_MICROPHONE;
+                auto participant = room.localParticipant().lock();
+                if (!participant)
+                    throw std::runtime_error("Local participant is unavailable");
+                participant->publishTrack(mic_track, publication);
+                voice_event(muted ? "muted" : "unmuted");
+            } catch (...) {
+                voice_event("microphone_failed");
+                throw;
+            }
         } else {
             std::cerr << "LISTEN ONLY: microphone source was NOT created.\n";
         }
@@ -372,6 +398,9 @@ int join(const Options& o) {
         gcp::transport::VoiceControl control{o.publish_mic, o.desktop_control,
                                               o.push_to_talk, started};
         auto interruption = events.interruptions.load();
+        // Do not enable desktop mic controls until publication has completed.
+        // The desktop's connection watchdog also bounds a stuck audio setup.
+        events.beginProtocol();
         std::uint64_t peak_private_bytes = before.private_bytes;
         std::uint64_t sample_count = 0;
         auto next_perf_sample = Clock::now() + std::chrono::seconds(2);
@@ -381,18 +410,24 @@ int join(const Options& o) {
             (o.seconds == 0 || Clock::now() - started < std::chrono::seconds(o.seconds))) {
             if (o.desktop_control) {
                 poll_control(control);
+                const auto current_interruption = events.interruptions.load();
+                if (interruption != current_interruption) {
+                    // Discard any arming queued before this interruption.
+                    control.interrupt();
+                    interruption = current_interruption;
+                    if (mic_track) {
+                        mic_track->mute();
+                        muted = true;
+                        voice_event("rearm_required");
+                    }
+                }
                 if (control.stopped(Clock::now())) break;
                 if (control.takeMuteRequest() && mic_track) {
                     // Acknowledge explicit mute/mode requests even if already
                     // muted, and only after the SDK mute operation returns.
                     mic_track->mute();
                     muted = true;
-                    std::cout << "GCP_VOICE_EVENT:muted" << std::endl;
-                }
-                const auto current_interruption = events.interruptions.load();
-                if (interruption != current_interruption) {
-                    control.resetPushToTalk();
-                    interruption = current_interruption;
+                    voice_event("muted");
                 }
                 const bool key_down = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
                 const bool transmit = control.transmit(Clock::now(), key_down,
@@ -400,7 +435,7 @@ int join(const Options& o) {
                 if (mic_track && transmit == muted) {
                     if (transmit) mic_track->unmute(); else mic_track->mute();
                     muted = !transmit;
-                    std::cout << (muted ? "GCP_VOICE_EVENT:muted" : "GCP_VOICE_EVENT:unmuted") << std::endl;
+                    voice_event(muted ? "muted" : "unmuted");
                 }
             }
             // Only poll explicitly selected devices, at most once per five seconds.
@@ -417,7 +452,7 @@ int join(const Options& o) {
                     if ((!o.input_id.empty() && !present(audio.recordingDevices(), o.input_id)) ||
                         (!o.output_id.empty() && !present(audio.playoutDevices(), o.output_id))) {
                         device_lost = true;
-                        std::cout << "GCP_VOICE_EVENT:device_lost" << std::endl;
+                        voice_event("device_lost");
                         break;
                     }
                 } catch (...) {
@@ -453,26 +488,29 @@ int join(const Options& o) {
             std::chrono::duration<double>(Clock::now() - started).count();
         const auto callbacks = events.subscriptions.load();
         const auto departures = events.unsubscriptions.load();
-        gcp::probe::print_metrics("livekit_voice_process_summary", elapsed,
-            callbacks, departures, before, after);
-        std::cout << "{\"probe\":\"livekit_voice_session\""
-                  << ",\"desktop_managed\":" << (o.desktop_control ? "true" : "false")
-                  << ",\"microphone_opted_in\":"
-                  << (o.publish_mic ? "true" : "false")
-                  << ",\"microphone_muted_at_end\":true"
-                  << ",\"remote_audio_subscriptions\":" << callbacks
-                  << ",\"remote_audio_unsubscriptions\":" << departures
-                  << ",\"device_lost\":" << (device_lost ? "true" : "false")
-                  << ",\"cpu_percent_total_machine\":" << machine_cpu
-                  << ",\"private_bytes_start\":" << before.private_bytes
-                  << ",\"private_bytes_end\":" << after.private_bytes
-                  << ",\"peak_private_bytes_sampled\":" << peak_private_bytes
-                  << ",\"memory_sample_count\":" << sample_count
-                  << ",\"memory_sample_interval_seconds\":2"
-                  << ",\"remote_audio_heard_verified\":false"
-                  << ",\"physical_device_verified\":false"
-                  << ",\"session_seconds\":" << std::fixed
-                  << std::setprecision(3) << elapsed << "}\n";
+        {
+            const std::scoped_lock lock(output_mutex);
+            gcp::probe::print_metrics("livekit_voice_process_summary", elapsed,
+                callbacks, departures, before, after);
+            std::cout << "{\"probe\":\"livekit_voice_session\""
+                      << ",\"desktop_managed\":" << (o.desktop_control ? "true" : "false")
+                      << ",\"microphone_opted_in\":"
+                      << (o.publish_mic ? "true" : "false")
+                      << ",\"microphone_muted_at_end\":true"
+                      << ",\"remote_audio_subscriptions\":" << callbacks
+                      << ",\"remote_audio_unsubscriptions\":" << departures
+                      << ",\"device_lost\":" << (device_lost ? "true" : "false")
+                      << ",\"cpu_percent_total_machine\":" << machine_cpu
+                      << ",\"private_bytes_start\":" << before.private_bytes
+                      << ",\"private_bytes_end\":" << after.private_bytes
+                      << ",\"peak_private_bytes_sampled\":" << peak_private_bytes
+                      << ",\"memory_sample_count\":" << sample_count
+                      << ",\"memory_sample_interval_seconds\":2"
+                      << ",\"remote_audio_heard_verified\":false"
+                      << ",\"physical_device_verified\":false"
+                      << ",\"session_seconds\":" << std::fixed
+                      << std::setprecision(3) << elapsed << "}\n";
+        }
     } catch (...) {
         if (mic_track) {
             try { mic_track->mute(); } catch (...) {}
@@ -481,7 +519,7 @@ int join(const Options& o) {
         throw;
     }
     room.disconnect();
-    std::cout << "GCP_VOICE_EVENT:disconnected" << std::endl;
+    voice_event("disconnected");
     mic_track.reset();
     mic_source.reset();
     return 0; // A connected room does not imply the remote person heard it.
