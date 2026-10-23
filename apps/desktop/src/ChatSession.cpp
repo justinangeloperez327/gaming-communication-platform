@@ -107,6 +107,13 @@ void ChatSession::selection() {
     const auto community = account_->signedIn() ? directory_->communityId() : QString{};
     const auto channel = account_->signedIn() ? directory_->textChannelId() : QString{};
     if (community == community_ && channel == channel_) return;
+    if (!community_.isEmpty() && community.isEmpty()) {
+        for (auto it = drafts_.begin(); it != drafts_.end(); ) {
+            if (it.key().startsWith(community_ + QChar('/'))) it = drafts_.erase(it); else ++it;
+        }
+    } else if (community == community_ && channel.isEmpty()) {
+        drafts_.remove(draftKey()); // The selected text channel was removed.
+    }
     ++generation_; stopTransport(); abortReply(mutation_);
     community_ = community; channel_ = channel;
     authorized_ = false; blocked_ = false; before_.clear(); hasOlder_ = false;

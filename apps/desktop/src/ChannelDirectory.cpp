@@ -398,6 +398,7 @@ bool ChannelDirectory::applyResponse(Operation operation, const QByteArray &byte
     case Operation::DeleteChannel:
         remove(allChannels_, target); remove(channels_, target);
         if (channelId_ == target) { channelId_.clear(); emit selectionChanged(); }
+        if (textChannelId_ == target) { textChannelId_.clear(); emit textSelectionChanged(); }
         outcome_ = QStringLiteral("Channel deleted."); reloadSelected(managementLoaded_); return true;
     case Operation::RevokeInvitation:
         if (target == invitationId_) { invitationToken_.fill(QChar(0)); invitationToken_.clear(); invitationId_.clear(); }

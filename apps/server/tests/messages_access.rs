@@ -435,9 +435,7 @@ async fn client_message_ids_deduplicate_retries_without_rewriting_or_disclosing(
     assert_eq!(status, StatusCode::OK);
     assert_eq!(existing["body"], "edited later");
     assert_eq!(
-        req(&app, Method::DELETE, &item, None, Some(&owner))
-            .await
-            .0,
+        req(&app, Method::DELETE, &item, None, Some(&owner)).await.0,
         StatusCode::NO_CONTENT
     );
     let (status, deleted) = req(
@@ -453,7 +451,10 @@ async fn client_message_ids_deduplicate_retries_without_rewriting_or_disclosing(
     assert!(deleted["deleted_at_ms"].is_i64());
     for (target, token) in [
         (url.clone(), &other),
-        (format!("/v1/communities/{space}/channels/{second}/messages"), &owner),
+        (
+            format!("/v1/communities/{space}/channels/{second}/messages"),
+            &owner,
+        ),
     ] {
         assert_eq!(
             req(
@@ -483,9 +484,15 @@ async fn client_message_ids_deduplicate_retries_without_rewriting_or_disclosing(
         );
     }
     assert_eq!(
-        req(&app, Method::DELETE, &format!("/v1/communities/{space}"), None, Some(&owner))
-            .await
-            .0,
+        req(
+            &app,
+            Method::DELETE,
+            &format!("/v1/communities/{space}"),
+            None,
+            Some(&owner)
+        )
+        .await
+        .0,
         StatusCode::NO_CONTENT
     );
     for id in [owner_id, other_id] {

@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QPointer>
+#include <QMap>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -21,6 +22,7 @@
 #include <algorithm>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <stdexcept>
 
@@ -124,7 +126,9 @@ struct Api {
                 auto row = message(1000 + posts, body.value("body").toString(), self);
                 row.insert("id", id); records.insert(id, row);
             }
-            if (lostPost) { lostPost = false; socket->disconnectFromHost(); return; }
+            // The write committed but its result is unreadable. A bare TCP
+            // close can be retried internally by Qt before the app sees it.
+            if (lostPost) { lostPost = false; respond(socket, 201, "{"); return; }
             respond(socket, exists ? 200 : 201, json(records[id])); return;
         }
         const auto id = path.section('/', -1);

@@ -202,6 +202,7 @@ Rectangle {
         objectName: "chatDeleteConfirmation"
         title: "Delete this message?"
         modal: true
+        width: Math.max(240, Math.min(400, panel.width - 32))
         anchors.centerIn: parent
         standardButtons: Dialog.Ok | Dialog.Cancel
         contentItem: Label { text: "The text will be replaced with a deleted marker."; wrapMode: Text.Wrap }

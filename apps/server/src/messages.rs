@@ -138,7 +138,11 @@ pub(crate) async fn create(
     }
     let community = parse_id(&community_id)?;
     let channel = parse_id(&channel_id)?;
-    let attempt = input.client_message_id.as_deref().map(parse_id).transpose()?;
+    let attempt = input
+        .client_message_id
+        .as_deref()
+        .map(parse_id)
+        .transpose()?;
     if attempt.is_some_and(|id| id.is_nil()) {
         return Err(AuthError::InvalidRequest);
     }
