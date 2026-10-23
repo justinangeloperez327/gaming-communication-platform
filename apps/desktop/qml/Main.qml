@@ -244,7 +244,7 @@ ApplicationWindow {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Sign in, choose a community, and open a text channel or voice call. Screen sharing remains a separate diagnostic."
+                        text: "Sign in, choose a community, and open a text channel or voice call. Choose a window or display to share with your channel after confirming the source."
                         font.pixelSize: 14
                         color: root.mutedTone
                         wrapMode: Text.WordWrap
@@ -288,11 +288,20 @@ ApplicationWindow {
                     }
                     VoicePanel {
                         Layout.fillWidth: true
+                        onLeaveRequested: screenSession.stop()
                         voice: voiceSession
                         directory: channelDirectory
                         account: accountSession
                         panel: root.panel
                         borderTone: root.borderTone
+                        textTone: root.textTone
+                        mutedTone: root.mutedTone
+                    }
+                    ScreenPanel {
+                        Layout.fillWidth: true
+                        screen: screenSession
+                        directory: channelDirectory
+                        account: accountSession
                         textTone: root.textTone
                         mutedTone: root.mutedTone
                     }

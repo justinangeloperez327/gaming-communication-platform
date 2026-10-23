@@ -1,5 +1,6 @@
 qt_add_executable(gcp-desktop
     src/main.cpp
+    src/ScreenSession.cpp src/ScreenSession.h
     src/VoiceSession.cpp
     src/VoiceSession.h
     src/AccountSession.cpp
@@ -25,6 +26,8 @@ set_source_files_properties(qml/VoicePanel.qml PROPERTIES QT_RESOURCE_ALIAS Voic
 set_source_files_properties(qml/ChatPanel.qml PROPERTIES QT_RESOURCE_ALIAS ChatPanel.qml)
 set_source_files_properties(qml/FriendsPanel.qml PROPERTIES QT_RESOURCE_ALIAS FriendsPanel.qml)
 
+set_source_files_properties(qml/ScreenPanel.qml PROPERTIES QT_RESOURCE_ALIAS ScreenPanel.qml)
+
 qt_add_qml_module(gcp-desktop
     URI Gcp.Desktop
     VERSION 1.0
@@ -35,6 +38,7 @@ qt_add_qml_module(gcp-desktop
         qml/AccountPanel.qml
         qml/CommunityPanel.qml
         qml/VoicePanel.qml
+        qml/ScreenPanel.qml
         qml/ChatPanel.qml
         qml/FriendsPanel.qml
 )
@@ -129,5 +133,19 @@ if(BUILD_TESTING)
     add_test(NAME desktop_voice_control_and_reauthorization
         COMMAND $<TARGET_FILE:gcp-voice-session-tests>)
     set_tests_properties(desktop_voice_control_and_reauthorization PROPERTIES
+        TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+endif()
+
+if(BUILD_TESTING)
+    add_executable(gcp-screen-process-fixture src/screen_process_fixture.cpp)
+    target_compile_features(gcp-screen-process-fixture PRIVATE cxx_std_20)
+    qt_add_executable(gcp-screen-session-tests
+        src/screen_session_tests.cpp src/ScreenSession.cpp src/ScreenSession.h
+        src/AccountSession.cpp src/AccountSession.h src/ChannelDirectory.cpp src/ChannelDirectory.h)
+    target_link_libraries(gcp-screen-session-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
+    target_compile_definitions(gcp-screen-session-tests PRIVATE GCP_SCREEN_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+    add_dependencies(gcp-screen-session-tests gcp-screen-process-fixture)
+    add_test(NAME desktop_screen_consent_and_publisher_lifecycle COMMAND $<TARGET_FILE:gcp-screen-session-tests>)
+    set_tests_properties(desktop_screen_consent_and_publisher_lifecycle PROPERTIES
         TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
 endif()

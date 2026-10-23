@@ -7,16 +7,21 @@
 
 #include <cstdint>
 #include <memory>
+#include <winrt/Windows.Graphics.Capture.h>
 
 namespace gcp::media {
 
-// Opt-in, developer-only source for GPU-backed Media Foundation samples.
+// Explicitly authorized source for GPU-backed Media Foundation samples.
 // No CPU pixel readback, audio capture, file recording or networking.
 // All capture resources share the encoder's D3D11 hardware device.
 class LiveMonitorCapture final {
 public:
     LiveMonitorCapture(ID3D11Device* device, ID3D11DeviceContext* context,
                        int monitor_index, UINT width, UINT height, UINT fps);
+    LiveMonitorCapture(ID3D11Device* device, ID3D11DeviceContext* context,
+                       const winrt::Windows::Graphics::Capture::GraphicsCaptureItem& item,
+                       UINT width, UINT height, UINT fps,
+                       UINT source_width, UINT source_height);
     ~LiveMonitorCapture();
 
     LiveMonitorCapture(const LiveMonitorCapture&) = delete;
