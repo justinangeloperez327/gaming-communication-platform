@@ -210,6 +210,10 @@ public:
         return S_OK;
     }
     bool next(ComPtr<IMFMediaEvent>& output, DWORD milliseconds) {
+        // Fail even when the queue stays nonempty; otherwise a driver that
+        // floods events can hide overflow behind the early queued-event path.
+        if (overflow_.load()) throw std::runtime_error("Media event queue overflow");
+        require(failure_.load(), "Asynchronous media event failure");
         {
             std::lock_guard lock(mutex_);
             if (!queue_.empty()) {
@@ -564,7 +568,8 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
             if (!controlled->keep_running()) { pump->stop(); return true; }
             monitor_capture = std::make_unique<gcp::media::LiveMonitorCapture>(
                 gpu.device.Get(), gpu.context.Get(), controlled->item,
-                options.width, options.height, options.fps);
+                options.width, options.height, options.fps,
+                controlled->source_width, controlled->source_height);
             if (!controlled->keep_running()) { pump->stop(); return true; }
             if (controlled->capture_started) controlled->capture_started();
         } else {
@@ -601,6 +606,7 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
             draining = true;
         };
         const auto active = [&] { return !controlled || controlled->keep_running(); };
+        unsigned input_requests = 0;
         while ((controlled || Clock::now() < deadline) && !complete && active()) {
             if (monitor_capture && !monitor_capture->healthy())
                 throw std::runtime_error("Selected capture source closed or changed");
@@ -610,40 +616,44 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                 start_drain();
             }
             ComPtr<IMFMediaEvent> event;
-            if (!pump->next(event, 200)) continue;
-            MediaEventType kind = MEUnknown;
-            require(event->GetType(&kind), "Media event type");
-
-            if (kind == METransformNeedInput && !draining &&
+            // A static source may have no new WGC frame. Keep the input credit
+            // but continue servicing HaveOutput: an encoder can request its next
+            // input BEFORE emitting the previous frame's output. Waiting inside
+            // that request indefinitely would starve output on static screens.
+            if (pump->next(event, monitor_capture && input_requests && !draining ? 0 : 200)) {
+                MediaEventType kind = MEUnknown;
+                require(event->GetType(&kind), "Media event type");
+                if (kind == METransformNeedInput && !draining) {
+                    if (input_requests >= 64)
+                        throw std::runtime_error("Hardware input credit limit exceeded");
+                    ++input_requests;
+                } else if (kind == METransformHaveOutput && active()) {
+                    receive_output(encoder.Get(), output_id, info, totals, on_encoded);
+                } else if (kind == METransformDrainComplete && draining) {
+                    complete = true;
+                } else if (kind == MEError) {
+                    throw std::runtime_error("Hardware MFT raised a media error event");
+                }
+            }
+            if (input_requests && !draining && active() &&
                 (controlled || submitted < static_cast<std::uint64_t>(options.frames))) {
                 ComPtr<IMFSample> sample;
                 if (monitor_capture) {
-                    // Static screens may legitimately produce no new WGC
-                    // frames. Keep the input request outstanding until a
-                    // fresh frame, the explicit duration, or a real failure.
-                    while (active() && (controlled || (Clock::now() < input_cutoff &&
-                           Clock::now() < deadline)) && !sample) {
-                        if (monitor_capture->take_next(
-                                monitor_sequence, sample, 250)) break;
-                        if (!monitor_capture->healthy()) {
-                            throw std::runtime_error(
-                                "Monitor capture stopped (resize or GPU failure)");
-                        }
+                    if (!monitor_capture->take_next(monitor_sequence, sample, 33)) {
+                        if (!monitor_capture->healthy())
+                            throw std::runtime_error("Selected capture source closed or changed");
                         ++totals.monitor_idle_waits;
-                    }
-                    if (!active()) break;
-                    if (!sample) {
-                        if (options.duration_seconds > 0) {
-                            totals.time_limit_reached = true;
-                            start_drain();
-                            continue;
-                        }
-                        throw std::runtime_error(
-                            "Monitor did not produce a fresh frame before timeout");
+                        continue;
                     }
                 } else {
                     sample = gpu.frame(options, static_cast<int>(submitted));
                 }
+                if (options.duration_seconds > 0 && Clock::now() >= input_cutoff) {
+                    totals.time_limit_reached = true; start_drain(); continue;
+                }
+                if (totals.submitted_inputs >= totals.samples &&
+                    totals.submitted_inputs - totals.samples >= 64)
+                    throw std::runtime_error("Hardware encoder input backlog exceeded");
                 if (feedback && *feedback) {
                     const auto request = (*feedback)();
                     auto set_codec_u32 = [&](const GUID& property, ULONG value) {
@@ -679,15 +689,10 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                 if (!active()) break;
                 require(encoder->ProcessInput(input_id, sample.Get(), 0),
                         "GPU NV12 ProcessInput");
+                --input_requests;
                 ++submitted;
                 ++totals.submitted_inputs;
                 if (!controlled && submitted == static_cast<std::uint64_t>(options.frames)) start_drain();
-            } else if (kind == METransformHaveOutput && active()) {
-                receive_output(encoder.Get(), output_id, info, totals, on_encoded);
-            } else if (kind == METransformDrainComplete && draining) {
-                complete = true;
-            } else if (kind == MEError) {
-                throw std::runtime_error("Hardware MFT raised a media error event");
             }
         }
         pump->stop();
@@ -827,7 +832,9 @@ int encode_screen_h264(
     const HardwareH264Profile& profile, const ScreenH264Session& session,
     const HardwareH264Callback& callback,
     const HardwareH264FeedbackCallback& feedback) {
-    if (!callback || !session.item || !session.keep_running)
+    if (!callback || !session.item || !session.keep_running ||
+        session.source_width < 160 || session.source_width > 1920 ||
+        session.source_height < 90 || session.source_height > 1080)
         throw std::invalid_argument("Controlled screen source is required");
     Options options;
     options.width = profile.width;

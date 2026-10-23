@@ -89,7 +89,7 @@ struct Events final : livekit::RoomDelegate {
     void onDisconnected(livekit::Room&, const livekit::DisconnectedEvent&) override { control.stop(); }
 };
 void publish(ScreenControl& control, const gcp::transport::ScreenGrant& grant,
-             const GraphicsCaptureItem& item) {
+             const GraphicsCaptureItem& item, int source_width, int source_height) {
     livekit::initialize(livekit::LogLevel::Off);
     struct Shutdown { ~Shutdown() { livekit::shutdown(); } } shutdown;
     Events events(control); // Must outlive Room, including asynchronous teardown.
@@ -107,6 +107,8 @@ void publish(ScreenControl& control, const gcp::transport::ScreenGrant& grant,
         throw std::runtime_error("Identity mismatch");
     // The Qt client also validates the JWT's exact room and source-only grants.
     const auto size = item.Size();
+    if (size.Width != source_width || size.Height != source_height)
+        throw std::runtime_error("Selected source resized after selection");
     gcp::media::HardwareH264Profile profile;
     profile.width = (size.Width + 1) / 2 * 2;
     profile.height = (size.Height + 1) / 2 * 2;
@@ -144,7 +146,8 @@ void publish(ScreenControl& control, const gcp::transport::ScreenGrant& grant,
         return request;
     };
     const gcp::media::ScreenH264Session session{
-        item, [&] { return control.alive(screen_now_ms()); }, [] { event("capturing"); }};
+        item, [&] { return control.alive(screen_now_ms()); }, [] { event("capturing"); },
+        source_width, source_height};
     if (gcp::media::encode_screen_h264(profile, session, emit, feedback) != 0)
         throw std::runtime_error("Hardware capture unavailable");
     // Source/track references and GPU encoder are destroyed before Room/SDK.
@@ -164,7 +167,7 @@ GraphicsCaptureItem pick(ScreenControl& control) {
         return DefWindowProcW(window, message, wparam, lparam);
     };
     if (!RegisterClassW(&type)) throw std::runtime_error("Picker class unavailable");
-    const auto owner = CreateWindowExW(WS_EX_TOOLWINDOW, type.lpszClassName, L"Choose what to share — GCP",
+    const auto owner = CreateWindowExW(WS_EX_TOOLWINDOW, type.lpszClassName, L"Choose what to share - GCP",
         WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 420, 180,
         nullptr, nullptr, type.hInstance, nullptr);
     if (!owner) throw std::runtime_error("Picker owner unavailable");
@@ -231,10 +234,10 @@ int run() {
     if (grant && control.alive(screen_now_ms())) {
         auto agile = winrt::agile_ref(item);
         std::atomic<bool> worker_done{false};
-        std::thread worker([&control, &worker_done, agile, grant = std::move(*grant)] {
+        std::thread worker([&control, &worker_done, agile, size, grant = std::move(*grant)] {
             try {
                 winrt::init_apartment(winrt::apartment_type::multi_threaded);
-                publish(control, grant, agile.get());
+                publish(control, grant, agile.get(), size.Width, size.Height);
             } catch (...) { control.stop(); try { event("failed"); } catch (...) {} }
             worker_done.store(true);
         });

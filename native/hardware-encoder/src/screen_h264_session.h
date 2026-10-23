@@ -10,6 +10,8 @@ struct ScreenH264Session {
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem item{nullptr};
     std::function<bool()> keep_running;
     std::function<void()> capture_started;
+    int source_width = 0;
+    int source_height = 0;
 };
 int encode_screen_h264(const HardwareH264Profile& profile,
                        const ScreenH264Session& session,

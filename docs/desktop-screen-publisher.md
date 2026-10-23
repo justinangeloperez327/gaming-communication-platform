@@ -51,7 +51,9 @@ GPU NV12 samples → asynchronous hardware-class Media Foundation H.264 → Live
 `EncodedVideoSource`. There is no raw-pixel CPU readback or software-encoder
 fallback. WGC uses two buffers and one replaceable latest NV12 sample; old pending
 frames are discarded. Only encoded bytes cross into the SDK. Conversion/submission
-runs at most at the chosen frame rate. Asynchronous samples own distinct surfaces
+runs at most at the chosen frame rate. Timestamps preserve elapsed static-screen
+gaps. The encoder continues servicing output while a fresh input frame is
+unavailable, with bounded input credits/backlog and event queues. Asynchronous samples own distinct surfaces
 until the encoder releases them. Existing finite diagnostics remain available.
 
 Closing/resizing the source, capture/encoder failure, SDK reconnect/disconnect,
@@ -104,7 +106,7 @@ control outages, cached-JWT replay and exact-login ownership limits.
   timers and a clearly identified test-only native peer. Cases include no-consent
   and cancel, scope/source loss, bad grants, oversized replies/output, stale
   replies after Stop, renewal denial/expiry, startup failure and forced cleanup
-  of a hung child. The fixture is excluded from distribution.
+  of a hung child, plus actual timed account-token rotation. The fixture is excluded from distribution.
 - Linux acceptance runs the real Qt controller against Rust/PostgreSQL and the
   checksum-pinned real SFU's control service. It checks real signed lease
   create/renew/stop, ownership directory and membership-loss shutdown. Its native

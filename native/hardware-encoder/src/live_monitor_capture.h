@@ -20,7 +20,8 @@ public:
                        int monitor_index, UINT width, UINT height, UINT fps);
     LiveMonitorCapture(ID3D11Device* device, ID3D11DeviceContext* context,
                        const winrt::Windows::Graphics::Capture::GraphicsCaptureItem& item,
-                       UINT width, UINT height, UINT fps);
+                       UINT width, UINT height, UINT fps,
+                       UINT source_width, UINT source_height);
     ~LiveMonitorCapture();
 
     LiveMonitorCapture(const LiveMonitorCapture&) = delete;

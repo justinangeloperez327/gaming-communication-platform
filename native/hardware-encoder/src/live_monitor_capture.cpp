@@ -48,6 +48,7 @@ struct State {
     const UINT width;
     const UINT height;
     const UINT fps;
+    const Clock::time_point source_started = Clock::now();
     Clock::time_point last_sample{};
     std::atomic<bool> active{true};
     std::atomic<std::uint64_t> received{0};
@@ -91,10 +92,12 @@ struct State {
             __uuidof(ID3D11Texture2D),
             reinterpret_cast<void**>(surface.GetAddressOf())));
 
-        // Sequence-based timestamps preserve monotonicity when older frames
-        // are dropped. Each IMFSample owns its distinct GPU NV12 surface.
-        const auto next = converted.load() + 1;
-        const auto ts = static_cast<LONGLONG>(10'000'000LL * (next - 1) / fps);
+        // Preserve real elapsed gaps on static screens and after dropped
+        // frames. Frame-count timestamps compress those gaps into 1/fps and
+        // drift away from the live RTP timeline. No sample time is mutated
+        // after submission to the asynchronous encoder.
+        const auto ts = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            now - source_started).count() / 100;
         auto sample = converter.convert(
             surface.Get(), ts, 10'000'000LL / fps);
         {
@@ -143,7 +146,8 @@ struct LiveMonitorCapture::Impl {
     }
 
     Impl(ID3D11Device* device, ID3D11DeviceContext* context,
-         const GraphicsCaptureItem& selected, UINT width, UINT height, UINT fps)
+         const GraphicsCaptureItem& selected, UINT width, UINT height, UINT fps,
+         UINT source_width = 0, UINT source_height = 0)
         : item(selected) {
         if (!device || !context || !item || fps == 0 || fps > 60 ||
             width < 160 || height < 90 || width > 1920 || height > 1080 ||
@@ -152,6 +156,9 @@ struct LiveMonitorCapture::Impl {
         if (!GraphicsCaptureSession::IsSupported())
             throw std::runtime_error("Windows Graphics Capture not supported");
         const auto dimensions = item.Size();
+        if ((source_width && dimensions.Width != static_cast<int>(source_width)) ||
+            (source_height && dimensions.Height != static_cast<int>(source_height)))
+            throw std::invalid_argument("Selected source resized after confirmation");
         if (dimensions.Width < 160 || dimensions.Height < 90 ||
             dimensions.Width > 1920 || dimensions.Height > 1080 ||
             (dimensions.Width + 1) / 2 * 2 != static_cast<int>(width) ||
@@ -211,6 +218,13 @@ struct LiveMonitorCapture::Impl {
         try { if (has_token) frame_pool.FrameArrived(token); } catch (...) {}
         try { if (session) session.Close(); } catch (...) {}
         try { if (frame_pool) frame_pool.Close(); } catch (...) {}
+        if (state) {
+            // An already-running free-threaded conversion owns shared State.
+            // Wait for it before returning to MFShutdown/device teardown.
+            std::lock_guard context_guard(state->video_context_mutex);
+            std::lock_guard sample_guard(state->mutex);
+            state->latest.Reset();
+        }
     }
 };
 
@@ -223,8 +237,10 @@ LiveMonitorCapture::LiveMonitorCapture(
 
 LiveMonitorCapture::LiveMonitorCapture(
     ID3D11Device* device, ID3D11DeviceContext* context,
-    const GraphicsCaptureItem& item, UINT width, UINT height, UINT fps)
-    : impl_(std::make_unique<Impl>(device, context, item, width, height, fps)) {}
+    const GraphicsCaptureItem& item, UINT width, UINT height, UINT fps,
+    UINT source_width, UINT source_height)
+    : impl_(std::make_unique<Impl>(device, context, item, width, height, fps,
+                                   source_width, source_height)) {}
 
 LiveMonitorCapture::~LiveMonitorCapture() = default;
 
