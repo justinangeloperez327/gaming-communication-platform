@@ -81,6 +81,26 @@ struct Room {
 #[derive(Deserialize)]
 struct Participant {
     identity: String,
+    #[serde(default)]
+    tracks: Vec<Track>,
+}
+#[derive(Deserialize)]
+struct Track {
+    #[serde(default)]
+    source: Value,
+    #[serde(default, rename = "type")]
+    kind: Value,
+}
+
+fn screen_tracks_allowed(participant: &Participant) -> bool {
+    match screen_sessions::parse_identity(&participant.identity) {
+        Some((_, Purpose::View)) => participant.tracks.is_empty(),
+        Some((_, Purpose::Publish)) => participant.tracks.len() <= 1 && participant.tracks.iter().all(|track| {
+            (track.source == json!(3) || track.source == json!("SCREEN_SHARE"))
+                && (track.kind == json!(1) || track.kind == json!("VIDEO"))
+        }),
+        None => false,
+    }
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -120,13 +140,24 @@ impl LiveKitConfig {
         self.eviction_guard.healthy()
     }
 
-    pub(crate) async fn remove_screen_participant(&self, channel: Uuid, lease: Uuid,
-        purpose: Purpose) -> Result<(), EvictionError> {
+    pub(crate) async fn remove_screen_participant(
+        &self,
+        channel: Uuid,
+        lease: Uuid,
+        purpose: Purpose,
+    ) -> Result<(), EvictionError> {
         let room = screen_sessions::room_name(channel);
-        let result: Result<Value, EvictionError> = self.rpc("RemoveParticipant", Some(&room),
-            json!({"room": room, "identity": screen_sessions::identity(lease, purpose),
-                   "revoke_token_ts": unix_seconds()? + 1})).await;
-        if result.is_err() { self.eviction_guard.mark(false); }
+        let result: Result<Value, EvictionError> = self
+            .rpc(
+                "RemoveParticipant",
+                Some(&room),
+                json!({"room": room, "identity": screen_sessions::identity(lease, purpose),
+                   "revoke_token_ts": unix_seconds()? + 1}),
+            )
+            .await;
+        if result.is_err() {
+            self.eviction_guard.mark(false);
+        }
         result.map(|_| ())
     }
 
@@ -246,8 +277,13 @@ impl LiveKitConfig {
             let ids: Vec<Uuid> = participants
                 .participants
                 .iter()
-                .filter_map(|p| if screen { screen_sessions::parse_identity(&p.identity).map(|(id, _)| id) }
-                    else { session_id(&p.identity) })
+                .filter_map(|p| {
+                    if screen {
+                        screen_sessions::parse_identity(&p.identity).map(|(id, _)| id)
+                    } else {
+                        session_id(&p.identity)
+                    }
+                })
                 .collect();
             let allowed: HashSet<String> = if ids.is_empty() {
                 HashSet::new()
@@ -261,11 +297,13 @@ impl LiveKitConfig {
                        AND l.expires_at>clock_timestamp() AND s.revoked_at IS NULL
                        AND s.access_expires_at>clock_timestamp() AND s.refresh_expires_at>clock_timestamp()")
                     .bind(ids).bind(channel).fetch_all(pool).await.map_err(|_| EvictionError::Database)?;
-                rows.into_iter().filter_map(|(id, purpose)| match purpose.as_str() {
-                    "publish" => Some(screen_sessions::identity(id, Purpose::Publish)),
-                    "view" => Some(screen_sessions::identity(id, Purpose::View)),
-                    _ => None,
-                }).collect()
+                rows.into_iter()
+                    .filter_map(|(id, purpose)| match purpose.as_str() {
+                        "publish" => Some(screen_sessions::identity(id, Purpose::Publish)),
+                        "view" => Some(screen_sessions::identity(id, Purpose::View)),
+                        _ => None,
+                    })
+                    .collect()
             } else {
                 sqlx::query_scalar::<_, Uuid>(
                     "SELECT s.id FROM user_sessions s
@@ -290,7 +328,8 @@ impl LiveKitConfig {
                     failure = Some(EvictionError::InvalidResponse);
                     continue;
                 }
-                let authorized = allowed.contains(&participant.identity);
+                let authorized = allowed.contains(&participant.identity)
+                    && (!screen || screen_tracks_allowed(&participant));
                 if !authorized {
                     let result: Result<Value, EvictionError> = self
                         .rpc(

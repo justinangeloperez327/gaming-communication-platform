@@ -8,21 +8,33 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction, types::Uuid};
 
-use crate::{AppState, auth::{self, AuthError}, livekit_tokens::LiveKitConfig};
+use crate::{
+    AppState,
+    auth::{self, AuthError},
+    livekit_tokens::LiveKitConfig,
+};
 
 pub(crate) const LEASE_SECONDS: u64 = 60;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum Purpose { Publish, View }
+pub(crate) enum Purpose {
+    Publish,
+    View,
+}
 
 impl Purpose {
     pub(crate) fn as_str(self) -> &'static str {
-        match self { Self::Publish => "publish", Self::View => "view" }
+        match self {
+            Self::Publish => "publish",
+            Self::View => "view",
+        }
     }
 }
 
-pub(crate) fn room_name(channel: Uuid) -> String { format!("gcp-screen-{channel}") }
+pub(crate) fn room_name(channel: Uuid) -> String {
+    format!("gcp-screen-{channel}")
+}
 
 pub(crate) fn identity(lease: Uuid, purpose: Purpose) -> String {
     format!("gcp-screen-{}-{lease}", purpose.as_str())
@@ -41,15 +53,20 @@ pub(crate) fn parse_identity(raw: &str) -> Option<(Uuid, Purpose)> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Create { purpose: Purpose, consent: bool }
+pub(crate) struct Create {
+    purpose: Purpose,
+    consent: bool,
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Renew { consent: bool }
+pub(crate) struct Renew {
+    consent: bool,
+}
 
 #[derive(Serialize)]
 pub(crate) struct Grant {
-    id: Uuid,
+    id: String,
     purpose: Purpose,
     participant_identity: String,
     #[serde(flatten)]
@@ -58,106 +75,181 @@ pub(crate) struct Grant {
 
 #[derive(Serialize, sqlx::FromRow)]
 pub(crate) struct Publisher {
-    id: Uuid,
-    user_id: Uuid,
+    id: String,
+    user_id: String,
     display_name: String,
     participant_identity: String,
 }
 
 fn ids(community: &str, channel: &str) -> Result<(Uuid, Uuid), AuthError> {
-    Ok((Uuid::parse_str(community).map_err(|_| AuthError::InvalidRequest)?,
-        Uuid::parse_str(channel).map_err(|_| AuthError::InvalidRequest)?))
+    Ok((
+        Uuid::parse_str(community).map_err(|_| AuthError::InvalidRequest)?,
+        Uuid::parse_str(channel).map_err(|_| AuthError::InvalidRequest)?,
+    ))
 }
 
 // Serialize create/renew with logout and one another. Recheck after acquiring
 // locks: a request can wait past session expiry or access-token rotation.
-async fn locked_access<'a>(pool: &'a PgPool, session: Uuid, digest: &str,
-    community: Uuid, channel: Uuid) -> Result<Transaction<'a, Postgres>, AuthError> {
+async fn locked_access<'a>(
+    pool: &'a PgPool,
+    session: Uuid,
+    digest: &str,
+    community: Uuid,
+    channel: Uuid,
+) -> Result<Transaction<'a, Postgres>, AuthError> {
     let mut tx = pool.begin().await.map_err(|_| AuthError::Unavailable)?;
     let user: Option<Uuid> = sqlx::query_scalar(
         "SELECT user_id FROM user_sessions WHERE id=$1 AND access_hash=$2
          AND revoked_at IS NULL AND access_expires_at>clock_timestamp()
-         AND refresh_expires_at>clock_timestamp() FOR UPDATE")
-        .bind(session).bind(digest).fetch_optional(&mut *tx).await
-        .map_err(|_| AuthError::Unavailable)?;
+         AND refresh_expires_at>clock_timestamp() FOR UPDATE",
+    )
+    .bind(session)
+    .bind(digest)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| AuthError::Unavailable)?;
     let user = user.ok_or(AuthError::Unauthorized)?;
     let found: Option<Uuid> = sqlx::query_scalar(
         "SELECT c.id FROM channels c
          JOIN community_memberships m ON m.community_id=c.community_id
          WHERE c.id=$1 AND c.community_id=$2 AND c.channel_kind='voice'
-         AND m.user_id=$3 FOR SHARE OF c,m")
-        .bind(channel).bind(community).bind(user).fetch_optional(&mut *tx).await
-        .map_err(|_| AuthError::Unavailable)?;
+         AND m.user_id=$3 FOR SHARE OF c,m",
+    )
+    .bind(channel)
+    .bind(community)
+    .bind(user)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| AuthError::Unavailable)?;
     found.ok_or(AuthError::NotFound)?;
     let current: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM user_sessions WHERE id=$1
-         AND access_expires_at>clock_timestamp() AND refresh_expires_at>clock_timestamp())")
-        .bind(session).fetch_one(&mut *tx).await.map_err(|_| AuthError::Unavailable)?;
-    if !current { return Err(AuthError::Unauthorized); }
+         AND access_expires_at>clock_timestamp() AND refresh_expires_at>clock_timestamp())",
+    )
+    .bind(session)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|_| AuthError::Unavailable)?;
+    if !current {
+        return Err(AuthError::Unauthorized);
+    }
     Ok(tx)
 }
 
 fn config(state: &AppState) -> Result<&LiveKitConfig, AuthError> {
     let config = state.livekit.as_ref().ok_or(AuthError::Unavailable)?;
-    if !config.eviction_healthy() { return Err(AuthError::Unavailable); }
+    if !config.eviction_healthy() {
+        return Err(AuthError::Unavailable);
+    }
     Ok(config)
 }
 
-type GrantReply = (StatusCode, [(header::HeaderName, &'static str); 2], Json<Grant>);
+type GrantReply = (
+    StatusCode,
+    [(header::HeaderName, &'static str); 2],
+    Json<Grant>,
+);
 
-fn reply(config: &LiveKitConfig, id: Uuid, channel: Uuid, purpose: Purpose,
-    expiry: i64, status: StatusCode) -> Result<GrantReply, AuthError> {
+fn reply(
+    config: &LiveKitConfig,
+    id: Uuid,
+    channel: Uuid,
+    purpose: Purpose,
+    expiry: i64,
+    status: StatusCode,
+) -> Result<GrantReply, AuthError> {
     let expiry = u64::try_from(expiry).map_err(|_| AuthError::Unavailable)?;
-    Ok((status, [(header::CACHE_CONTROL, "no-store"), (header::PRAGMA, "no-cache")],
-        Json(Grant { id, purpose, participant_identity: identity(id, purpose),
-            token: config.screen_token(id, channel, purpose, expiry)? })))
+    Ok((
+        status,
+        [
+            (header::CACHE_CONTROL, "no-store"),
+            (header::PRAGMA, "no-cache"),
+        ],
+        Json(Grant {
+            id: id.to_string(),
+            purpose,
+            participant_identity: identity(id, purpose),
+            token: config.screen_token(id, channel, purpose, expiry)?,
+        }),
+    ))
 }
 
-pub(crate) async fn create(State(state): State<AppState>, headers: HeaderMap,
-    Path((community, channel)): Path<(String, String)>, Json(input): Json<Create>
+pub(crate) async fn create(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((community, channel)): Path<(String, String)>,
+    Json(input): Json<Create>,
 ) -> Result<GrantReply, AuthError> {
     let pool = auth::database(&state)?;
     let (_, session, _) = auth::authenticated_session(pool, &headers).await?;
-    if !input.consent { return Err(AuthError::InvalidRequest); }
+    if !input.consent {
+        return Err(AuthError::InvalidRequest);
+    }
     let (community, channel) = ids(&community, &channel)?;
-    let config = config(&state)?;
     let digest = auth::bearer_digest(&headers)?;
     let mut tx = locked_access(pool, session, &digest, community, channel).await?;
+    let config = config(&state)?;
     sqlx::query("DELETE FROM screen_leases WHERE session_id=$1 AND expires_at<=clock_timestamp()")
-        .bind(session).execute(&mut *tx).await.map_err(|_| AuthError::Unavailable)?;
+        .bind(session)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| AuthError::Unavailable)?;
     let row: Option<(Uuid, i64)> = sqlx::query_as(
         "INSERT INTO screen_leases(session_id,channel_id,purpose,expires_at)
          VALUES($1,$2,$3,clock_timestamp()+interval '60 seconds')
          ON CONFLICT(session_id,purpose) DO NOTHING
-         RETURNING id,floor(extract(epoch FROM expires_at))::bigint")
-        .bind(session).bind(channel).bind(input.purpose.as_str())
-        .fetch_optional(&mut *tx).await.map_err(|_| AuthError::Unavailable)?;
+         RETURNING id,floor(extract(epoch FROM expires_at))::bigint",
+    )
+    .bind(session)
+    .bind(channel)
+    .bind(input.purpose.as_str())
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| AuthError::Unavailable)?;
     let (id, expiry) = row.ok_or(AuthError::Conflict)?;
-    let result = reply(config, id, channel, input.purpose, expiry, StatusCode::CREATED)?;
+    let result = reply(
+        config,
+        id,
+        channel,
+        input.purpose,
+        expiry,
+        StatusCode::CREATED,
+    )?;
     tx.commit().await.map_err(|_| AuthError::Unavailable)?;
     Ok(result)
 }
 
-pub(crate) async fn renew(State(state): State<AppState>, headers: HeaderMap,
-    Path((community, channel, lease)): Path<(String, String, String)>, Json(input): Json<Renew>
+pub(crate) async fn renew(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((community, channel, lease)): Path<(String, String, String)>,
+    Json(input): Json<Renew>,
 ) -> Result<GrantReply, AuthError> {
     let pool = auth::database(&state)?;
     let (_, session, _) = auth::authenticated_session(pool, &headers).await?;
-    if !input.consent { return Err(AuthError::InvalidRequest); }
+    if !input.consent {
+        return Err(AuthError::InvalidRequest);
+    }
     let (community, channel) = ids(&community, &channel)?;
     let lease = Uuid::parse_str(&lease).map_err(|_| AuthError::InvalidRequest)?;
-    let config = config(&state)?;
     let digest = auth::bearer_digest(&headers)?;
     let mut tx = locked_access(pool, session, &digest, community, channel).await?;
+    let config = config(&state)?;
     let row: Option<(String, i64)> = sqlx::query_as(
         "UPDATE screen_leases SET expires_at=clock_timestamp()+interval '60 seconds'
          WHERE id=$1 AND session_id=$2 AND channel_id=$3 AND expires_at>clock_timestamp()
-         RETURNING purpose,floor(extract(epoch FROM expires_at))::bigint")
-        .bind(lease).bind(session).bind(channel).fetch_optional(&mut *tx).await
-        .map_err(|_| AuthError::Unavailable)?;
+         RETURNING purpose,floor(extract(epoch FROM expires_at))::bigint",
+    )
+    .bind(lease)
+    .bind(session)
+    .bind(channel)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| AuthError::Unavailable)?;
     let (purpose, expiry) = row.ok_or(AuthError::NotFound)?;
     let purpose = match purpose.as_str() {
-        "publish" => Purpose::Publish, "view" => Purpose::View,
+        "publish" => Purpose::Publish,
+        "view" => Purpose::View,
         _ => return Err(AuthError::Unavailable),
     };
     let result = reply(config, lease, channel, purpose, expiry, StatusCode::OK)?;
@@ -165,8 +257,10 @@ pub(crate) async fn renew(State(state): State<AppState>, headers: HeaderMap,
     Ok(result)
 }
 
-pub(crate) async fn stop(State(state): State<AppState>, headers: HeaderMap,
-    Path((community, channel, lease)): Path<(String, String, String)>
+pub(crate) async fn stop(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((community, channel, lease)): Path<(String, String, String)>,
 ) -> Result<StatusCode, AuthError> {
     let pool = auth::database(&state)?;
     let (_, session, _) = auth::authenticated_session(pool, &headers).await?;
@@ -177,20 +271,34 @@ pub(crate) async fn stop(State(state): State<AppState>, headers: HeaderMap,
     let purpose: Option<String> = sqlx::query_scalar(
         "DELETE FROM screen_leases l USING channels c
          WHERE l.id=$1 AND l.session_id=$2 AND l.channel_id=$3
-         AND c.id=l.channel_id AND c.community_id=$4 RETURNING l.purpose")
-        .bind(lease).bind(session).bind(channel).bind(community)
-        .fetch_optional(pool).await.map_err(|_| AuthError::Unavailable)?;
+         AND c.id=l.channel_id AND c.community_id=$4 RETURNING l.purpose",
+    )
+    .bind(lease)
+    .bind(session)
+    .bind(channel)
+    .bind(community)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| AuthError::Unavailable)?;
     if let (Some(config), Some(purpose)) = (state.livekit.as_ref(), purpose) {
-        let purpose = if purpose == "publish" { Purpose::Publish } else { Purpose::View };
+        let purpose = if purpose == "publish" {
+            Purpose::Publish
+        } else {
+            Purpose::View
+        };
         // Lease invalidation has committed. No DB lock is held during HTTP;
         // reconciliation retries a failed immediate disconnect after restart.
-        let _ = config.remove_screen_participant(channel, lease, purpose).await;
+        let _ = config
+            .remove_screen_participant(channel, lease, purpose)
+            .await;
     }
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub(crate) async fn publishers(State(state): State<AppState>, headers: HeaderMap,
-    Path((community, channel)): Path<(String, String)>
+pub(crate) async fn publishers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((community, channel)): Path<(String, String)>,
 ) -> Result<Json<Vec<Publisher>>, AuthError> {
     let pool = auth::database(&state)?;
     let (_, session, _) = auth::authenticated_session(pool, &headers).await?;
@@ -198,7 +306,7 @@ pub(crate) async fn publishers(State(state): State<AppState>, headers: HeaderMap
     let digest = auth::bearer_digest(&headers)?;
     let mut tx = locked_access(pool, session, &digest, community, channel).await?;
     let rows = sqlx::query_as::<_, Publisher>(
-        "SELECT l.id,s.user_id,u.display_name,'gcp-screen-publish-'||l.id::text AS participant_identity
+        "SELECT l.id::text,s.user_id::text,u.display_name,'gcp-screen-publish-'||l.id::text AS participant_identity
          FROM screen_leases l JOIN user_sessions s ON s.id=l.session_id
          JOIN users u ON u.id=s.user_id
          JOIN channels c ON c.id=l.channel_id
@@ -207,7 +315,9 @@ pub(crate) async fn publishers(State(state): State<AppState>, headers: HeaderMap
          AND s.revoked_at IS NULL AND s.access_expires_at>clock_timestamp()
          AND s.refresh_expires_at>clock_timestamp() ORDER BY l.id LIMIT 201")
         .bind(channel).fetch_all(&mut *tx).await.map_err(|_| AuthError::Unavailable)?;
-    if rows.len()>200 { return Err(AuthError::Busy); }
+    if rows.len() > 200 {
+        return Err(AuthError::Busy);
+    }
     tx.commit().await.map_err(|_| AuthError::Unavailable)?;
     Ok(Json(rows))
 }
