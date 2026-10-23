@@ -1,6 +1,7 @@
 #include "VoiceSession.h"
 #include "AccountSession.h"
 #include "ChannelDirectory.h"
+#include "ChatSession.h"
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -30,10 +31,12 @@ int main(int argc, char *argv[])
     AccountSession account;
     ChannelDirectory directory(&account);
     VoiceSession voice(&account, &directory);
+    ChatSession chat(&account, &directory);
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("voiceSession"), &voice);
     engine.rootContext()->setContextProperty(QStringLiteral("accountSession"), &account);
     engine.rootContext()->setContextProperty(QStringLiteral("channelDirectory"), &directory);
+    engine.rootContext()->setContextProperty(QStringLiteral("chatSession"), &chat);
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,

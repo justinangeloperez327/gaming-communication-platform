@@ -83,6 +83,13 @@ ChannelDirectory::~ChannelDirectory() {
 bool ChannelDirectory::ready() const { return account_->signedIn() && !account_->busy() && !busy(); }
 bool ChannelDirectory::canManage() const { return communityRole_ == QStringLiteral("owner") || communityRole_ == QStringLiteral("admin"); }
 QString ChannelDirectory::channelName() const { return find(channels_, channelId_).value(QStringLiteral("name")).toString(); }
+QVariantList ChannelDirectory::textChannels() const {
+    QVariantList result;
+    for (const auto &item : allChannels_)
+        if (item.toMap().value(QStringLiteral("channel_kind")).toString() == QStringLiteral("text")) result.append(item);
+    return result;
+}
+QString ChannelDirectory::textChannelName() const { return find(allChannels_, textChannelId_).value(QStringLiteral("name")).toString(); }
 QString ChannelDirectory::selectedPath() const { return QStringLiteral("/v1/communities/") + communityId_; }
 bool ChannelDirectory::validName(const QString &name, int limit) {
     if (printableName(name, limit)) return true;
@@ -100,10 +107,13 @@ void ChannelDirectory::clearInvitations() {
 }
 void ChannelDirectory::clearSelection() {
     const bool selected = !communityId_.isEmpty() || !channelId_.isEmpty();
+    const bool textSelected = !communityId_.isEmpty() || !textChannelId_.isEmpty();
     communityId_.clear(); communityName_.clear(); communityRole_.clear(); channelId_.clear();
+    textChannelId_.clear();
     channels_.clear(); allChannels_.clear(); members_.clear(); clearInvitations();
     managementLoaded_ = false; detailsWanted_ = false;
     if (selected) emit selectionChanged();
+    if (textSelected) emit textSelectionChanged();
 }
 void ChannelDirectory::cancel() {
     ++version_;
@@ -132,6 +142,7 @@ void ChannelDirectory::useCommunity(const QVariantMap &community) {
     const bool switched = id != communityId_;
     if (switched) {
         channels_.clear(); allChannels_.clear(); members_.clear(); channelId_.clear();
+        textChannelId_.clear();
         clearInvitations(); managementLoaded_ = false; detailsWanted_ = false;
     }
     communityId_ = id; communityName_ = community.value(QStringLiteral("name")).toString();
@@ -139,6 +150,7 @@ void ChannelDirectory::useCommunity(const QVariantMap &community) {
     if (!canManage()) clearInvitations();
     upsertCommunity(community);
     if (switched) emit selectionChanged();
+    if (switched) emit textSelectionChanged();
 }
 void ChannelDirectory::refresh() {
     if (!ready()) return;
@@ -156,6 +168,11 @@ void ChannelDirectory::chooseVoiceChannel(const QString &id) {
     if (!ready() || communityId_.isEmpty() || find(channels_, id).isEmpty() || id == channelId_) return;
     channelId_ = id;
     emit selectionChanged(); emit changed();
+}
+void ChannelDirectory::chooseTextChannel(const QString &id) {
+    if (!ready() || communityId_.isEmpty() || find(textChannels(), id).isEmpty() || id == textChannelId_) return;
+    textChannelId_ = id;
+    emit textSelectionChanged(); emit changed();
 }
 void ChannelDirectory::loadManagement() {
     if (!ready() || communityId_.isEmpty()) return;
@@ -329,6 +346,7 @@ bool ChannelDirectory::applyResponse(Operation operation, const QByteArray &byte
             for (const auto &item : allChannels_)
                 if (item.toMap().value(QStringLiteral("channel_kind")).toString() == QStringLiteral("voice")) channels_.append(item);
             if (!channelId_.isEmpty() && find(channels_, channelId_).isEmpty()) { channelId_.clear(); emit selectionChanged(); }
+            if (!textChannelId_.isEmpty() && find(textChannels(), textChannelId_).isEmpty()) { textChannelId_.clear(); emit textSelectionChanged(); }
             if (detailsWanted_) send(Operation::ListMembers, "GET", selectedPath() + QStringLiteral("/members")); else finish();
         } else if (operation == Operation::ListMembers) {
             members_ = parsed; managementLoaded_ = true;

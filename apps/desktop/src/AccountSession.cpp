@@ -59,6 +59,7 @@ void AccountSession::clearSession() {
     access_.fill(QChar(0)); access_.clear();
     refresh_.fill(QChar(0)); refresh_.clear();
     displayName_.clear();
+    userId_.clear();
     serverOwner_ = false;
     invitationCode_.fill(QChar(0)); invitationCode_.clear();
     invitationId_.clear();
@@ -154,7 +155,10 @@ bool AccountSession::applyResponse(const QByteArray &bytes, bool isRefresh) {
     const int seconds = obj.value(QStringLiteral("expires_in")).toInt();
     if (!hexToken(access) || !hexToken(nextRefresh) || seconds < 60 || seconds > 86400) return false;
     QString name = obj.value(QStringLiteral("user")).toObject().value(QStringLiteral("display_name")).toString();
-    if (!isRefresh) displayName_ = name.left(80);
+    if (!isRefresh) {
+        displayName_ = name.left(80);
+        userId_ = obj.value(QStringLiteral("user")).toObject().value(QStringLiteral("id")).toString();
+    }
     serverOwner_ = obj.value(QStringLiteral("server_owner")).toBool(false);
     access_ = access;
     refresh_ = nextRefresh;
