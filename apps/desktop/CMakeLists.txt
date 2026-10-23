@@ -6,6 +6,7 @@ qt_add_executable(gcp-desktop
     src/AccountSession.h
     src/ChannelDirectory.cpp
     src/ChannelDirectory.h
+    src/ChatSession.cpp src/ChatSession.h src/MessageModel.cpp src/MessageModel.h
 )
 
 set_source_files_properties(qml/Main.qml PROPERTIES
@@ -20,6 +21,7 @@ set_source_files_properties(qml/IdPicker.qml PROPERTIES
 set_source_files_properties(qml/AccountPanel.qml PROPERTIES QT_RESOURCE_ALIAS AccountPanel.qml)
 set_source_files_properties(qml/CommunityPanel.qml PROPERTIES QT_RESOURCE_ALIAS CommunityPanel.qml)
 set_source_files_properties(qml/VoicePanel.qml PROPERTIES QT_RESOURCE_ALIAS VoicePanel.qml)
+set_source_files_properties(qml/ChatPanel.qml PROPERTIES QT_RESOURCE_ALIAS ChatPanel.qml)
 
 qt_add_qml_module(gcp-desktop
     URI Gcp.Desktop
@@ -31,12 +33,14 @@ qt_add_qml_module(gcp-desktop
         qml/AccountPanel.qml
         qml/CommunityPanel.qml
         qml/VoicePanel.qml
+        qml/ChatPanel.qml
 )
 
 target_link_libraries(gcp-desktop PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::Network
+    Qt6::WebSockets
 )
 
 set_target_properties(gcp-desktop PROPERTIES
@@ -44,6 +48,15 @@ set_target_properties(gcp-desktop PROPERTIES
 )
 
 if(BUILD_TESTING)
+    qt_add_executable(gcp-chat-tests
+        src/chat_tests.cpp src/ChatSession.cpp src/ChatSession.h src/MessageModel.cpp src/MessageModel.h
+        src/AccountSession.cpp src/AccountSession.h src/ChannelDirectory.cpp src/ChannelDirectory.h)
+    target_link_libraries(gcp-chat-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::WebSockets)
+    target_compile_definitions(gcp-chat-tests PRIVATE GCP_CHAT_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+    add_test(NAME desktop_text_messaging COMMAND $<TARGET_FILE:gcp-chat-tests>)
+    set_tests_properties(desktop_text_messaging PROPERTIES
+        TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+
     qt_add_executable(gcp-community-tests
         src/community_tests.cpp src/ChannelDirectory.cpp src/ChannelDirectory.h
         src/AccountSession.cpp src/AccountSession.h)

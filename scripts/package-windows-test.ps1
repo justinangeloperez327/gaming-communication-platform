@@ -60,7 +60,7 @@ foreach ($name in @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')) {
 Get-ChildItem -LiteralPath $crt -Filter '*.dll' -File | Copy-Item -Destination $output
 Copy-Item -LiteralPath $noticeSource -Destination (Join-Path $output 'third-party') -Recurse
 & (Join-Path $PSScriptRoot 'verify-windows-notices.ps1') -BundleDirectory $output
-foreach ($file in $required) {
+foreach ($file in ($required + @('Qt6WebSockets.dll'))) {
     if (-not (Test-Path -LiteralPath (Join-Path $output $file) -PathType Leaf)) { throw "Bundle missing $file" }
 }
 $manifest = foreach ($item in Get-ChildItem -LiteralPath $output -Recurse -File) {

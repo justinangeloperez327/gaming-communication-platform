@@ -7,6 +7,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QPointer>
 #include <QQmlComponent>
@@ -126,7 +127,12 @@ struct ApiFixture {
                         return;
                     }
                     body = "[{\"id\":\"" + channel.toUtf8() + "\",\"name\":\"team-voice\",\"channel_kind\":\"voice\",\"position\":0}]";
-                    if (!channelExists) body = "[]";
+                    if (channelExists) {
+                        auto channels = QJsonDocument::fromJson(body).array();
+                        channels.append(QJsonObject{{"id", "00000000-0000-0000-0000-000000000003"},
+                            {"name", "team-text"}, {"channel_kind", "text"}, {"position", 1}});
+                        body = QJsonDocument(channels).toJson(QJsonDocument::Compact);
+                    } else body = "[]";
                 } else if (path.endsWith("/livekit-token")) {
                     ++joins;
                     lastVoiceAccess = accessToken;
@@ -250,6 +256,10 @@ int main(int argc, char **argv) {
         click("voiceListenOnly");
         require(waitFor([&]() { return voice.connected(); }), "QML listen-only join");
         require(!panel->property("microphoneConsent").toBool(), "listen-only consumes pending microphone consent");
+        const auto joinsBeforeText = api.joins;
+        directory.chooseTextChannel(QStringLiteral("00000000-0000-0000-0000-000000000003"));
+        require(directory.textChannelId().endsWith("0003") && directory.channelId() == channel &&
+                voice.connected() && api.joins == joinsBeforeText, "text selection preserves the active voice process and room");
         click("voiceLeave");
         require(waitFor([&]() { return !voice.busy(); }), "QML leave after listen-only");
         require(!field("voiceJoinMicrophone")->property("enabled").toBool(), "stopped listen-only call cannot reuse old consent");

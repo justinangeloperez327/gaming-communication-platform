@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Quick QuickControls2 Network)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Quick QuickControls2 Network WebSockets)
 qt_standard_project_setup(REQUIRES 6.5)
 
 add_subdirectory(apps/desktop)

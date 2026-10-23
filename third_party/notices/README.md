@@ -1,6 +1,7 @@
 # Third-party notice baseline
 
-This private test bundle uses Qt 6.8.3 and the LiveKit C++ SDK 1.12.2.
+This private test bundle uses Qt 6.8.3 (including Qt WebSockets for desktop
+text events) and the LiveKit C++ SDK 1.12.2.
 The accompanying catalog records exact upstream commits, source URLs, file
 sizes and SHA-256 hashes for the included baseline texts. They are upstream
 texts, not a license granted to GCP by this document. Including alternative
@@ -18,4 +19,4 @@ upstream attribution material, the chosen Qt licensing/source-delivery route,
 and applicable component notices. Keep that review with the exact build.
 This baseline is not a compliance certificate or an approval to distribute.
 See docs/windows-third-party-notices.md in the source repository for the
-remaining packaging work. No installer or public release is supplied.
+remaining packaging work. The alpha installer uses this same baseline.

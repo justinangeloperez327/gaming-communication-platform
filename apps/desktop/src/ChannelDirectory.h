@@ -13,6 +13,9 @@ class ChannelDirectory final : public QObject {
     Q_PROPERTY(QVariantList communities READ communities NOTIFY changed)
     Q_PROPERTY(QVariantList channels READ channels NOTIFY changed)
     Q_PROPERTY(QVariantList allChannels READ allChannels NOTIFY changed)
+    Q_PROPERTY(QVariantList textChannels READ textChannels NOTIFY changed)
+    Q_PROPERTY(QString textChannelId READ textChannelId NOTIFY changed)
+    Q_PROPERTY(QString textChannelName READ textChannelName NOTIFY changed)
     Q_PROPERTY(QVariantList members READ members NOTIFY changed)
     Q_PROPERTY(QVariantList invitations READ invitations NOTIFY changed)
     Q_PROPERTY(QString communityId READ communityId NOTIFY changed)
@@ -32,6 +35,9 @@ public:
     QVariantList communities() const { return communities_; }
     QVariantList channels() const { return channels_; } // Voice picker only.
     QVariantList allChannels() const { return allChannels_; }
+    QVariantList textChannels() const;
+    QString textChannelId() const { return textChannelId_; }
+    QString textChannelName() const;
     QVariantList members() const { return members_; }
     QVariantList invitations() const { return invitations_; }
     QString communityId() const { return communityId_; }
@@ -48,6 +54,7 @@ public:
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void chooseCommunity(const QString &id);
     Q_INVOKABLE void chooseVoiceChannel(const QString &id);
+    Q_INVOKABLE void chooseTextChannel(const QString &id);
     Q_INVOKABLE void loadManagement();
     Q_INVOKABLE void createCommunity(const QString &name);
     Q_INVOKABLE void joinCommunity(const QString &token);
@@ -66,6 +73,7 @@ public:
 signals:
     void changed();
     void selectionChanged();
+    void textSelectionChanged();
 private:
     enum class Operation {
         ListCommunities, GetCommunity, ListChannels, ListMembers, ListInvitations,
@@ -91,7 +99,7 @@ private:
     QNetworkAccessManager network_;
     QNetworkReply *pending_ = nullptr;
     QVariantList communities_, channels_, allChannels_, members_, invitations_;
-    QString communityId_, communityName_, communityRole_, channelId_;
+    QString communityId_, communityName_, communityRole_, channelId_, textChannelId_;
     QString invitationToken_, invitationId_, outcome_;
     QString status_ = QStringLiteral("Sign in to view communities");
     quint64 version_ = 0;

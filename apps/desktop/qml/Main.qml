@@ -102,6 +102,16 @@ ApplicationWindow {
                     emptyLabel: "Choose a community"
                     onActivated: channelDirectory.chooseCommunity(currentValue)
                 }
+                Text { text: "TEXT CHANNELS"; color: root.mutedTone; font.pixelSize: 11 }
+                IdPicker {
+                    id: textPicker
+                    Layout.fillWidth: true
+                    enabled: accountSession.signedIn && !accountSession.busy && channelDirectory.communityId.length > 0 && !channelDirectory.busy
+                    options: channelDirectory.textChannels
+                    selectedId: channelDirectory.textChannelId
+                    emptyLabel: "Choose a text channel"
+                    onActivated: channelDirectory.chooseTextChannel(currentValue)
+                }
                 Text { text: "VOICE CHANNELS"; color: root.mutedTone; font.pixelSize: 11 }
                 IdPicker {
                     id: voicePicker
@@ -199,7 +209,8 @@ ApplicationWindow {
                         anchors.rightMargin: 24
                         spacing: 8
                         Text {
-                            text: channelDirectory.channelName.length ? "Voice · " + channelDirectory.channelName :
+                            text: channelDirectory.textChannelName.length ? "# " + channelDirectory.textChannelName :
+                                  channelDirectory.channelName.length ? "Voice · " + channelDirectory.channelName :
                                   channelDirectory.communityName.length ? channelDirectory.communityName : "Your communities"
                             textFormat: Text.PlainText
                             color: root.textTone
@@ -233,13 +244,22 @@ ApplicationWindow {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Sign in to select a community and join experimental voice calls until you leave. Desktop messaging and screen sharing are not connected yet."
+                        text: "Sign in, choose a community, and open a text channel or voice call. Screen sharing remains a separate diagnostic."
                         font.pixelSize: 14
                         color: root.mutedTone
                         wrapMode: Text.WordWrap
                     }
                     AccountPanel {
                         Layout.fillWidth: true
+                        account: accountSession
+                        textTone: root.textTone
+                        mutedTone: root.mutedTone
+                    }
+                    ChatPanel {
+                        Layout.fillWidth: true
+                        visible: accountSession.signedIn
+                        chat: chatSession
+                        directory: channelDirectory
                         account: accountSession
                         textTone: root.textTone
                         mutedTone: root.mutedTone
@@ -265,21 +285,7 @@ ApplicationWindow {
 
                 Item { Layout.fillHeight: true }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 74
-                    color: "#111925"
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 22
-                        anchors.rightMargin: 22
-                        TextField {
-                            Layout.fillWidth: true
-                            enabled: false
-                            placeholderText: "Messaging not connected yet"
-                        }
-                    }
-                }
+
             }
             }
         }

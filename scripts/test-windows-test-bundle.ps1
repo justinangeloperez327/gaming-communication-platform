@@ -13,7 +13,7 @@ function Expect-Rejected([string]$case) {
 try {
     New-Item -Path $root -ItemType Directory | Out-Null
     $manifest = @()
-    foreach ($name in @('gcp-desktop.exe','gcp-livekit-voice.exe','livekit.dll','livekit_ffi.dll','qml/nested/module.dll')) {
+    foreach ($name in @('gcp-desktop.exe','gcp-livekit-voice.exe','livekit.dll','livekit_ffi.dll','Qt6WebSockets.dll','qml/nested/module.dll')) {
         $path = Join-Path $root $name
         New-Item -Path (Split-Path $path) -ItemType Directory -Force | Out-Null
         [IO.File]::WriteAllText($path, "synthetic fixture: $name")
@@ -74,6 +74,9 @@ try {
     $entry.sha256 = $savedHash
     Write-Manifest $manifest
     & (Join-Path $PSScriptRoot 'verify-windows-test-bundle.ps1') -BundleDirectory $root
+
+    Write-Manifest ($manifest | Where-Object { $_.path -ne 'Qt6WebSockets.dll' })
+    Expect-Rejected 'missing WebSockets runtime with regenerated manifest'
 
     Write-Manifest ($manifest + $manifest[0])
     Expect-Rejected 'duplicate path'

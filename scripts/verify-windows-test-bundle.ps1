@@ -38,7 +38,7 @@ foreach ($entry in $items) {
     if ($digest -ne [string]$entry.sha256) { throw "Checksum mismatch: $relative" }
     $expected[$path] = $true
 }
-foreach ($name in @('gcp-desktop.exe','gcp-livekit-voice.exe','livekit.dll','livekit_ffi.dll')) {
+foreach ($name in @('gcp-desktop.exe','gcp-livekit-voice.exe','livekit.dll','livekit_ffi.dll','Qt6WebSockets.dll')) {
     if (-not $expected.ContainsKey((Join-Path $root $name))) { throw "Missing required package entry: $name" }
 }
 foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -Force -File) {

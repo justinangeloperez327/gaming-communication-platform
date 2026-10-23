@@ -61,6 +61,46 @@ jobs:
       - name: Frame-time comparison tests
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
+  desktop-chat-api:
+    name: Qt to Rust messaging acceptance
+    # Pin the SDK acceptance environment; no GUI/display or media stack needed.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgres://gcp_test:gcp_test@127.0.0.1:5432/gcp_chat_test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: gcp_chat_test
+          POSTGRES_USER: gcp_test
+          POSTGRES_PASSWORD: gcp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gcp_test -d gcp_chat_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Qt Core, Network and WebSockets
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: linux_gcc_64
+          modules: 'qtwebsockets'
+          cache: true
+      - name: Build Rust API
+        run: cargo build --locked -p gaming-comms-server
+      - name: Build actual desktop controllers without the GUI/media stack
+        run: |
+          cmake -S apps/desktop/tests/api -B build/chat-api -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/chat-api --parallel 2
+      - name: Real desktop onboarding, text delivery, edits, deletes and revocation
+        run: python3 scripts/verify_desktop_chat.py --server target/debug/gaming-comms-server --client build/chat-api/gcp-chat-api-acceptance
+
   server-stack:
     name: Self-hosted stack acceptance
     runs-on: ubuntu-latest
@@ -83,6 +123,7 @@ jobs:
         with:
           version: '6.8.3'
           arch: win64_msvc2022_64
+          modules: 'qtwebsockets'
           cache: true
       - name: Configure with pinned LiveKit SDK
         shell: pwsh
@@ -264,7 +305,7 @@ jobs:
 
   preview-release:
     name: Publish requested alpha preview
-    needs: [rust, desktop, server-stack]
+    needs: [rust, desktop, server-stack, desktop-chat-api]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

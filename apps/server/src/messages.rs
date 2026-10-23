@@ -21,6 +21,14 @@ pub(crate) struct MessageInput {
     body: String,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct CreateMessageInput {
+    body: String,
+    // Optional for older clients. Reuse the existing primary key to make an
+    // explicit retry safe after a committed write loses its HTTP response.
+    client_message_id: Option<String>,
+}
+
 #[derive(Deserialize, Default)]
 pub(crate) struct PageQuery {
     limit: Option<i64>,
@@ -34,6 +42,7 @@ pub(crate) struct MessageView {
     author_id: String,
     body: Option<String>,
     created_at_ms: i64,
+    created_at_us: i64,
     edited_at_ms: Option<i64>,
     deleted_at_ms: Option<i64>,
 }
@@ -71,6 +80,9 @@ fn view(row: &PgRow) -> Result<MessageView, AuthError> {
         body: row.try_get("body").map_err(|_| AuthError::Unavailable)?,
         created_at_ms: row
             .try_get("created_at_ms")
+            .map_err(|_| AuthError::Unavailable)?,
+        created_at_us: row
+            .try_get("created_at_us")
             .map_err(|_| AuthError::Unavailable)?,
         edited_at_ms: row
             .try_get("edited_at_ms")
@@ -119,37 +131,62 @@ pub(crate) async fn create(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((community_id, channel_id)): Path<(String, String)>,
-    Json(input): Json<MessageInput>,
+    Json(input): Json<CreateMessageInput>,
 ) -> Result<(StatusCode, Json<MessageView>), AuthError> {
     if !valid_body(&input.body) {
         return Err(AuthError::InvalidRequest);
     }
     let community = parse_id(&community_id)?;
     let channel = parse_id(&channel_id)?;
+    let attempt = input
+        .client_message_id
+        .as_deref()
+        .map(parse_id)
+        .transpose()?;
+    if attempt.is_some_and(|id| id.is_nil()) {
+        return Err(AuthError::InvalidRequest);
+    }
     let (pool, user) = actor(&state, &headers).await?;
     // Authorization is inside INSERT...SELECT: an external channel ID
     // cannot inject content into an unrelated community or voice channel.
     let row = sqlx::query(
-        "INSERT INTO messages (channel_id, author_id, body)
-         SELECT ch.id, $3, $4 FROM channels ch
+        "INSERT INTO messages (id, channel_id, author_id, body)
+         SELECT COALESCE($5::uuid, gen_random_uuid()), ch.id, $3, $4 FROM channels ch
          WHERE ch.id = $1 AND ch.community_id = $2
            AND ch.channel_kind = 'text'
            AND EXISTS (
              SELECT 1 FROM community_memberships cm
              WHERE cm.community_id = ch.community_id AND cm.user_id = $3
            )
+         ON CONFLICT (id) DO NOTHING
          RETURNING id, channel_id, author_id, body,
            floor(extract(epoch from created_at) * 1000)::bigint AS created_at_ms,
+           floor(extract(epoch from created_at) * 1000000)::bigint AS created_at_us,
            NULL::bigint AS edited_at_ms, NULL::bigint AS deleted_at_ms",
     )
     .bind(channel)
     .bind(community)
     .bind(user)
     .bind(input.body)
+    .bind(attempt)
     .fetch_optional(&pool)
     .await
-    .map_err(|_| AuthError::Unavailable)?
-    .ok_or(AuthError::NotFound)?;
+    .map_err(|_| AuthError::Unavailable)?;
+    let Some(row) = row else {
+        let id = attempt.ok_or(AuthError::NotFound)?;
+        // GET rechecks current session, membership and the exact channel. An
+        // existing ID in somebody else's channel/account is never disclosed.
+        let Json(existing) = get(
+            State(state),
+            headers,
+            Path((community_id, channel_id, id.to_string())),
+        )
+        .await?;
+        if existing.author_id != user.to_string() {
+            return Err(AuthError::NotFound);
+        }
+        return Ok((StatusCode::OK, Json(existing)));
+    };
     let result = view(&row)?;
     state.realtime.publish(Event::message(
         channel,
@@ -179,6 +216,7 @@ pub(crate) async fn list(
         "SELECT m.id, m.channel_id, m.author_id,
            CASE WHEN m.deleted_at IS NULL THEN m.body ELSE NULL END AS body,
            floor(extract(epoch from m.created_at) * 1000)::bigint AS created_at_ms,
+           floor(extract(epoch from m.created_at) * 1000000)::bigint AS created_at_us,
            floor(extract(epoch from m.edited_at) * 1000)::bigint AS edited_at_ms,
            floor(extract(epoch from m.deleted_at) * 1000)::bigint AS deleted_at_ms
          FROM messages m
@@ -233,6 +271,7 @@ pub(crate) async fn get(
         "SELECT m.id, m.channel_id, m.author_id,
            CASE WHEN m.deleted_at IS NULL THEN m.body ELSE NULL END AS body,
            floor(extract(epoch from m.created_at) * 1000)::bigint AS created_at_ms,
+           floor(extract(epoch from m.created_at) * 1000000)::bigint AS created_at_us,
            floor(extract(epoch from m.edited_at) * 1000)::bigint AS edited_at_ms,
            floor(extract(epoch from m.deleted_at) * 1000)::bigint AS deleted_at_ms
          FROM messages m
@@ -279,6 +318,7 @@ pub(crate) async fn edit(
            )
          RETURNING id, channel_id, author_id, body,
            floor(extract(epoch from created_at) * 1000)::bigint AS created_at_ms,
+           floor(extract(epoch from created_at) * 1000000)::bigint AS created_at_us,
            floor(extract(epoch from edited_at) * 1000)::bigint AS edited_at_ms,
            NULL::bigint AS deleted_at_ms",
     )
