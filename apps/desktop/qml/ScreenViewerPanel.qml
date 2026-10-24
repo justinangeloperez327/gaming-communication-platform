@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Basic as Basic
 import QtQuick.Layouts
 import QtQuick.Window
 import Gcp.Media 1.0
@@ -28,11 +29,18 @@ Rectangle {
             color: root.mutedTone
             wrapMode: Text.Wrap
         }
-        ComboBox {
+        Basic.ComboBox {
             id: publishers
             objectName: "screenPublishers"
             Layout.fillWidth: true
             model: root.viewer.publishers
+            palette.window: "#151e2b"
+            palette.base: "#101722"
+            palette.button: "#202b3a"
+            palette.text: root.textTone
+            palette.buttonText: root.textTone
+            palette.highlight: "#304b69"
+            palette.highlightedText: root.textTone
             textRole: "name"
             valueRole: "id"
             currentIndex: -1
@@ -44,8 +52,9 @@ Rectangle {
                 target: root.viewer
                 function onChanged() { publishers.currentIndex = publishers.indexOfValue(root.viewer.publisherId) }
             }
-            delegate: ItemDelegate { width: publishers.width; text: modelData.name; contentItem: Text { text: modelData.name; textFormat: Text.PlainText; elide: Text.ElideRight; color: root.textTone } }
+            delegate: Basic.ItemDelegate { width: publishers.width; text: modelData.name; contentItem: Text { text: modelData.name; textFormat: Text.PlainText; elide: Text.ElideRight; color: root.textTone } }
         }
+        Label { Layout.fillWidth: true; visible: !root.viewer.available; text: "Screen viewer is unavailable in this build."; color: root.mutedTone; wrapMode: Text.Wrap }
         RowLayout {
             Button {
                 objectName: "screenRefreshShares"
@@ -83,8 +92,8 @@ Rectangle {
         color: "#080c12"
         title: "Screen viewer — " + root.viewer.publisherName
         onClosing: root.viewer.stop()
-        onVisibilityChanged: {
-            if (root.viewer.busy && (visibility === Window.Hidden || visibility === Window.Minimized)) root.viewer.stop()
+        onVisibilityChanged: function(state) {
+            if (root.viewer.busy && (state === Window.Hidden || state === Window.Minimized)) root.viewer.stop()
         }
         ColumnLayout {
             anchors.fill: parent

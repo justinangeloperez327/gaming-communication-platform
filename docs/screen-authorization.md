@@ -200,3 +200,12 @@ connects this API to the Windows picker and exact-source native publisher. See
 profile, bounded fail-closed controls and physical verification limits. Group 9
 still supplies the desktop viewer. The new real Qt/Rust lease acceptance uses
 a protocol-only native fixture; the existing synthetic SDK/SFU run is separate.
+
+## Desktop viewer integration
+
+[Group 9 / PR #87](https://github.com/justinangeloperez327/gaming-communication-platform/pull/87)
+adds explicit Watch, a subscribe-only native receiver and bounded Qt rendering.
+Its authenticated `POST /screen-sessions/{viewer-lease}/watch` endpoint resolves
+and subscribes the exact SFU track under the directory-selected publisher;
+see [desktop screen viewer](desktop-screen-viewer.md) for the complete path,
+client versus room-level authorization, races and evidence boundaries.

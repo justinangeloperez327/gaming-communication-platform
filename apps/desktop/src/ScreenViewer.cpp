@@ -95,7 +95,7 @@ void ScreenViewer::refreshPublishers() {
     connect(reply, &QNetworkReply::finished, this, [this, reply, generation] {
         if (listing_ != reply || generation != generation_) { reply->deleteLater(); return; }
         listing_ = nullptr;
-        const auto bytes = reply->readAll(); const auto code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const auto bytes = reply->isOpen() ? reply->readAll() : QByteArray{}; const auto code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         const auto doc = QJsonDocument::fromJson(bytes);
         bool valid = reply->error() == QNetworkReply::NoError && code == 200 && sameScope() && bytes.size() <= 262144 && doc.isArray() && doc.array().size() <= 200;
         reply->deleteLater(); QVariantList entries; QSet<QString> ids;
@@ -144,7 +144,7 @@ void ScreenViewer::requestGrant(bool renew) {
     pending_ = reply; boundReply(reply, 16384, runtime_.requestMs);
     connect(reply, &QNetworkReply::finished, this, [this, reply, generation, renew, requestedAt] {
         if (pending_ != reply || generation != generation_) { reply->deleteLater(); return; }
-        pending_ = nullptr; const auto code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(); auto bytes = reply->readAll();
+        pending_ = nullptr; const auto code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(); auto bytes = reply->isOpen() ? reply->readAll() : QByteArray{};
         if (!renew && code == 201) { const auto id = QJsonDocument::fromJson(bytes).object().value("id").toString(); if (ChatProtocol::uuid(id)) lease_ = id; }
         const bool valid = reply->error() == QNetworkReply::NoError && code == (renew ? 200 : 201) && sameScope() && bytes.size() <= 16384 && applyGrant(bytes, renew, requestedAt);
         bytes.fill(0); reply->deleteLater();
@@ -176,7 +176,7 @@ void ScreenViewer::requestTrack() {
     pending_ = reply; boundReply(reply, 16384, runtime_.requestMs); const auto generation = generation_;
     connect(reply, &QNetworkReply::finished, this, [this, reply, generation] {
         if (pending_ != reply || generation != generation_) { reply->deleteLater(); return; }
-        pending_ = nullptr; const auto code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(); const auto bytes = reply->readAll(); const auto json = QJsonDocument::fromJson(bytes).object(); const auto sid = json.value("track_sid").toString();
+        pending_ = nullptr; const auto code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(); const auto bytes = reply->isOpen() ? reply->readAll() : QByteArray{}; const auto json = QJsonDocument::fromJson(bytes).object(); const auto sid = json.value("track_sid").toString();
         const bool valid = reply->error() == QNetworkReply::NoError && code == 200 && sameScope() && bytes.size() <= 16384 && json.value("participant_identity").toString() == QStringLiteral("gcp-screen-publish-") + selected_ && gcp::transport::screen_track_sid(sid.toStdString()) && (trackSid_.isEmpty() || trackSid_ == sid);
         reply->deleteLater(); if (!valid) { stopWithReason(denied(code)); return; }
         if (trackSid_.isEmpty()) { trackSid_ = sid; if (!control("track " + sid.toUtf8())) stopWithReason(QStringLiteral("Viewing stopped: media process unavailable.")); }
@@ -230,7 +230,10 @@ void ScreenViewer::revoke() {
 }
 void ScreenViewer::stop() { stopWithReason(QStringLiteral("Viewing stopped")); }
 void ScreenViewer::stopWithReason(const QString& reason) {
-    if (stopping_) return;
+    if (stopping_) {
+        if (listing_) { ++generation_; abort(listing_); status_ = reason; emit changed(); }
+        return;
+    }
     ++generation_; stopping_ = true; stopReason_ = reason; consent_ = watching_ = connected_ = subscribed_ = credit_ = false;
     for (auto* timer : {&heartbeat_, &renewal_, &deadline_, &startup_, &frameTimer_, &payloadDeadline_}) timer->stop();
     abort(pending_); abort(listing_); image_ = {}; pixels_.clear(); line_.clear(); header_.reset(); rotation_ = 0; frameNumber_ = 0; trackSid_.clear(); emit frameChanged(); revoke();

@@ -14,7 +14,12 @@ struct VideoNode final : QSGTransformNode {
     }
 };
 }
-ScreenVideoItem::ScreenVideoItem(QQuickItem* parent) : QQuickItem(parent) { setFlag(ItemHasContents, true); }
+ScreenVideoItem::ScreenVideoItem(QQuickItem* parent) : QQuickItem(parent) {
+    setFlag(ItemHasContents, true);
+    connect(this, &QQuickItem::windowChanged, this, [](QQuickWindow* window) {
+        if (window) { window->setPersistentSceneGraph(false); window->setPersistentGraphics(false); }
+    });
+}
 void ScreenVideoItem::setSource(QObject* source) {
     auto* viewer = qobject_cast<ScreenViewer*>(source);
     if (viewer_ == viewer) return;
