@@ -1,4 +1,5 @@
 #include "screen_control.h"
+#include "screen_viewer.h"
 #include "screen_h264_session.h"
 #include "h264_access_unit.h"
 #include "livekit/livekit.h"
@@ -45,9 +46,9 @@ std::string base64(std::string_view text) {
 }
 // Keep SDK/hardware diagnostics out of the bounded parent protocol and logs.
 struct Discard final : std::streambuf { int overflow(int c) override { return c; } };
-class Input final {
+template<class Control> class Input final {
 public:
-    explicit Input(ScreenControl& control) : control_(control), reader_([this] { read(); }) {}
+    explicit Input(Control& control) : control_(control), reader_([this] { read(); }) {}
     ~Input() {
         cancelled_.store(true);
         if (reader_.joinable()) reader_.join();
@@ -78,7 +79,7 @@ private:
         }
         control_.stop();
     }
-    ScreenControl& control_;
+    Control& control_;
     std::atomic<bool> cancelled_{false};
     std::thread reader_;
 };
@@ -256,10 +257,64 @@ int run() {
     event("stopped");
     return 0;
 }
+int run_viewer() {
+    using gcp::transport::ViewControl;
+    ViewControl control(screen_now_ms());
+    Input input(control);
+    std::atomic<bool> finished{false};
+    std::thread watchdog([&] {
+        std::int64_t stopped_at = 0;
+        while (!finished.load()) {
+            const auto now = screen_now_ms();
+            if (!control.alive(now)) {
+                control.stop();
+                if (!stopped_at) stopped_at = now;
+                if (now - stopped_at > 2000) TerminateProcess(GetCurrentProcess(), 2);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    });
+    struct Finish { std::atomic<bool>& flag; std::thread& thread; ~Finish() { flag.store(true); thread.join(); } } finish{finished, watchdog};
+    std::optional<gcp::transport::ViewGrant> grant;
+    while (control.alive(screen_now_ms()) && !(grant = control.take_grant()))
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (!grant || !control.alive(screen_now_ms())) return 0;
+    if (!livekit::initialize(livekit::LogLevel::Off)) throw std::runtime_error("SDK initialization failed");
+    struct Shutdown { ~Shutdown() { livekit::shutdown(); } } shutdown;
+    const auto status = [](const std::string& value) {
+        const std::lock_guard lock(output_mutex);
+        const auto line = "GCP_VIEW " + value + "\n";
+        DWORD written = 0;
+        if (!WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), line.data(), static_cast<DWORD>(line.size()), &written, nullptr) || written != line.size())
+            throw std::runtime_error("Viewer parent pipe closed");
+    };
+    gcp::transport::view_screen(control, *grant, status,
+        [&](std::uint64_t sequence, const livekit::VideoFrame& frame, int rotation) {
+            if (!control.alive(screen_now_ms())) return;
+            const std::lock_guard lock(output_mutex);
+            const auto header = "GCP_VIEW frame " + std::to_string(sequence) + " " + std::to_string(frame.width()) + " " +
+                std::to_string(frame.height()) + " " + std::to_string(rotation) + " " + std::to_string(frame.dataSize()) + "\n";
+            // One credit permits at most one bounded raw frame. No pixel data is
+            // base64 encoded, persisted, logged or queued behind another frame.
+            const auto write = [&](const void* data, std::size_t bytes) {
+                const auto* cursor = static_cast<const char*>(data);
+                while (bytes && control.alive(screen_now_ms())) {
+                    DWORD used = 0;
+                    if (!WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), cursor, static_cast<DWORD>((std::min)(bytes, std::size_t{65536})), &used, nullptr) || !used)
+                        throw std::runtime_error("Viewer parent pipe closed");
+                    bytes -= used; cursor += used;
+                }
+                if (bytes) throw std::runtime_error("Viewer stopped during frame");
+            };
+            write(header.data(), header.size()); write(frame.data(), frame.dataSize());
+        });
+    return 0;
+}
+
 }
 int main(int argc, char** argv) {
     if (argc == 2 && std::string_view(argv[1]) == "--help") {
-        std::cout << "GCP desktop screen publisher: --pick-source | --self-test | --help\n"
+        std::cout << "GCP desktop screen publisher: --pick-source | --view | --self-test | --help\n"
                      "Windows picker then explicit Qt consent and a bounded stdin grant are required.\n"
                      "SDR 160x90 through 1920x1080, hardware H264, 30 fps. No audio.\n";
         return 0;
@@ -271,12 +326,17 @@ int main(int argc, char** argv) {
         std::cout << "Screen control and H264 self-test passed; no picker, devices or network opened.\n";
         return 0;
     }
-    if (argc != 2 || std::string_view(argv[1]) != "--pick-source") return 1;
+    const bool viewer = argc == 2 && std::string_view(argv[1]) == "--view";
+    if (argc != 2 || (!viewer && std::string_view(argv[1]) != "--pick-source")) return 1;
     Discard discard;
     auto* old_out = std::cout.rdbuf(&discard);
     auto* old_err = std::cerr.rdbuf(&discard);
     int result = 1;
-    try { result = run(); } catch (...) { try { event("failed"); } catch (...) {} }
+    try { result = viewer ? run_viewer() : run(); }
+    catch (...) {
+        if (viewer) { DWORD used = 0; const std::string line = "GCP_VIEW failed\n"; WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), line.data(), static_cast<DWORD>(line.size()), &used, nullptr); }
+        else try { event("failed"); } catch (...) {}
+    }
     std::cout.rdbuf(old_out); std::cerr.rdbuf(old_err);
     return result;
 }

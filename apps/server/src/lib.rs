@@ -163,6 +163,10 @@ pub fn router_with_livekit(
             get(screen_sessions::publishers).post(screen_sessions::create),
         )
         .route(
+            "/v1/communities/{community_id}/channels/{channel_id}/screen-sessions/{lease_id}/watch",
+            post(screen_sessions::watch),
+        )
+        .route(
             "/v1/communities/{community_id}/channels/{channel_id}/screen-sessions/{lease_id}/renew",
             post(screen_sessions::renew),
         )
