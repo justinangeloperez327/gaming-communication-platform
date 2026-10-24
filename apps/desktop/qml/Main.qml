@@ -288,12 +288,20 @@ ApplicationWindow {
                     }
                     VoicePanel {
                         Layout.fillWidth: true
-                        onLeaveRequested: screenSession.stop()
+                        onLeaveRequested: { screenViewer.stop(); screenSession.stop() }
                         voice: voiceSession
                         directory: channelDirectory
                         account: accountSession
                         panel: root.panel
                         borderTone: root.borderTone
+                        textTone: root.textTone
+                        mutedTone: root.mutedTone
+                    }
+                    ScreenViewerPanel {
+                        Layout.fillWidth: true
+                        viewer: screenViewer
+                        directory: channelDirectory
+                        account: accountSession
                         textTone: root.textTone
                         mutedTone: root.mutedTone
                     }

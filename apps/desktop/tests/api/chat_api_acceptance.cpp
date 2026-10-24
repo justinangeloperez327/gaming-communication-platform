@@ -3,6 +3,7 @@
 #include "ChatSession.h"
 #include "FriendsDirectory.h"
 #include "ScreenSession.h"
+#include "ScreenViewer.h"
 #include "BoundedReply.h"
 #include <QNetworkProxy>
 #include <QNetworkRequest>
@@ -100,6 +101,16 @@ int main(int argc, char **argv) {
             QFile file(screenTrace.fileName()); if (!file.open(QIODevice::ReadOnly)) return false;
             return file.readAll().count("renew\n") >= 2;
         }), "actual Rust screen lease renewed twice through native control protocol");
+        const auto viewFixture = qEnvironmentVariable("GCP_VIEW_FIXTURE_PROGRAM");
+        require(!viewFixture.isEmpty(), "test-only viewer protocol fixture required");
+        ScreenViewer actualViewer(&owner, &ownerRooms, nullptr, {viewFixture, 200});
+        actualViewer.refreshPublishers();
+        require(waitFor([&] { return !actualViewer.busy() && actualViewer.publishers().size() == 1; }), "real viewer publisher discovery");
+        actualViewer.choosePublisher(current[0].toObject().value("id").toString());
+        actualViewer.watch(false); require(!actualViewer.busy(), "viewer consent false creates no lease");
+        actualViewer.watch(true);
+        require(waitFor([&] { return !actualViewer.busy(); }) && !actualViewer.watching() && actualViewer.image().isNull(), "real Rust-issued viewer lease cannot fabricate pixels without an actual SFU publisher");
+        require(actualViewer.status().contains("service") && publishers(owner,ownerRooms).size() == 1 && ownerScreen.sharing(), "missing SFU track fails closed and leaves the independent publisher intact");
         ownerScreen.stop(); require(waitFor([&] { return !ownerScreen.busy(); }), "real lease Stop and child exit");
         require(publishers(owner, ownerRooms).isEmpty() && ownerRooms.channelId() == voice, "real stopped lease removed without changing voice selection");
         friendRooms.chooseVoiceChannel(voice);
@@ -224,7 +235,7 @@ int main(int argc, char **argv) {
         ownerRooms.deleteCommunity();
         require(waitFor([&]() { return !ownerRooms.busy() && ownerRooms.communityId().isEmpty(); }), "test community cleanup");
         friendAccount.signOut(); owner.signOut();
-        std::cout << "Real Qt controllers -> Rust HTTP/WebSockets -> PostgreSQL channel/friends/DM acceptance passed. Real screen lease create/renew/stop/revocation also passed with a test-only native protocol peer. No physical capture, media or deployed service tested.\n";
+        std::cout << "Real Qt controllers -> Rust HTTP/WebSockets -> PostgreSQL channel/friends/DM acceptance passed. Real screen lease create/renew/stop/revocation and viewer discovery/negative live-track authorization also passed with test-only native protocol peers. No physical capture, media or deployed service tested.\n";
         return 0;
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }
 }

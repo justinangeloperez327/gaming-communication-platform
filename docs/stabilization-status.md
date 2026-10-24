@@ -1,12 +1,13 @@
-# Current stabilization audit — Group 8
+# Current stabilization audit — Group 9
 
 GCP remains an experimental private Windows communication application. Groups
 1–5 are merged; [Group 6 / #84](https://github.com/justinangeloperez327/gaming-communication-platform/pull/84),
-[Group 7 / #85](https://github.com/justinangeloperez327/gaming-communication-platform/pull/85)
-and [Group 8 / #86](https://github.com/justinangeloperez327/gaming-communication-platform/pull/86)
+[Group 7 / #85](https://github.com/justinangeloperez327/gaming-communication-platform/pull/85),
+[Group 8 / #86](https://github.com/justinangeloperez327/gaming-communication-platform/pull/86)
+and [Group 9 / #87](https://github.com/justinangeloperez327/gaming-communication-platform/pull/87)
 form the current stack. Merge prerequisites before their dependent PRs. This
-work merges none of them. Group 8 adds the Windows desktop source picker and
-publisher; Group 9 remains the desktop viewer. The existing unsigned alpha
+work merges none of them. Groups 8/9 implement the source picker/publisher and
+explicit desktop viewer; actual physical media acceptance remains pending. The existing unsigned alpha
 installer is an installation preview. No release, deployment, version change or
 new installer implementation is included.
 
@@ -22,14 +23,15 @@ new installer implementation is included.
 | Message integrity | Stable optional UUID retries, current edits/tombstones, microsecond ordering, bounded refetch and gap recovery | Concurrent PostgreSQL and Qt loss/rotation/revocation tests; no durable offline outbox or cross-server events |
 | Friends/private messages | Request/cancel/accept/decline, block/unblock, conversations and shared composer with private live delivery | PR #84; shipped QML, real Qt→Rust→PostgreSQL and three-account socket/authorization tests |
 | Private authorization | Ordered pair locks for writes/revocation, current friendship/bilateral blocks, author-only mutation and isolated event hubs | Equal channel/conversation UUIDs, concurrent retry IDs, tombstones, outsider denial and logout tests |
-| Screen authorization | Separate publisher/viewer rooms, identities and 60-second leases, explicit API acknowledgements, restricted JWTs, trusted ownership lookup and Stop/expiry reconciliation | PR #85; PostgreSQL/API/control fixtures plus a separate real SDK/SFU synthetic-video contract; Group 8 connects consent/capture publication; viewer remains Group 9 |
+| Screen authorization | Screen room isolated from voice, separate publisher/viewer identities and 60-second leases, explicit API acknowledgements, restricted JWTs, trusted ownership lookup and Stop/expiry reconciliation | PR #85; PostgreSQL/API/control fixtures plus a separate real SDK/SFU synthetic-video contract; Groups 8/9 connect consent, publishing and viewing; physical acceptance remains pending |
 | Screen publisher | Exact Windows picker item retained in native child, Qt source/channel confirmation, GPU hardware H.264, renewable leases and bounded local stop | PR #86; Qt/QML/HTTP/process policy and real Qt→Rust→PostgreSQL lease acceptance; actual OS/GPU capture and physical quality unverified |
 | Capture lifecycle | Serviced asynchronous encoder output during static input waits, elapsed-time capture timestamps, bounded input/event backlog and synchronized capture teardown | Compiled Windows path; GPU behavior and resource savings still need physical acceptance |
+| Screen viewer | Explicit authenticated discovery/Watch, backend exact-SID subscription, native receive-only process, Qt SceneGraph, credit-bounded frames and terminal interruption/visibility cleanup | PR #87; rendered synthetic pixels with a protocol child, real Rust track authorization and separate real SDK/SFU production receiver core; physical end-to-end remains unverified |
 | Resources | Virtualized/capped text models, bounded requests, frames, queues, HTTP/socket replies and timeouts; two screen leases per login | Explicit limits/regressions; no measured gaming resource reduction or exhaustive leak-free claim |
 | Distribution | Required Qt WebSockets and native voice/screen payloads, ZIP integrity and extracted/installed startup, signing inventory and existing alpha installer lifecycle | Hosted Windows checks; full attribution, owner signing, consumer-PC/version-upgrade qualification pending |
 
 The C++20/Qt, Rust/Axum/PostgreSQL and native LiveKit architecture remains.
-Groups 7/8 add no runtime dependency, SDK update or broker. Group 7's explicit
+Groups 7–9 add no third-party runtime dependency, SDK update or broker. Group 7's explicit
 migration adds screen leases. Separate screen rooms prevent voice subscriptions
 from silently receiving screen tracks; voice JWTs remain microphone-only.
 Group 8 reuses the existing GPU capture/converter/hardware encoder through an
@@ -44,7 +46,7 @@ No software encoder, CPU raw-pixel path, system audio or HDR tone mapping is add
 | Accounts/community | Real database/HTTP/container onboarding and role checks plus offscreen desktop controls | Deployed host, recovery/email, owner transfer, live directory updates and pagination |
 | Voice controls/transport | Actual Qt controls with controlled native child; separate real SDK/SFU synthetic PCM | Complete deployed desktop→API→PlatformAudio→friend speakers; physical privacy/audibility/F8/devices, SDK network interruption and long gaming calls |
 | Text/friends/DMs | Shipped QML/controller protocol tests, real two-account Qt/Rust/PostgreSQL delivery, concurrent retries and bilateral revocation | Physical/deployed acceptance; push/unread/search/attachments/typing UI, durable outbox and cross-server events |
-| Screen authorization | Real PostgreSQL/API signatures, consent/role/access/ownership/expiry/stop tests; real SDK/SFU source rejection, synthetic decode, room isolation and selected publisher removal in a separate execution | Desktop viewer (Group 9); physical OS capture, remote quality and GPU/driver acceptance |
+| Screen authorization | Real PostgreSQL/API signatures, consent/role/access/ownership/expiry/stop tests; real SDK/SFU source rejection, synthetic decode, room isolation and selected publisher removal in a separate execution | Physical OS capture, remote quality and GPU/driver acceptance |
 | Screen publisher | Shipped Qt/QML plus real subprocess and HTTP failure fixtures; real Rust-issued lease create/renew/stop/access removal with a protocol-only native peer | Windows picker permissions/content, actual GPU encoder publishing, physical receiver and real SDK/network interruptions |
 | Windows distribution | Hosted staged/extracted/installed runtime and dependency-integrity checks | Consumer Windows PC, upgrades, complete transitive licensing/source obligations and owner publisher signing |
 | Performance | Telemetry/export tools and fixture validation | Matched actual gaming CPU/GPU/RAM/frame-time measurements; no measured budgets yet |
@@ -88,7 +90,7 @@ a baseline, not complete attribution. No stable-distribution approval is implied
 
 ## Checks and evidence
 
-The [PR #86 checks](https://github.com/justinangeloperez327/gaming-communication-platform/pull/86/checks)
+The [PR #87 checks](https://github.com/justinangeloperez327/gaming-communication-platform/pull/87/checks)
 record the exact tested head and each required result. The PR description is the
 checked-head audit record, including run links, counts and any failures fixed;
 this maintained guide records capability and acceptance boundaries. The editing host has no
@@ -99,7 +101,7 @@ ptrace; the normal full sanitizer invocation remains in CI.
 
 Required checks cover Rust format/Clippy/PostgreSQL, sanitizer/Python suites,
 real Linux SFU control, real container acceptance, Windows Qt/native build and
-CTests, separate synthetic PCM/video SDK/SFU contracts, staged/extracted/installed
+CTests including actual viewer rendering, separate synthetic PCM/video SDK/SFU contracts, staged/extracted/installed
 payload checks and real Qt→Rust messaging/screen lease integration. Test native
 peers are not bundled. New payload checks require `gcp-livekit-screen.exe` and
 exercise its no-device self-test after staging, extraction and installation.
@@ -107,7 +109,8 @@ exercise its no-device self-test after staging, extraction and installation.
 The Qt/Rust screen acceptance uses an explicitly simulated native protocol peer;
 it does not capture/publish pixels. The separate SDK/SFU test decodes actual
 synthetic frames but does not combine Rust authorization, this Windows picker,
-GPU capture and a desktop viewer. Passing either test does not establish
+GPU capture and a physical desktop viewer in one run. Group 9 adds a separate
+production receiver-core SDK/SFU test, still using synthetic pixels. Passing any test does not establish
 physical voice/screen, consumer-PC or gaming acceptance. See
 [desktop screen publisher](desktop-screen-publisher.md) for each boundary and
 owner-run checks.
@@ -121,8 +124,7 @@ navigation evidence, not runtime proof.
 
 An alpha installer already exists from the owner's earlier request. Group 8
 retains its lifecycle checks and updates the shared payload with the screen
-process. A stable installer still needs the desktop viewer and physical
-qualification of the publisher, everyday
+process. A stable installer still needs physical qualification of both publisher/viewer, everyday
 settings/recovery, deployed physical two-PC media acceptance and measured gaming
 qualification. It also needs complete dependency attribution, owner code signing,
 clean consumer-PC startup and version-upgrade evidence. Neither another release

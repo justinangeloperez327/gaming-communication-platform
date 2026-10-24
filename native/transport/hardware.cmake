@@ -38,7 +38,7 @@ endif()
 
 # Production source picker/publisher. Diagnostic executables are not bundled.
 add_executable(gcp-livekit-screen
-    src/screen_main.cpp src/h264_access_unit.cpp
+    src/screen_main.cpp src/screen_viewer.cpp src/h264_access_unit.cpp
     ../hardware-encoder/src/main.cpp
     ../hardware-encoder/src/gpu_color_converter.cpp
     ../hardware-encoder/src/live_monitor_capture.cpp
@@ -67,4 +67,11 @@ if(BUILD_TESTING)
     add_test(NAME screen_control_consent_and_expiry COMMAND $<TARGET_FILE:gcp-screen-control-tests>)
     add_test(NAME livekit_screen_self_test COMMAND $<TARGET_FILE:gcp-livekit-screen> --self-test)
     add_test(NAME livekit_screen_help COMMAND $<TARGET_FILE:gcp-livekit-screen> --help)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(gcp-view-control-tests tests/view_control_tests.cpp)
+    target_include_directories(gcp-view-control-tests PRIVATE src)
+    target_compile_features(gcp-view-control-tests PRIVATE cxx_std_20)
+    add_test(NAME screen_viewer_frame_credit_and_scope COMMAND $<TARGET_FILE:gcp-view-control-tests>)
 endif()

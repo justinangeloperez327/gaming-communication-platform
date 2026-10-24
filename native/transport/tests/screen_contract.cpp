@@ -1,6 +1,8 @@
 // Real SFU source grants and room isolation, using synthetic pixels only.
 // No screen, camera, microphone, speaker, Qt window or physical peer is opened.
 #include "livekit/livekit.h"
+#include "../src/screen_viewer.h"
+#include "../src/managed_media_input.h"
 #include "livekit/audio_source.h"
 #include "livekit/local_audio_track.h"
 #include "livekit/room_delegate.h"
@@ -67,6 +69,37 @@ template<class Predicate> void wait_for(Predicate predicate, const char* message
     require(predicate(), message);
 }
 
+struct ProductViewer {
+    gcp::transport::ViewControl control{gcp::transport::screen_now_ms()};
+    std::atomic<unsigned> frames{0}, invalid{0};
+    std::atomic<bool> done{false}, failed{false};
+    gcp::transport::Input<gcp::transport::ViewControl> input{control};
+    std::thread worker;
+    ProductViewer() {
+        const auto* jwt = std::getenv("GCP_MEDIA_SCREEN_DESKTOP_TOKEN");
+        const auto* room = std::getenv("GCP_MEDIA_SCREEN_ROOM");
+        require(jwt && room, "missing product viewer fixture grants");
+        require(control.accept("watch " + std::to_string(gcp::transport::screen_now_ms() + 60000) +
+            " ws://127.0.0.1:17880 " + jwt + " " + room +
+            " gcp-screen-view-00000000-0000-0000-0000-000000000075 " + screen_identity,
+            gcp::transport::screen_now_ms()), "product viewer consent");
+        const auto grant = control.take_grant(); require(grant.has_value(), "product viewer grant");
+        worker = std::thread([this, grant = *grant] {
+            try {
+                gcp::transport::view_screen(control, grant, [](const std::string& value) {
+                    if (value == "connected") std::cout << "GCP_SCREEN_DESKTOP_CONNECTED" << std::endl;
+                }, [this](std::uint64_t, const livekit::VideoFrame& frame, int rotation) {
+                    const auto at = (static_cast<std::size_t>(frame.height()/2)*static_cast<std::size_t>(frame.width()) + static_cast<std::size_t>(frame.width()/2))*4;
+                    if (rotation != 0 || frame.data()[at+1] < 100 || frame.data()[at+1] > 220 || frame.data()[at+2] < 30 || frame.data()[at+2] > 150) ++invalid;
+                    ++frames;
+                    if (control.alive(gcp::transport::screen_now_ms())) (void)control.accept("next", gcp::transport::screen_now_ms());
+                });
+            } catch (...) { failed = true; }
+            done = true;
+        });
+    }
+    ~ProductViewer() { control.stop(); if (worker.joinable()) worker.join(); }
+};
 int contract() {
     // Keep sources/tracks alive through Room teardown, including unwinding.
     auto video = std::make_shared<livekit::VideoSource>(160, 90);
@@ -135,6 +168,7 @@ int contract() {
     screen_options.video_codec = livekit::VideoCodec::VP8;
     local->publishTrack(screen, screen_options);
     second->publishTrack(other_screen, screen_options);
+    ProductViewer product;
     auto frame = livekit::VideoFrame::create(160, 90, livekit::VideoBufferType::RGBA);
     for (std::size_t i = 0; i < static_cast<std::size_t>(160 * 90); ++i) {
         frame.data()[i * 4] = 30;
@@ -162,6 +196,7 @@ int contract() {
               << " synthetic=" << viewer.seen.synthetic
               << " width=" << viewer.seen.width << " height=" << viewer.seen.height
               << " voice=" << listener.seen.audio << std::endl;
+    require(product.frames >= 5 && product.invalid == 0 && !product.failed && !product.done, "product viewer did not selectively decode expected pixels");
     require(viewer.seen.synthetic >= 5 && viewer.seen.invalid == 0, "no valid decoded synthetic video");
     require(publisher.seen.subscriptions == 0 && other.seen.subscriptions == 0,
         "publish-only identity received another share");
@@ -173,6 +208,8 @@ int contract() {
     // Runner verifies server track ownership then removes this exact publisher.
     wait_for([&] { feed_audio(); return publisher.seen.disconnected > 0; }, "screen publisher not disconnected");
     wait_for([&] { feed_audio(); return viewer.seen.departures > 0; }, "screen departure not observed");
+    wait_for([&] { return product.done.load(); }, "product viewer did not stop after publisher removal");
+    require(!product.failed, "product viewer failed while stopping");
     const auto before = listener.seen.audio.load();
     const auto after_stop = Clock::now() + 1500ms;
     while (Clock::now() < after_stop) { feed_audio(); std::this_thread::sleep_for(10ms); }
@@ -184,6 +221,7 @@ int contract() {
     listener.room.disconnect();
     viewer.room.disconnect();
     other.room.disconnect();
+    std::cout << "GCP_SCREEN_STAGE:product_viewer selective_frames=" << product.frames << " invalid=" << product.invalid << " stopped=" << product.done << std::endl;
     std::cout << "GCP_SCREEN_CONTRACT:passed decoded_frames=" << viewer.seen.frames
               << " synthetic_frames=" << viewer.seen.synthetic
               << " voice_frames=" << listener.seen.audio

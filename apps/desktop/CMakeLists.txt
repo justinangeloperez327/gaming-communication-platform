@@ -1,5 +1,6 @@
 qt_add_executable(gcp-desktop
     src/main.cpp
+    src/ScreenViewer.cpp src/ScreenViewer.h src/ScreenVideoItem.cpp src/ScreenVideoItem.h
     src/ScreenSession.cpp src/ScreenSession.h
     src/VoiceSession.cpp
     src/VoiceSession.h
@@ -28,6 +29,8 @@ set_source_files_properties(qml/FriendsPanel.qml PROPERTIES QT_RESOURCE_ALIAS Fr
 
 set_source_files_properties(qml/ScreenPanel.qml PROPERTIES QT_RESOURCE_ALIAS ScreenPanel.qml)
 
+set_source_files_properties(qml/ScreenViewerPanel.qml PROPERTIES QT_RESOURCE_ALIAS ScreenViewerPanel.qml)
+
 qt_add_qml_module(gcp-desktop
     URI Gcp.Desktop
     VERSION 1.0
@@ -39,6 +42,7 @@ qt_add_qml_module(gcp-desktop
         qml/CommunityPanel.qml
         qml/VoicePanel.qml
         qml/ScreenPanel.qml
+        qml/ScreenViewerPanel.qml
         qml/ChatPanel.qml
         qml/FriendsPanel.qml
 )
@@ -148,4 +152,19 @@ if(BUILD_TESTING)
     add_test(NAME desktop_screen_consent_and_publisher_lifecycle COMMAND $<TARGET_FILE:gcp-screen-session-tests>)
     set_tests_properties(desktop_screen_consent_and_publisher_lifecycle PROPERTIES
         TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+endif()
+
+if(BUILD_TESTING)
+    add_executable(gcp-view-process-fixture src/view_process_fixture.cpp)
+    target_compile_features(gcp-view-process-fixture PRIVATE cxx_std_20)
+    qt_add_executable(gcp-screen-viewer-tests
+        src/viewer_tests.cpp src/ScreenViewer.cpp src/ScreenViewer.h
+        src/ScreenVideoItem.cpp src/ScreenVideoItem.h
+        src/AccountSession.cpp src/AccountSession.h src/ChannelDirectory.cpp src/ChannelDirectory.h)
+    target_link_libraries(gcp-screen-viewer-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
+    target_compile_definitions(gcp-screen-viewer-tests PRIVATE GCP_SCREEN_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+    add_dependencies(gcp-screen-viewer-tests gcp-view-process-fixture)
+    add_test(NAME desktop_screen_viewer_render_and_lifecycle COMMAND $<TARGET_FILE:gcp-screen-viewer-tests>)
+    set_tests_properties(desktop_screen_viewer_render_and_lifecycle PROPERTIES
+        TIMEOUT 75 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
 endif()

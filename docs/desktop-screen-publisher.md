@@ -2,8 +2,8 @@
 
 [PR #86](https://github.com/justinangeloperez327/gaming-communication-platform/pull/86)
 is stacked on [Group 7 / #85](https://github.com/justinangeloperez327/gaming-communication-platform/pull/85).
-It adds the publisher to the existing Qt/native architecture. The desktop viewer
-is Group 9; another GCP desktop cannot yet display this broadcast. No release,
+It adds the publisher to the existing Qt/native architecture. [Group 9’s desktop viewer](desktop-screen-viewer.md) adds explicit Watch in the
+current branch; its physical capture/remote quality acceptance remains pending. No release,
 deployment, version change or new installer implementation is part of this work.
 
 ## Using the publisher
@@ -128,6 +128,6 @@ source; switch accounts/channels and remove membership; stop while the API/SFU i
 unreachable; close/kill Qt during active capture; unplug/change GPUs/displays and
 force real SDK/network interruptions. Confirm no substituted source, no automatic
 restart, bounded process cleanup, correct remote dimensions/color, and continuing
-voice after screen-only Stop. Group 9 must supply the product viewer first.
+voice after screen-only Stop. The product viewer is implemented by Group 9 and still needs physical acceptance.
 Measure matched gaming CPU/GPU/RAM/frame times and long-session resource growth on
 actual hardware, then qualify clean consumer Windows, signing and attribution.

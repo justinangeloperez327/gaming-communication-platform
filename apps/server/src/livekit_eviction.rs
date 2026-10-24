@@ -87,6 +87,8 @@ struct Participant {
 #[derive(Deserialize)]
 struct Track {
     #[serde(default)]
+    sid: String,
+    #[serde(default)]
     source: Value,
     #[serde(default, rename = "type")]
     kind: Value,
@@ -162,6 +164,57 @@ impl LiveKitConfig {
             self.eviction_guard.mark(false);
         }
         result.map(|_| ())
+    }
+
+    // Resolve only under the directory-authenticated publisher and channel.
+    // Subscription is applied server-side: the pinned C++ SDK exposes a live,
+    // unsynchronized publication map, unsuitable for cross-thread enumeration.
+    pub(crate) async fn watch_screen(
+        &self,
+        channel: Uuid,
+        viewer: Uuid,
+        publisher: Uuid,
+    ) -> Result<String, EvictionError> {
+        let room = screen_sessions::room_name(channel);
+        let participants: Participants = self
+            .rpc("ListParticipants", Some(&room), json!({"room": room}))
+            .await?;
+        if participants.participants.len() > MAX_PARTICIPANTS {
+            return Err(EvictionError::Capacity);
+        }
+        let identity = screen_sessions::identity(publisher, Purpose::Publish);
+        let mut matches = participants
+            .participants
+            .iter()
+            .filter(|p| p.identity == identity);
+        let selected = matches.next().ok_or(EvictionError::InvalidResponse)?;
+        if matches.next().is_some()
+            || selected.tracks.len() != 1
+            || !screen_tracks_allowed(selected)
+        {
+            return Err(EvictionError::InvalidResponse);
+        }
+        let sid = &selected.tracks[0].sid;
+        if !sid.starts_with("TR_")
+            || sid.len() > 128
+            || sid.len() < 4
+            || !sid
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+        {
+            return Err(EvictionError::InvalidResponse);
+        }
+        let _: Value = self
+            .rpc(
+                "UpdateSubscriptions",
+                Some(&room),
+                json!({
+                    "room": room, "identity": screen_sessions::identity(viewer, Purpose::View),
+                    "track_sids": [sid], "subscribe": true,
+                }),
+            )
+            .await?;
+        Ok(sid.clone())
     }
 
     async fn rpc<T: DeserializeOwned>(
