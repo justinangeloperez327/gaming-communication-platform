@@ -165,7 +165,17 @@ int main(int argc, char** argv) {
         for (const auto* mode : {"resize", "rotate", "fragmented"}) {
             qputenv("GCP_VIEW_FIXTURE_MODE", mode); click("screenWatch"); require(waitFor([&] { return viewer.watching() && viewer.frameNumber() >= 2; }), "resized/rotated/fragmented frame delivery");
             if (std::string_view(mode) == "resize") require(viewer.image().size() == QSize(320,180), "decoded resize honored");
-            if (std::string_view(mode) == "rotate") require(viewer.rotation() == 90, "rotation preserved");
+            if (std::string_view(mode) == "rotate") {
+                require(viewer.rotation() == 90, "rotation preserved");
+                auto* video = panel->findChild<QQuickItem*>("screenVideo"); require(video, "video item exists");
+                // The fixture's red LEFT stripe must appear at the TOP after
+                // clockwise rotation, not merely in the controller metadata.
+                const auto image = videoWindow->grabWindow();
+                const auto displayedHeight = qMin(video->height(), video->width() * 160.0 / 88.0);
+                const auto point = video->mapToScene(QPointF(video->width()/2, (video->height()-displayedHeight)/2 + displayedHeight * 0.05));
+                const auto color = image.pixelColor(qRound(point.x()*image.width()/videoWindow->width()), qRound(point.y()*image.height()/videoWindow->height()));
+                require(color.red() > 180 && color.green() < 80, "SceneGraph actually rotates the stripe pixels");
+            }
             viewer.stop(); stopped();
         }
         qunsetenv("GCP_VIEW_FIXTURE_MODE");

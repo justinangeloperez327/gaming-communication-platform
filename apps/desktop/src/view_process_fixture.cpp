@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
             event("frame " + std::to_string(sequence) + " " + std::to_string(width) + " " + std::to_string(height) + " " + std::to_string(rotate) + " " + std::to_string(size));
             if (mode == "partial") { std::cout << "12345678" << std::flush; continue; }
             std::string bytes(static_cast<std::size_t>(size), '\0');
-            for (std::size_t i = 0; i < bytes.size(); i += 4) { bytes[i] = 30; bytes[i + 1] = static_cast<char>(160); bytes[i + 2] = 90; bytes[i + 3] = static_cast<char>(255); }
+            for (std::size_t i = 0; i < bytes.size(); i += 4) { const bool stripe = (i / 4) % static_cast<std::size_t>(width) < static_cast<std::size_t>(width / 10); bytes[i] = static_cast<char>(stripe ? 220 : 30); bytes[i + 1] = static_cast<char>(stripe ? 20 : 160); bytes[i + 2] = static_cast<char>(stripe ? 40 : 90); bytes[i + 3] = static_cast<char>(255); }
             if (mode == "fragmented") {
                 for (std::size_t i = 0; i < bytes.size(); i += 4096) { std::cout.write(bytes.data() + i, static_cast<std::streamsize>((std::min)(std::size_t{4096}, bytes.size() - i))); std::cout.flush(); std::this_thread::sleep_for(std::chrono::milliseconds(2)); }
             } else std::cout.write(bytes.data(), static_cast<std::streamsize>(bytes.size())) << std::flush;
