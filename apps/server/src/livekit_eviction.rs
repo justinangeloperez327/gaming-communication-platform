@@ -183,20 +183,37 @@ impl LiveKitConfig {
             return Err(EvictionError::Capacity);
         }
         let identity = screen_sessions::identity(publisher, Purpose::Publish);
-        let mut matches = participants.participants.iter().filter(|p| p.identity == identity);
+        let mut matches = participants
+            .participants
+            .iter()
+            .filter(|p| p.identity == identity);
         let selected = matches.next().ok_or(EvictionError::InvalidResponse)?;
-        if matches.next().is_some() || selected.tracks.len() != 1 || !screen_tracks_allowed(selected) {
+        if matches.next().is_some()
+            || selected.tracks.len() != 1
+            || !screen_tracks_allowed(selected)
+        {
             return Err(EvictionError::InvalidResponse);
         }
         let sid = &selected.tracks[0].sid;
-        if !sid.starts_with("TR_") || sid.len() > 128 || sid.len() < 4 ||
-            !sid.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-') {
+        if !sid.starts_with("TR_")
+            || sid.len() > 128
+            || sid.len() < 4
+            || !sid
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+        {
             return Err(EvictionError::InvalidResponse);
         }
-        let _: Value = self.rpc("UpdateSubscriptions", Some(&room), json!({
-            "room": room, "identity": screen_sessions::identity(viewer, Purpose::View),
-            "track_sids": [sid], "subscribe": true,
-        })).await?;
+        let _: Value = self
+            .rpc(
+                "UpdateSubscriptions",
+                Some(&room),
+                json!({
+                    "room": room, "identity": screen_sessions::identity(viewer, Purpose::View),
+                    "track_sids": [sid], "subscribe": true,
+                }),
+            )
+            .await?;
         Ok(sid.clone())
     }
 

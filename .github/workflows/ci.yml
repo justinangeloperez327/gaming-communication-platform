@@ -103,7 +103,7 @@ jobs:
           cmake -S apps/desktop/tests/api -B build/chat-api -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DCMAKE_BUILD_TYPE=Release
           cmake --build build/chat-api --parallel 2
       - name: Real desktop onboarding, messaging, screen leases and revocation
-        run: python3 scripts/verify_desktop_chat.py --server target/debug/gaming-comms-server --client build/chat-api/gcp-chat-api-acceptance --screen-fixture build/chat-api/gcp-screen-process-fixture
+        run: python3 scripts/verify_desktop_chat.py --server target/debug/gaming-comms-server --client build/chat-api/gcp-chat-api-acceptance --screen-fixture build/chat-api/gcp-screen-process-fixture --viewer-fixture build/chat-api/gcp-view-process-fixture
 
   server-stack:
     name: Self-hosted stack acceptance

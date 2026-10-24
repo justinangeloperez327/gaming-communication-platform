@@ -322,7 +322,6 @@ pub(crate) async fn publishers(
     Ok(Json(rows))
 }
 
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Watch {
@@ -336,8 +335,13 @@ pub(crate) struct WatchReply {
 }
 
 async fn watch_access(
-    pool: &PgPool, session: Uuid, digest: &str, community: Uuid, channel: Uuid,
-    viewer: Uuid, publisher: Uuid,
+    pool: &PgPool,
+    session: Uuid,
+    digest: &str,
+    community: Uuid,
+    channel: Uuid,
+    viewer: Uuid,
+    publisher: Uuid,
 ) -> Result<(), AuthError> {
     let mut tx = locked_access(pool, session, digest, community, channel).await?;
     let valid: bool = sqlx::query_scalar(
@@ -350,30 +354,50 @@ async fn watch_access(
          AND s.refresh_expires_at>clock_timestamp())")
         .bind(viewer).bind(session).bind(channel).bind(community).bind(publisher)
         .fetch_one(&mut *tx).await.map_err(|_| AuthError::Unavailable)?;
-    if !valid { return Err(AuthError::NotFound); }
+    if !valid {
+        return Err(AuthError::NotFound);
+    }
     tx.commit().await.map_err(|_| AuthError::Unavailable)
 }
 
 pub(crate) async fn watch(
-    State(state): State<AppState>, headers: HeaderMap,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Path((community, channel, lease)): Path<(String, String, String)>,
     Json(input): Json<Watch>,
 ) -> Result<Json<WatchReply>, AuthError> {
     let pool = auth::database(&state)?;
     let (_, session, _) = auth::authenticated_session(pool, &headers).await?;
-    if !input.consent { return Err(AuthError::InvalidRequest); }
+    if !input.consent {
+        return Err(AuthError::InvalidRequest);
+    }
     let (community, channel) = ids(&community, &channel)?;
     let viewer = Uuid::parse_str(&lease).map_err(|_| AuthError::InvalidRequest)?;
     let publisher = Uuid::parse_str(&input.publisher_id).map_err(|_| AuthError::InvalidRequest)?;
     let digest = auth::bearer_digest(&headers)?;
-    watch_access(pool, session, &digest, community, channel, viewer, publisher).await?;
+    watch_access(
+        pool, session, &digest, community, channel, viewer, publisher,
+    )
+    .await?;
     let config = config(&state)?;
     // No DB locks cross SFU I/O. Recheck ownership/access afterwards, and remove
     // the viewer if concurrent logout/revocation/expiry invalidated the request.
-    let sid = config.watch_screen(channel, viewer, publisher).await.map_err(|_| AuthError::Unavailable)?;
-    if let Err(error) = watch_access(pool, session, &digest, community, channel, viewer, publisher).await {
-        let _ = config.remove_screen_participant(channel, viewer, Purpose::View).await;
+    let sid = config
+        .watch_screen(channel, viewer, publisher)
+        .await
+        .map_err(|_| AuthError::Unavailable)?;
+    if let Err(error) = watch_access(
+        pool, session, &digest, community, channel, viewer, publisher,
+    )
+    .await
+    {
+        let _ = config
+            .remove_screen_participant(channel, viewer, Purpose::View)
+            .await;
         return Err(error);
     }
-    Ok(Json(WatchReply { participant_identity: identity(publisher, Purpose::Publish), track_sid: sid }))
+    Ok(Json(WatchReply {
+        participant_identity: identity(publisher, Purpose::Publish),
+        track_sid: sid,
+    }))
 }

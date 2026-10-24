@@ -91,7 +91,7 @@ if(BUILD_TESTING)
             VERBATIM)
     endforeach()
 
-    add_executable(gcp-livekit-screen-contract tests/screen_contract.cpp)
+    add_executable(gcp-livekit-screen-contract tests/screen_contract.cpp src/screen_viewer.cpp)
     target_compile_features(gcp-livekit-screen-contract PRIVATE cxx_std_20)
     target_link_libraries(gcp-livekit-screen-contract PRIVATE LiveKit::livekit)
     target_link_directories(gcp-livekit-screen-contract PRIVATE "${GCP_LIVEKIT_RESOLVED_PREFIX}/lib")

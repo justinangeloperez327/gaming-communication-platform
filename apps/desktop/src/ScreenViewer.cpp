@@ -162,7 +162,9 @@ bool ScreenViewer::applyGrant(const QByteArray& bytes, bool renew, qint64 reques
     if (remaining < 100 || (renew && screen_now_ms() >= leaseDeadline_)) return false;
     const auto command = renew ? "renew " + QByteArray::number(expires) : "watch " + QByteArray::number(expires) + " " + url.toUtf8() + " " + token.toUtf8() + " " + room.toUtf8() + " " + identity.toUtf8() + " gcp-screen-publish-" + selected_.toUtf8();
     if (!control(command)) return false;
-    leaseDeadline_ = expires; deadline_.start(static_cast<int>(remaining)); renewal_.start(qMin(runtime_.renewMs, qMax(100, static_cast<int>(remaining / 3)))); return true;
+    leaseDeadline_ = expires; deadline_.start(static_cast<int>(remaining)); renewal_.start(qMin(runtime_.renewMs, qMax(100, static_cast<int>(remaining / 3))));
+    if (!renew) startup_.start(runtime_.startMs);
+    return true;
 }
 void ScreenViewer::requestTrack() {
     if (!consent_ || stopping_ || pending_ || !connected_ || !sameScope()) return;

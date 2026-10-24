@@ -38,6 +38,7 @@ Rectangle {
             currentIndex: -1
             displayText: currentIndex < 0 ? "Choose a channel member's share" : currentText
             enabled: !root.viewer.busy
+            contentItem: Text { text: publishers.displayText; textFormat: Text.PlainText; color: root.textTone; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
             onActivated: root.viewer.choosePublisher(currentValue)
             Connections {
                 target: root.viewer

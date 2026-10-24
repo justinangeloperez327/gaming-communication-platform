@@ -607,6 +607,7 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
         };
         const auto active = [&] { return !controlled || controlled->keep_running(); };
         unsigned input_requests = 0;
+        gcp::media::HardwareH264Feedback pending_feedback;
         while ((controlled || Clock::now() < deadline) && !complete && active()) {
             if (monitor_capture && !monitor_capture->healthy())
                 throw std::runtime_error("Selected capture source closed or changed");
@@ -637,13 +638,20 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
             }
             if (input_requests && !draining && active() &&
                 (controlled || submitted < static_cast<std::uint64_t>(options.frames))) {
+                if (feedback && *feedback) {
+                    const auto received = (*feedback)();
+                    pending_feedback.force_keyframe = pending_feedback.force_keyframe || received.force_keyframe;
+                    if (received.target_bitrate_bps) pending_feedback.target_bitrate_bps = received.target_bitrate_bps;
+                }
                 ComPtr<IMFSample> sample;
                 if (monitor_capture) {
                     if (!monitor_capture->take_next(monitor_sequence, sample, 33)) {
                         if (!monitor_capture->healthy())
                             throw std::runtime_error("Selected capture source closed or changed");
                         ++totals.monitor_idle_waits;
-                        continue;
+                        if (controlled && pending_feedback.force_keyframe && active())
+                            sample = monitor_capture->repeat_for_keyframe(monitor_sequence);
+                        if (!sample) continue;
                     }
                 } else {
                     sample = gpu.frame(options, static_cast<int>(submitted));
@@ -655,7 +663,7 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                     totals.submitted_inputs - totals.samples >= 64)
                     throw std::runtime_error("Hardware encoder input backlog exceeded");
                 if (feedback && *feedback) {
-                    const auto request = (*feedback)();
+                    const auto request = pending_feedback;
                     auto set_codec_u32 = [&](const GUID& property, ULONG value) {
                         if (!codec) return false;
                         VARIANT requested{};
@@ -689,6 +697,7 @@ bool encode_candidate(IMFActivate* activation, HardwareDevice& gpu,
                 if (!active()) break;
                 require(encoder->ProcessInput(input_id, sample.Get(), 0),
                         "GPU NV12 ProcessInput");
+                pending_feedback = {};
                 --input_requests;
                 ++submitted;
                 ++totals.submitted_inputs;

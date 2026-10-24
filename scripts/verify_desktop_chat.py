@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--server", type=Path, required=True)
     parser.add_argument("--client", type=Path, required=True)
     parser.add_argument("--screen-fixture", type=Path, required=True)
+    parser.add_argument("--viewer-fixture", type=Path, required=True)
     args = parser.parse_args()
     database = urlparse(os.environ.get("DATABASE_URL", ""))
     # Migrations/bootstrap are only permitted in this dedicated CI database.
@@ -59,7 +60,8 @@ def main():
                     raise RuntimeError("disposable API readiness timed out")
                 time.sleep(0.1)
             client_env = env | {"GCP_CHAT_ORIGIN": origin, "GCP_CHAT_PASSWORD": password,
-                                "GCP_SCREEN_FIXTURE_PROGRAM": str(args.screen_fixture.resolve())}
+                                "GCP_SCREEN_FIXTURE_PROGRAM": str(args.screen_fixture.resolve()),
+                                "GCP_VIEW_FIXTURE_PROGRAM": str(args.viewer_fixture.resolve())}
             subprocess.run([str(args.client.resolve())], env=client_env, check=True, timeout=150)
         except BaseException:
             log.seek(0)

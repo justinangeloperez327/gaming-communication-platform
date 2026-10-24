@@ -31,7 +31,8 @@ QSGNode* ScreenVideoItem::updatePaintNode(QSGNode* old, UpdatePaintNodeData*) {
     if (node->serial != image.cacheKey()) {
         auto* texture = window()->createTextureFromImage(image);
         if (!texture) { delete node; return nullptr; }
-        delete node->quad->texture(); node->quad->setTexture(texture); node->serial = image.cacheKey();
+        // setOwnsTexture(true) makes setTexture release the previous texture.
+        node->quad->setTexture(texture); node->serial = image.cacheKey();
     }
     const auto rotation = viewer_->rotation(); const bool quarter = rotation == 90 || rotation == 270;
     const auto scale = std::min(width() / (quarter ? image.height() : image.width()), height() / (quarter ? image.width() : image.height()));

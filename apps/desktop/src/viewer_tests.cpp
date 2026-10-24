@@ -3,6 +3,7 @@
 #include "ScreenViewer.h"
 #include "ScreenVideoItem.h"
 #include <qqml.h>
+#include <cstdio>
 #include <QGuiApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -130,6 +131,7 @@ struct Api {
 };
 }
 int main(int argc, char** argv) {
+    qInstallMessageHandler([](QtMsgType, const QMessageLogContext&, const QString& message) { std::fprintf(stderr, "%s\n", message.toUtf8().constData()); std::fflush(stderr); });
     QGuiApplication app(argc, argv);
     try {
         for (const auto* key : {"DATABASE_URL", "LIVEKIT_API_KEY", "LiVeKiT_ApI_SeCrEt", "LIVEKIT_TOKEN", "GCP_ACCESS_TOKEN", "GCP_MEDIA_SECRET"}) qputenv(key, "dummy-sensitive-value");

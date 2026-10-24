@@ -1,5 +1,6 @@
 #include "screen_control.h"
 #include "screen_viewer.h"
+#include "managed_media_input.h"
 #include "screen_h264_session.h"
 #include "h264_access_unit.h"
 #include "livekit/livekit.h"
@@ -46,43 +47,6 @@ std::string base64(std::string_view text) {
 }
 // Keep SDK/hardware diagnostics out of the bounded parent protocol and logs.
 struct Discard final : std::streambuf { int overflow(int c) override { return c; } };
-template<class Control> class Input final {
-public:
-    explicit Input(Control& control) : control_(control), reader_([this] { read(); }) {}
-    ~Input() {
-        cancelled_.store(true);
-        if (reader_.joinable()) reader_.join();
-    }
-private:
-    void read() {
-        std::array<char, 1024> bytes{};
-        std::string line;
-        while (!cancelled_.load()) {
-            DWORD available = 0;
-            const auto pipe = GetStdHandle(STD_INPUT_HANDLE);
-            if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr)) break;
-            if (!available) { std::this_thread::sleep_for(std::chrono::milliseconds(25)); continue; }
-            DWORD size = 0;
-            if (!ReadFile(pipe, bytes.data(),
-                          (std::min)(available, static_cast<DWORD>(bytes.size())), &size, nullptr) || !size) break;
-            for (DWORD i = 0; i < size; ++i) {
-                if (bytes[i] == '\n') {
-                    if (!control_.accept(line, screen_now_ms())) { control_.stop(); return; }
-                    line.clear();
-                } else {
-                    if (line.size() >= 12288 || bytes[i] == '\0' || bytes[i] == '\r') {
-                        control_.stop(); return;
-                    }
-                    line += bytes[i];
-                }
-            }
-        }
-        control_.stop();
-    }
-    Control& control_;
-    std::atomic<bool> cancelled_{false};
-    std::thread reader_;
-};
 struct Events final : livekit::RoomDelegate {
     explicit Events(ScreenControl& value) : control(value) {}
     ScreenControl& control;
@@ -195,7 +159,7 @@ int run() {
     winrt::init_apartment(winrt::apartment_type::single_threaded);
     auto shared_control = std::make_shared<ScreenControl>(screen_now_ms());
     auto& control = *shared_control;
-    Input input(control);
+    gcp::transport::Input input(control);
     // Enforce parent loss and grant expiry even while the SDK/driver blocks.
     std::atomic<bool> finished{false};
     std::thread watchdog([&] {
@@ -260,7 +224,7 @@ int run() {
 int run_viewer() {
     using gcp::transport::ViewControl;
     ViewControl control(screen_now_ms());
-    Input input(control);
+    gcp::transport::Input input(control);
     std::atomic<bool> finished{false};
     std::thread watchdog([&] {
         std::int64_t stopped_at = 0;
@@ -320,10 +284,13 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (argc == 2 && std::string_view(argv[1]) == "--self-test") {
+        gcp::transport::ViewControl viewer_control(1000);
+        if (!viewer_control.accept("ping", 1001) || !viewer_control.accept("stop", 1002) || viewer_control.alive(1003) ||
+            !gcp::transport::view_frame_header("frame 1 160 88 0 56320")) return 1;
         ScreenControl control(1000);
         if (!control.accept("ping", 1100) || !control.accept("stop", 1101) || control.alive(1102) ||
             !gcp::transport::h264_access_unit_self_test()) return 1;
-        std::cout << "Screen control and H264 self-test passed; no picker, devices or network opened.\n";
+        std::cout << "Screen publisher/viewer control and H264 self-test passed; no picker, devices or network opened.\n";
         return 0;
     }
     const bool viewer = argc == 2 && std::string_view(argv[1]) == "--view";

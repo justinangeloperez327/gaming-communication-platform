@@ -10,10 +10,10 @@ inline bool screenTokenMatches(const QString& token, const QString& identity, co
     const auto jwt = QJsonDocument::fromJson(QByteArray::fromBase64(parts[1], QByteArray::Base64UrlEncoding)).object();
     const auto video = jwt.value("video").toObject();
     const auto sources = video.value("canPublishSources").toArray();
-    return jwt.value("sub").toString() == identity && video.value("room").toString() == room &&
+    const auto disabled = [&](const char* key) { const auto value = video.value(key); return value.isUndefined() || value == QJsonValue(false); };
+    return video.value("canPublishSources").isArray() && jwt.value("sub").toString() == identity && video.value("room").toString() == room &&
         video.value("roomJoin") == QJsonValue(true) && video.value("canPublish") == QJsonValue(publish) &&
         video.value("canSubscribe") == QJsonValue(!publish) && video.value("canPublishData") == QJsonValue(false) &&
         (publish ? sources.size() == 1 && sources[0].toString() == QStringLiteral("screen_share") : sources.isEmpty()) &&
-        !video.value("roomAdmin").toBool() && !video.value("roomCreate").toBool() &&
-        !video.value("roomList").toBool() && !video.value("roomRecord").toBool() && !video.value("canUpdateOwnMetadata").toBool();
+        disabled("roomAdmin") && disabled("roomCreate") && disabled("roomList") && disabled("roomRecord") && disabled("canUpdateOwnMetadata");
 }

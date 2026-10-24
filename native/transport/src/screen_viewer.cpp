@@ -81,7 +81,7 @@ void view_screen(ViewControl& control, const ViewGrant& grant,
     std::thread closer([&] {
         while (!done.load() && control.alive(screen_now_ms()))
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        if (!done.load()) stream->close();
+        if (!done.load()) { try { stream->close(); } catch (...) { control.stop(); } }
     });
     struct Join {
         std::atomic<bool>& done; std::thread& thread;
