@@ -23,7 +23,7 @@ new installer implementation is included.
 | Message integrity | Stable optional UUID retries, current edits/tombstones, microsecond ordering, bounded refetch and gap recovery | Concurrent PostgreSQL and Qt loss/rotation/revocation tests; no durable offline outbox or cross-server events |
 | Friends/private messages | Request/cancel/accept/decline, block/unblock, conversations and shared composer with private live delivery | PR #84; shipped QML, real Qt→Rust→PostgreSQL and three-account socket/authorization tests |
 | Private authorization | Ordered pair locks for writes/revocation, current friendship/bilateral blocks, author-only mutation and isolated event hubs | Equal channel/conversation UUIDs, concurrent retry IDs, tombstones, outsider denial and logout tests |
-| Screen authorization | Separate publisher/viewer rooms, identities and 60-second leases, explicit API acknowledgements, restricted JWTs, trusted ownership lookup and Stop/expiry reconciliation | PR #85; PostgreSQL/API/control fixtures plus a separate real SDK/SFU synthetic-video contract; Groups 8/9 connect consent, publishing and viewing; physical acceptance remains pending |
+| Screen authorization | Screen room isolated from voice, separate publisher/viewer identities and 60-second leases, explicit API acknowledgements, restricted JWTs, trusted ownership lookup and Stop/expiry reconciliation | PR #85; PostgreSQL/API/control fixtures plus a separate real SDK/SFU synthetic-video contract; Groups 8/9 connect consent, publishing and viewing; physical acceptance remains pending |
 | Screen publisher | Exact Windows picker item retained in native child, Qt source/channel confirmation, GPU hardware H.264, renewable leases and bounded local stop | PR #86; Qt/QML/HTTP/process policy and real Qt→Rust→PostgreSQL lease acceptance; actual OS/GPU capture and physical quality unverified |
 | Capture lifecycle | Serviced asynchronous encoder output during static input waits, elapsed-time capture timestamps, bounded input/event backlog and synchronized capture teardown | Compiled Windows path; GPU behavior and resource savings still need physical acceptance |
 | Screen viewer | Explicit authenticated discovery/Watch, backend exact-SID subscription, native receive-only process, Qt SceneGraph, credit-bounded frames and terminal interruption/visibility cleanup | PR #87; rendered synthetic pixels with a protocol child, real Rust track authorization and separate real SDK/SFU production receiver core; physical end-to-end remains unverified |
@@ -31,7 +31,7 @@ new installer implementation is included.
 | Distribution | Required Qt WebSockets and native voice/screen payloads, ZIP integrity and extracted/installed startup, signing inventory and existing alpha installer lifecycle | Hosted Windows checks; full attribution, owner signing, consumer-PC/version-upgrade qualification pending |
 
 The C++20/Qt, Rust/Axum/PostgreSQL and native LiveKit architecture remains.
-Groups 7/8 add no runtime dependency, SDK update or broker. Group 7's explicit
+Groups 7–9 add no third-party runtime dependency, SDK update or broker. Group 7's explicit
 migration adds screen leases. Separate screen rooms prevent voice subscriptions
 from silently receiving screen tracks; voice JWTs remain microphone-only.
 Group 8 reuses the existing GPU capture/converter/hardware encoder through an
