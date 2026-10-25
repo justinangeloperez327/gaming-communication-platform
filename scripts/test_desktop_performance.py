@@ -62,7 +62,7 @@ def save_frames(path, start, frame_ms=20):
 
 def fixture(root, scenario="voice"):
     data = cli.template([scenario]); data.update(evidence_kind="fixture", build_commit="c"*40, operator="test fixture",
-        game_scene_settings="synthetic-only", frame_capture_version="fixture", warmup_seconds=0, minimum_window_seconds=60)
+        game_scene_settings="synthetic-only", media_profile="synthetic no physical quality", frame_capture_version="fixture", warmup_seconds=0, minimum_window_seconds=60)
     data["limits"] = dict(zip(perf.LIMITS, (5, 10, 5, 200, 1, 40)))
     data["operator_attestations"] = {key:True for key in data["operator_attestations"]}
     for index, run in enumerate(data["runs"]):
@@ -88,6 +88,9 @@ class DesktopPerformanceTests(unittest.TestCase):
             self.assertFalse(report["physical_media_verified"])
             self.assertFalse(report["all_product_scenarios_present"])
             self.assertEqual(len(report["input_files"]), 12)
+            self.assertEqual(report["capture_context"]["hardware"]["cpu"],["fixture CPU"])
+            self.assertEqual(report["operator_context_unverified"]["media_profile"],"synthetic no physical quality")
+            self.assertEqual(len(report["manifest_sha256"]),64)
             self.assertAlmostEqual(report["pairs"][0]["metrics"]["cpu_percent_machine"], 2)
             with self.assertRaises(ValueError): cli.execute(manifest, root/"analysis")
 

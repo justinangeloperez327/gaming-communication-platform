@@ -276,8 +276,10 @@ def analyze(manifest, base):
     kind = manifest.get("evidence_kind")
     if kind not in {"fixture", "operator_capture"}:
         raise ValueError("Declare evidence_kind fixture or operator_capture")
-    for name in ("operator", "game_scene_settings", "frame_capture_version"):
-        text(manifest.get(name), name, 2048)
+    for name in ("operator", "game_scene_settings", "media_profile", "frame_capture_version"):
+        value = text(manifest.get(name), name, 2048)
+        if kind == "operator_capture" and value.startswith("RECORD_"):
+            raise ValueError("Fill all operator/game/media/capture metadata before analysis")
     commit = manifest.get("build_commit")
     if not isinstance(commit, str) or not re.fullmatch("[0-9a-f]{40}", commit):
         raise ValueError("Supply the tested GCP build commit")
@@ -365,6 +367,9 @@ def analyze(manifest, base):
     status = "regression" if regression else "incomplete" if missing else "limits_met"
     return {"schema": 1, "status": status, "input_files": input_records,
             "product_qualification_status": "pending_owner_acceptance" if kind == "operator_capture" and status == "limits_met" and REQUIRED_SCENARIOS <= ordering.keys() else "not_qualified", "evidence_kind": kind, "build_commit_declared": commit,
+            "operator_context_unverified": {key:manifest[key] for key in ("operator", "game_scene_settings", "media_profile", "frame_capture_version")},
+            "capture_context": {"boot_fingerprint": context[0], "hardware": context[1], "qpc_frequency": context[2],
+                                "game_sha256": context[3], "interval_seconds": context[4], "skip_gpu": context[5]},
             "scope": sorted(ordering), "all_product_scenarios_present": REQUIRED_SCENARIOS <= ordering.keys(),
             "pairs": pairs, "limits": limits, "observed_binary_hashes": hashes,
             "operator_attestations_unverified": attestations, "scenario_labels_operator_declared": True, "physical_capture_authenticated": False,

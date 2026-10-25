@@ -33,7 +33,8 @@ python scripts/qualify-desktop-performance.py --init runs/manifest.json --scenar
 Without `--scenario`, the template includes voice, voice+publish and voice+view.
 It is **unfilled configuration**, not evidence: enter the tested 40-hex commit,
 operator ID, exact game/scene/resolution/preset/FPS cap/power mode, PresentMon
-version, and budgets. All budget defaults are null; the operator must deliberately
+version, media profile and budgets. Record voice mode/devices/peer count and screen
+source size, FPS/bitrate and viewer size in the declared media profile. All budget defaults are null; the operator must deliberately
 choose acceptable FPS/1%-low/p99, machine CPU, private-memory peak/growth and GPU
 engine limits. Media quality must remain acceptable while meeting those limits.
 The template's attestations start false and must reflect actual observations.
@@ -141,8 +142,8 @@ and [official PresentMon console/CSV options](https://github.com/GameTechDev/Pre
 python scripts/qualify-desktop-performance.py --manifest runs/manifest.json --output-dir runs/report-001
 ```
 
-Use a new output directory. The report binds each input's SHA-256 and rejects
-changes during analysis. It writes JSON and a Markdown summary only after the
+Use a new output directory. The report binds the manifest and each input by SHA-256, retains hardware and
+declared game/media context, and rejects capture changes during analysis. It writes JSON and a Markdown summary only after the
 analysis succeeds. Results are `limits_met` (exit 0), `regression` (2), `incomplete`
 (3), or invalid input (1). These are numerical analysis outcomes, **not physical
 certification**. Missing data or false operator media/scene declarations keep the

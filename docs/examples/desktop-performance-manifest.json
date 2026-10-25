@@ -4,6 +4,7 @@
   "build_commit": "RECORD_40_HEX_COMMIT",
   "operator": "RECORD_OPERATOR",
   "game_scene_settings": "RECORD_SCENE_RESOLUTION_PRESET_FPS_CAP_POWER_MODE",
+  "media_profile": "RECORD_VOICE_MODE_PEERS_DEVICES_AND_SCREEN_SOURCE_SIZE_FPS_BITRATE_VIEWER_SIZE",
   "frame_capture_version": "RECORD_PRESENTMON_VERSION",
   "warmup_seconds": 30,
   "minimum_window_seconds": 60,

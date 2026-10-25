@@ -2,6 +2,7 @@
 """Analyze QPC-aligned desktop/game captures; never certifies physical media."""
 import argparse
 import csv
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -21,6 +22,7 @@ def template(scenarios):
                 for condition in ("baseline", "gcp")}})
     return {"schema": 1, "evidence_kind": "operator_capture", "build_commit": "RECORD_40_HEX_COMMIT",
             "operator": "RECORD_OPERATOR", "game_scene_settings": "RECORD_SCENE_RESOLUTION_PRESET_FPS_CAP_POWER_MODE",
+            "media_profile": "RECORD_VOICE_MODE_PEERS_DEVICES_AND_SCREEN_SOURCE_SIZE_FPS_BITRATE_VIEWER_SIZE",
             "frame_capture_version": "RECORD_PRESENTMON_VERSION", "warmup_seconds": 30,
             "minimum_window_seconds": 60, "limits": {key: None for key in LIMITS},
             "operator_attestations": {"same_scene_settings": False, "media_quality_acceptable": False,
@@ -31,7 +33,12 @@ def execute(manifest_path, output_directory):
     manifest_path = checked_file(manifest_path)
     if manifest_path.stat().st_size > 131072:
         raise ValueError("Manifest is too large")
-    result = analyze(json_value(manifest_path.read_text(encoding="utf-8-sig")), manifest_path.parent)
+    with manifest_path.open("rb") as source:
+        raw = source.read(131073)
+    if len(raw) > 131072:
+        raise ValueError("Manifest is too large")
+    result = analyze(json_value(raw.decode("utf-8-sig")), manifest_path.parent)
+    result["manifest_sha256"] = hashlib.sha256(raw).hexdigest()
     # No old PASS summary may survive a failed run. Publish a new directory only
     # after the full analysis succeeds; refuse existing files/directories.
     output_directory = Path(output_directory).resolve()
