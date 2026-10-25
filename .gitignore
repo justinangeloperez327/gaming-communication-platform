@@ -36,3 +36,7 @@ __pycache__/
 # Generated self-hosted secrets and database backups
 /deploy/self-hosted/.local/
 *.pgdump
+
+# Operator gameplay captures and generated performance reports (keep local)
+/runs/
+/performance-evidence/

@@ -7,7 +7,11 @@ on:
   workflow_dispatch:
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -17,3 +21,7 @@ jobs:
         run: python -m unittest discover -s scripts -p "test_*.py" -v
       - name: Compile-check Python tools
         run: python -m compileall -q scripts
+
+      - name: Read-only sampler policy and process-only smoke (not gaming qualification)
+        shell: ${{ matrix.shell }}
+        run: ./scripts/test-desktop-performance.ps1

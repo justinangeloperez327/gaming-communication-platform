@@ -27,7 +27,7 @@ try {
 $rows = foreach ($sample in $records) {
     foreach ($counter in $sample.CounterSamples) {
         if ($counter.Path -match 'engtype_VideoEncode') {
-            if (-not [double]::IsFinite([double]$counter.CookedValue)) {
+            if ([double]::IsNaN([double]$counter.CookedValue) -or [double]::IsInfinity([double]$counter.CookedValue)) {
                 throw "A GPU Video Encode counter returned a nonfinite value."
             }
             [PSCustomObject]@{
