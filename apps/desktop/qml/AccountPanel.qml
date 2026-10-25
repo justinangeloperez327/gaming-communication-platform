@@ -117,7 +117,7 @@ Rectangle {
         Text {
             Layout.fillWidth: true
             visible: panel.account.reauthenticationRequired
-            text: "Your call and screen sessions have stopped. Sign in again, choose your channel and explicitly join or share again."
+            text: "Sign in again, choose your channel and explicitly join, share or watch again. Media never resumes automatically."
             textFormat: Text.PlainText; color: panel.mutedTone; wrapMode: Text.Wrap
         }
         TextField {

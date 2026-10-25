@@ -102,7 +102,10 @@ void fileTests(const QString& path) {
     }
     restored.setRememberServer(false);
     require(!read(path).contains("friends.invalid") && DesktopSettings(path).serverOrigin().isEmpty(), "forget removes persisted server");
-    for (const auto& bad : {QByteArray("{"), QByteArray(20000, 'x'), QByteArray("{\"version\":99}")}) {
+    auto wrongType = json; wrongType["remember_server"] = "true";
+    auto badId = json; badId["input_id"] = QString(513, 'x');
+    for (const auto& bad : {QByteArray("{"), QByteArray(20000, 'x'), QByteArray("{\"version\":99}"),
+                           QJsonDocument(wrongType).toJson(), QJsonDocument(badId).toJson()}) {
         write(path, bad); DesktopSettings corrupt(path);
         require(corrupt.inputId().isEmpty() && !corrupt.status().isEmpty(), "damaged/newer settings use defaults with guidance");
         corrupt.saveAudio("new", "output", true); require(read(path) == bad, "unreadable settings preserved until explicit reset");
@@ -128,7 +131,8 @@ int main(int argc, char** argv) {
         };
         check({}, "ready"); check("unavailable", "not_ready"); check("unexpected", "unexpected");
         check("redirect", "redirect"); check("oversized", "unreachable"); check("held", "unreachable");
-        api.mode = "held"; probe.check(api.origin()); require(waitFor([&] { return api.held && probe.busy(); }), "pending probe");
+        api.mode = "held"; const auto beforeCancel = api.checks; probe.check(api.origin());
+        require(waitFor([&] { return api.checks == beforeCancel + 1 && api.held && probe.busy(); }), "pending probe");
         probe.clear(); require(probe.result() == "idle" && !probe.busy(), "cancel clears pending probe");
         check({}, "ready");
         auto transient = std::make_unique<ServerProbe>(); api.mode = "held"; const auto before = api.checks;
@@ -165,6 +169,11 @@ int main(int argc, char** argv) {
         account.signIn(api.origin(), "test@example.test", "private-test-password");
         require(waitFor([&] { return account.signedIn() && !account.busy(); }), "actual account login");
         require(settings.serverOrigin() == api.origin() && settings.rememberServer(), "server saved only after successful account response");
+        auto returningForm = component("import QtQuick\nimport \".\"\nAccountPanel { account: login; preferences: prefs; probe: check; width: 620 }", "ReturnHarness.qml");
+        require(returningForm->findChild<QObject*>("accountOrigin")->property("text").toString() == api.origin() &&
+                returningForm->findChild<QObject*>("accountEmail")->property("text").toString().isEmpty() &&
+                returningForm->findChild<QObject*>("accountPassword")->property("text").toString().isEmpty(),
+                "new form restores address but no email/password");
         const auto saved = read(folder.filePath("ui.json"));
         require(!saved.contains("private-test-password") && !saved.contains("test@example.test") && !saved.contains(QString(64, 'a').toUtf8()), "login secrets and email absent from disk");
         click(panel.get(), "settingsCheckSession");

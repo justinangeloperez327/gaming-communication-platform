@@ -170,12 +170,13 @@ ApplicationWindow {
                         spacing: 1
                         Text {
                             text: accountSession.signedIn ? accountSession.displayName : "Signed out"
+                            textFormat: Text.PlainText
                             color: root.textTone
                             font.pixelSize: 12
                         }
                         Text {
                             text: accountSession.status
-                            color: root.mutedTone
+                            textFormat: Text.PlainText                            color: root.mutedTone
                             font.pixelSize: 11
                         }
                     }
