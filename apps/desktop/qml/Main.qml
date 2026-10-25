@@ -176,7 +176,8 @@ ApplicationWindow {
                         }
                         Text {
                             text: accountSession.status
-                            textFormat: Text.PlainText                            color: root.mutedTone
+                            textFormat: Text.PlainText
+                            color: root.mutedTone
                             font.pixelSize: 11
                         }
                     }
