@@ -67,7 +67,7 @@ jobs:
 
   desktop-chat-api:
     name: Qt to Rust messaging and screen lease acceptance
-    # Pin the SDK acceptance environment; no GUI/display or media stack needed.
+    # Pin the SDK acceptance environment; settings QML runs offscreen without devices.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -89,7 +89,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install Qt Core, Network and WebSockets
+      - name: Install Qt desktop SDK
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
@@ -98,10 +98,12 @@ jobs:
           cache: true
       - name: Build Rust API
         run: cargo build --locked -p gaming-comms-server
-      - name: Build actual desktop controllers without the GUI/media stack
+      - name: Build actual desktop controllers and settings tests
         run: |
           cmake -S apps/desktop/tests/api -B build/chat-api -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DCMAKE_BUILD_TYPE=Release
           cmake --build build/chat-api --parallel 2
+      - name: Desktop preference and recovery checks (no devices)
+        run: ctest --test-dir build/chat-api --output-on-failure
       - name: Real desktop onboarding, messaging, screen leases and revocation
         run: python3 scripts/verify_desktop_chat.py --server target/debug/gaming-comms-server --client build/chat-api/gcp-chat-api-acceptance --screen-fixture build/chat-api/gcp-screen-process-fixture --viewer-fixture build/chat-api/gcp-view-process-fixture
 

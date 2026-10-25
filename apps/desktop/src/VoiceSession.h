@@ -2,6 +2,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QObject>
+#include <QPointer>
+class DesktopSettings;
 class AccountSession;
 class ChannelDirectory;
 #include <QProcess>
@@ -31,8 +33,11 @@ class VoiceSession final : public QObject {
     Q_PROPERTY(QString inputId READ inputId NOTIFY devicesChanged)
     Q_PROPERTY(QString outputId READ outputId NOTIFY devicesChanged)
     Q_PROPERTY(bool scanning READ scanning NOTIFY devicesChanged)
+    Q_PROPERTY(bool inputAvailable READ inputAvailable NOTIFY devicesChanged)
+    Q_PROPERTY(bool outputAvailable READ outputAvailable NOTIFY devicesChanged)
+    Q_PROPERTY(QString deviceStatus READ deviceStatus NOTIFY devicesChanged)
 public:
-    explicit VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent = nullptr, VoiceRuntime runtime = {});
+    explicit VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent = nullptr, VoiceRuntime runtime = {}, DesktopSettings *preferences = nullptr);
     ~VoiceSession() override;
     bool muted() const { return muted_; }
     bool transmitting() const { return transmitting_; }
@@ -50,6 +55,10 @@ public:
     QString inputId() const { return inputId_; }
     QString outputId() const { return outputId_; }
     bool scanning() const { return devices_.state() != QProcess::NotRunning; }
+    bool inputAvailable() const;
+    bool outputAvailable() const;
+    QString deviceStatus() const { return deviceStatus_; }
+    Q_INVOKABLE void resetSavedSettings();
     Q_INVOKABLE void scanDevices();
     Q_INVOKABLE void selectInput(const QString &id);
     Q_INVOKABLE void selectOutput(const QString &id);
@@ -64,6 +73,8 @@ signals:
     void availabilityChanged();
     void devicesChanged();
 private:
+    void persistChoices();
+    bool deviceAvailable(const QString &id, const QVariantList &devices) const;
     void start(bool publishMicrophone);
     void launch(bool publishMicrophone, const QString &url, const QString &token);
     void requestAuthorization(bool publishMicrophone, bool recheck, bool rotationRetry = false);
@@ -75,6 +86,9 @@ private:
     void readDeviceScanOutput();
     void readStatusOutput();
     void setStatus(const QString &value);
+    QPointer<DesktopSettings> preferences_;
+    bool scanValid_ = false;
+    QString deviceStatus_ = QStringLiteral("Scan devices to check audio endpoints. Choices apply on the next join.");
     VoiceRuntime runtime_;
     QString nativeProgram() const;
     AccountSession *account_ = nullptr;
@@ -102,7 +116,6 @@ private:
     QTimer stopWatchdog_;
     QTimer connectWatchdog_;
     QTimer deviceScanWatchdog_;
-    QTimer idleDeviceRefresh_;
     bool stopRequested_ = false;
     bool connectionTimedOut_ = false;
     bool deviceLost_ = false;

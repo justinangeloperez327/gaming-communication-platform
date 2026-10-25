@@ -1,9 +1,11 @@
 qt_add_executable(gcp-desktop
     src/main.cpp
+    src/ServerProbe.cpp src/ServerProbe.h
     src/ScreenViewer.cpp src/ScreenViewer.h src/ScreenVideoItem.cpp src/ScreenVideoItem.h
     src/ScreenSession.cpp src/ScreenSession.h
     src/VoiceSession.cpp
     src/VoiceSession.h
+    src/DesktopSettings.cpp src/DesktopSettings.h
     src/AccountSession.cpp
     src/AccountSession.h
     src/ChannelDirectory.cpp
@@ -31,6 +33,8 @@ set_source_files_properties(qml/ScreenPanel.qml PROPERTIES QT_RESOURCE_ALIAS Scr
 
 set_source_files_properties(qml/ScreenViewerPanel.qml PROPERTIES QT_RESOURCE_ALIAS ScreenViewerPanel.qml)
 
+set_source_files_properties(qml/SettingsPanel.qml PROPERTIES QT_RESOURCE_ALIAS SettingsPanel.qml)
+
 qt_add_qml_module(gcp-desktop
     URI Gcp.Desktop
     VERSION 1.0
@@ -39,6 +43,7 @@ qt_add_qml_module(gcp-desktop
         qml/AudioDevicePicker.qml
         qml/IdPicker.qml
         qml/AccountPanel.qml
+        qml/SettingsPanel.qml
         qml/CommunityPanel.qml
         qml/VoicePanel.qml
         qml/ScreenPanel.qml
@@ -61,7 +66,8 @@ set_target_properties(gcp-desktop PROPERTIES
 if(BUILD_TESTING)
     qt_add_executable(gcp-friends-tests
         src/friends_tests.cpp src/FriendsDirectory.cpp src/FriendsDirectory.h
-        src/AccountSession.cpp src/AccountSession.h)
+        src/DesktopSettings.cpp src/DesktopSettings.h
+    src/AccountSession.cpp src/AccountSession.h)
     target_link_libraries(gcp-friends-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
     target_compile_definitions(gcp-friends-tests PRIVATE GCP_FRIENDS_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
     add_test(NAME desktop_friends_and_private_scope COMMAND $<TARGET_FILE:gcp-friends-tests>)
@@ -71,7 +77,8 @@ if(BUILD_TESTING)
     qt_add_executable(gcp-chat-tests
         src/chat_tests.cpp src/ChatSession.cpp src/ChatSession.h src/MessageModel.cpp src/MessageModel.h
         src/FriendsDirectory.cpp src/FriendsDirectory.h
-        src/AccountSession.cpp src/AccountSession.h src/ChannelDirectory.cpp src/ChannelDirectory.h)
+        src/DesktopSettings.cpp src/DesktopSettings.h
+    src/AccountSession.cpp src/AccountSession.h src/ChannelDirectory.cpp src/ChannelDirectory.h)
     target_link_libraries(gcp-chat-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::WebSockets)
     target_compile_definitions(gcp-chat-tests PRIVATE GCP_CHAT_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
     add_test(NAME desktop_text_messaging COMMAND $<TARGET_FILE:gcp-chat-tests>)
@@ -80,7 +87,8 @@ if(BUILD_TESTING)
 
     qt_add_executable(gcp-community-tests
         src/community_tests.cpp src/ChannelDirectory.cpp src/ChannelDirectory.h
-        src/AccountSession.cpp src/AccountSession.h)
+        src/DesktopSettings.cpp src/DesktopSettings.h
+    src/AccountSession.cpp src/AccountSession.h)
     target_link_libraries(gcp-community-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
     target_compile_definitions(gcp-community-tests PRIVATE
         GCP_COMMUNITY_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
@@ -89,7 +97,8 @@ if(BUILD_TESTING)
         TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
 
     qt_add_executable(gcp-account-onboarding-tests
-        src/onboarding_tests.cpp src/AccountSession.cpp src/AccountSession.h)
+        src/onboarding_tests.cpp src/DesktopSettings.cpp src/DesktopSettings.h
+    src/AccountSession.cpp src/AccountSession.h)
     target_link_libraries(gcp-account-onboarding-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
     target_compile_definitions(gcp-account-onboarding-tests PRIVATE
         GCP_ACCOUNT_PANEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/qml/AccountPanel.qml")
@@ -116,7 +125,8 @@ endif()
 
 if(BUILD_TESTING)
     qt_add_executable(gcp-desktop-network-tests
-        src/network_tests.cpp src/AccountSession.cpp src/AccountSession.h)
+        src/network_tests.cpp src/DesktopSettings.cpp src/DesktopSettings.h
+    src/AccountSession.cpp src/AccountSession.h)
     target_link_libraries(gcp-desktop-network-tests PRIVATE Qt6::Network)
     add_test(NAME desktop_network_limits_and_cancellation
         COMMAND $<TARGET_FILE:gcp-desktop-network-tests>)
@@ -128,7 +138,8 @@ if(BUILD_TESTING)
     qt_add_executable(gcp-voice-session-tests
         src/voice_session_tests.cpp
         src/VoiceSession.cpp src/VoiceSession.h
-        src/AccountSession.cpp src/AccountSession.h
+        src/DesktopSettings.cpp src/DesktopSettings.h
+    src/AccountSession.cpp src/AccountSession.h
         src/ChannelDirectory.cpp src/ChannelDirectory.h)
     target_link_libraries(gcp-voice-session-tests PRIVATE Qt6::Network Qt6::Quick Qt6::QuickControls2)
     target_compile_definitions(gcp-voice-session-tests PRIVATE
@@ -145,7 +156,8 @@ if(BUILD_TESTING)
     target_compile_features(gcp-screen-process-fixture PRIVATE cxx_std_20)
     qt_add_executable(gcp-screen-session-tests
         src/screen_session_tests.cpp src/ScreenSession.cpp src/ScreenSession.h
-        src/AccountSession.cpp src/AccountSession.h src/ChannelDirectory.cpp src/ChannelDirectory.h)
+        src/DesktopSettings.cpp src/DesktopSettings.h
+    src/AccountSession.cpp src/AccountSession.h src/ChannelDirectory.cpp src/ChannelDirectory.h)
     target_link_libraries(gcp-screen-session-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
     target_compile_definitions(gcp-screen-session-tests PRIVATE GCP_SCREEN_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
     add_dependencies(gcp-screen-session-tests gcp-screen-process-fixture)
@@ -160,11 +172,24 @@ if(BUILD_TESTING)
     qt_add_executable(gcp-screen-viewer-tests
         src/viewer_tests.cpp src/ScreenViewer.cpp src/ScreenViewer.h
         src/ScreenVideoItem.cpp src/ScreenVideoItem.h
-        src/AccountSession.cpp src/AccountSession.h src/ChannelDirectory.cpp src/ChannelDirectory.h)
+        src/DesktopSettings.cpp src/DesktopSettings.h
+    src/AccountSession.cpp src/AccountSession.h src/ChannelDirectory.cpp src/ChannelDirectory.h)
     target_link_libraries(gcp-screen-viewer-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
     target_compile_definitions(gcp-screen-viewer-tests PRIVATE GCP_SCREEN_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
     add_dependencies(gcp-screen-viewer-tests gcp-view-process-fixture)
     add_test(NAME desktop_screen_viewer_render_and_lifecycle COMMAND $<TARGET_FILE:gcp-screen-viewer-tests>)
     set_tests_properties(desktop_screen_viewer_render_and_lifecycle PROPERTIES
         TIMEOUT 75 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+endif()
+
+if(BUILD_TESTING)
+    qt_add_executable(gcp-desktop-settings-tests
+        src/settings_tests.cpp src/DesktopSettings.cpp src/DesktopSettings.h
+        src/ServerProbe.cpp src/ServerProbe.h src/AccountSession.cpp src/AccountSession.h
+        src/VoiceSession.cpp src/VoiceSession.h src/ChannelDirectory.cpp src/ChannelDirectory.h)
+    target_link_libraries(gcp-desktop-settings-tests PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
+    target_compile_definitions(gcp-desktop-settings-tests PRIVATE GCP_SETTINGS_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+    add_test(NAME desktop_preferences_and_recovery COMMAND $<TARGET_FILE:gcp-desktop-settings-tests>)
+    set_tests_properties(desktop_preferences_and_recovery PROPERTIES
+        TIMEOUT 35 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
 endif()

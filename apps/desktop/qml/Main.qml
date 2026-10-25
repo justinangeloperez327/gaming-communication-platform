@@ -252,8 +252,17 @@ ApplicationWindow {
                     AccountPanel {
                         Layout.fillWidth: true
                         account: accountSession
+                        preferences: desktopSettings
+                        probe: serverProbe
                         textTone: root.textTone
                         mutedTone: root.mutedTone
+                    }
+                    SettingsPanel {
+                        Layout.fillWidth: true
+                        preferences: desktopSettings
+                        voice: voiceSession
+                        account: accountSession
+                        directory: channelDirectory
                     }
                     FriendsPanel {
                         Layout.fillWidth: true

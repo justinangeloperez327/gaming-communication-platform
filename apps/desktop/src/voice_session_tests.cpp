@@ -1,4 +1,6 @@
 #include "AccountSession.h"
+#include "DesktopSettings.h"
+#include <QTemporaryDir>
 #include "ChannelDirectory.h"
 #include "VoiceSession.h"
 #include <QCoreApplication>
@@ -55,7 +57,7 @@ struct ApiFixture {
     int cancelledTokens = 0;
     QList<QPointer<QTcpSocket>> heldTokens;
     int loginTtl = 900, refreshes = 0, voiceDenials = 0;
-    bool holdRefresh = false, rejectFreshVoice = false;
+    bool holdRefresh = false, rejectFreshVoice = false, failRefresh = false;
     QPointer<QTcpSocket> refreshReply;
     QString accessToken = QString(64, 'a'), refreshToken = QString(64, 'b'), lastVoiceAccess;
     QString voiceUrl = QStringLiteral("wss://fixture.invalid");
@@ -106,6 +108,7 @@ struct ApiFixture {
                     body = sessionBody(loginTtl);
                 } else if (path == "/v1/auth/refresh") {
                     ++refreshes;
+                    if (failRefresh) { respond(socket, 503, {}); return; }
                     accessToken = QString(64, 'c');
                     refreshToken = QString(64, 'd');
                     if (holdRefresh) { refreshReply = socket; return; }
@@ -174,11 +177,14 @@ int main(int argc, char **argv) {
         qputenv("GCP_FIXTURE_VALIDATE_ENV", "1");
         qputenv("GCP_FIXTURE_RUNTIME_VALUE", "preserved");
         ApiFixture api;
-        AccountSession account;
+        QTemporaryDir profile; require(profile.isValid(), "isolated settings directory");
+        DesktopSettings preferences(profile.filePath("preferences.json"));
+        preferences.saveAudio("fixture-input", "fixture-output", true);
+        AccountSession account(nullptr, &preferences);
         ChannelDirectory directory{&account};
         const auto executable = QDir(QCoreApplication::applicationDirPath())
             .filePath(QStringLiteral("gcp-voice-process-fixture.exe"));
-        VoiceSession voice{&account, &directory, nullptr, VoiceRuntime{executable, 500}};
+        VoiceSession voice{&account, &directory, nullptr, VoiceRuntime{executable, 500}, &preferences};
         QQmlEngine engine;
         int qmlWarnings = 0;
         QObject::connect(&engine, &QQmlEngine::warnings, &engine, [&](const QList<QQmlError> &) { ++qmlWarnings; });
@@ -237,11 +243,19 @@ int main(int argc, char **argv) {
         voice.scanDevices();
         require(waitFor([&]() { return !voice.scanning(); }), "removed device scan completion");
         qunsetenv("GCP_FIXTURE_DEVICE_SCAN");
-        require(voice.inputId().isEmpty() && voice.outputId().isEmpty() &&
-                voice.inputs().isEmpty() && voice.outputs().isEmpty(), "removed devices revert to default");
+        require(voice.inputId() == "fixture-input" && voice.outputId() == "fixture-output" &&
+                voice.inputs().isEmpty() && voice.outputs().isEmpty() && !voice.inputAvailable() && !voice.outputAvailable(),
+                "removed saved devices remain explicit and unavailable, never default");
+        voice.joinWithMicrophone(true);
+        require(api.joins == 0 && !voice.busy(), "missing selected devices cannot authorize or start media");
         voice.scanDevices();
         require(waitFor([&]() { return !voice.scanning(); }), "devices return after removal");
-        require(voice.inputId().isEmpty() && voice.outputId().isEmpty(), "returned devices do not silently reselect");
+        require(voice.inputId() == "fixture-input" && voice.outputId() == "fixture-output" &&
+                voice.inputAvailable() && voice.outputAvailable() && !voice.busy(), "returned saved devices become available without joining");
+        { DesktopSettings restored(profile.filePath("preferences.json"));
+          require(restored.inputId() == "fixture-input" && restored.outputId() == "fixture-output" && restored.pushToTalk(),
+                  "device identities and mode survive controller restart"); }
+        require(voice.muted() && !voice.transmitting() && !voice.microphoneEnabled(), "preferences never restore consent or microphone state");
         voice.selectInput(QStringLiteral("fixture-input"));
         voice.selectOutput(QStringLiteral("fixture-output"));
         qputenv("GCP_FIXTURE_EXPECT_DEVICE_ARGS", "1");
@@ -255,8 +269,16 @@ int main(int argc, char **argv) {
         directory.chooseVoiceChannel(channel);
         field("voiceMicrophoneConsent")->setProperty("checked", true);
         require(panel->property("microphoneConsent").toBool(), "consent control reaches the panel");
+        qputenv("GCP_FIXTURE_DEVICE_SCAN", "input-missing");
+        voice.scanDevices(); require(waitFor([&]() { return !voice.scanning(); }), "missing microphone scan");
+        qunsetenv("GCP_FIXTURE_DEVICE_SCAN");
+        require(!voice.inputAvailable() && voice.outputAvailable(), "missing microphone does not block listening");
+        const auto missingJoins = api.joins; voice.joinWithMicrophone(true);
+        require(api.joins == missingJoins, "missing microphone blocks publication before network I/O");
         click("voiceListenOnly");
         require(waitFor([&]() { return voice.connected(); }), "QML listen-only join");
+        voice.resetSavedSettings();
+        require(preferences.inputId() == "fixture-input" && voice.running(), "settings reset is rejected during an active call");
         require(!panel->property("microphoneConsent").toBool(), "listen-only consumes pending microphone consent");
         const auto joinsBeforeText = api.joins;
         directory.chooseTextChannel(QStringLiteral("00000000-0000-0000-0000-000000000003"));
@@ -265,6 +287,7 @@ int main(int argc, char **argv) {
         click("voiceLeave");
         require(waitFor([&]() { return !voice.busy(); }), "QML leave after listen-only");
         require(!field("voiceJoinMicrophone")->property("enabled").toBool(), "stopped listen-only call cannot reuse old consent");
+        voice.scanDevices(); require(waitFor([&]() { return !voice.scanning(); }), "microphone returns");
         const auto beforeConsent = api.joins;
         voice.joinWithMicrophone(false);
         require(!voice.busy() && api.joins == beforeConsent, "consent required before authorization");
@@ -347,6 +370,16 @@ int main(int argc, char **argv) {
         require(waitFor([&]() { return !voice.busy(); }), "microphone failure stops child");
         qunsetenv("GCP_FIXTURE_VOICE_OUTPUT");
         require(voice.status().contains("Windows microphone permissions") && !voice.transmitting(), "microphone error gives actionable permission/device guidance");
+
+        qputenv("GCP_FIXTURE_VOICE_OUTPUT", "device-lost");
+        voice.joinWithMicrophone(true);
+        require(waitFor([&]() { return voice.connected(); }), "join before device loss");
+        qunsetenv("GCP_FIXTURE_VOICE_OUTPUT");
+        voice.setMuted(false);
+        require(waitFor([&]() { return !voice.busy(); }), "device loss stops microphone child");
+        require(voice.status().contains("audio device disconnected") && voice.muted() && !voice.transmitting() &&
+                voice.inputId() == "fixture-input" && !panel->property("microphoneConsent").toBool(),
+                "device loss retains preference but clears consent and transmission");
 
         for (const auto *url : {"wss:///", "wss://fixture.invalid/path", "wss://fixture.invalid?token=x", "wss://fixture.invalid/#fragment"}) {
             api.voiceUrl = QString::fromLatin1(url);
@@ -482,6 +515,20 @@ int main(int argc, char **argv) {
         exerciseRotation(false, false);
         exerciseRotation(true, false);
         exerciseRotation(false, true);
+        {
+            ApiFixture failed; AccountSession session; ChannelDirectory rooms(&session);
+            VoiceSession call(&session, &rooms, nullptr, {executable, 1000});
+            session.signIn(failed.origin(), "failure@example.test", "private-test-password");
+            require(waitFor([&] { return !rooms.communities().isEmpty(); }), "session recovery fixture sign-in");
+            rooms.chooseCommunity(community); require(waitFor([&] { return !rooms.channels().isEmpty(); }), "session recovery channels");
+            rooms.chooseVoiceChannel(channel); call.joinWithMicrophone(true);
+            require(waitFor([&] { return call.connected(); }), "call before manual session failure");
+            call.setMuted(false); require(waitFor([&] { return call.transmitting(); }), "transmitting before failed refresh");
+            failed.failRefresh = true; session.refreshSession();
+            require(waitFor([&] { return !session.busy() && !call.busy(); }), "failed manual session check stops active microphone process");
+            require(!session.signedIn() && session.reauthenticationRequired() && call.muted() && !call.transmitting() && failed.refreshes == 1,
+                    "refresh failure clears login and microphone without retry or restart");
+        }
         require(qgetenv("DATABASE_URL") == "dummy-database-credential" &&
                 qgetenv("LIVEKIT_TOKEN") == "dummy-inherited-room-token",
                 "child filtering must not mutate the parent environment");
