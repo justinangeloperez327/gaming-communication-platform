@@ -68,9 +68,9 @@ class Fixture {
     Require ($children.Count -eq 1) 'Fixture voice child did not start.'
     $child = Get-Process -Id $children[0].ProcessId; $started.Add($child)
     $output = Join-Path $folder 'capture.jsonl'
-    & (Join-Path $PSScriptRoot 'capture-desktop-performance.ps1') -GameProcessId $game.Id -DesktopProcessId $desktop.Id -Scenario voice -DurationSeconds 8 -IntervalSeconds 1 -SkipGpu -OutputFile $output
+    & (Join-Path $PSScriptRoot 'capture-desktop-performance.ps1') -GameProcessId $game.Id -DesktopProcessId $desktop.Id -Scenario VOICE -DurationSeconds 8 -IntervalSeconds 1 -SkipGpu -OutputFile $output
     $records = @(Get-Content -LiteralPath $output | ForEach-Object { $_ | ConvertFrom-Json })
-    Require ($records[0].processes.Count -eq 2 -and $records[-1].complete -and $records[-1].samples -ge 3) 'Process-only smoke did not capture complete desktop/native set.'
+    Require ($records[0].scenario -eq 'voice' -and $records[0].processes.Count -eq 2 -and $records[-1].complete -and $records[-1].samples -ge 3) 'Process-only smoke did not capture complete desktop/native set.'
     Require ($records[1].gpu.status -eq 'not_requested') 'Unavailable GPU was invented as zero.'
     & python -c "import sys; from pathlib import Path; sys.path.insert(0,sys.argv[1]); from desktop_performance import read_capture; result=read_capture(Path(sys.argv[2]),0,5); assert result['metrics']['cpu_percent_machine'] >= 0; assert result['metrics']['peak_private_mib_sampled'] > 0; assert result['metrics']['gpu_coverage_complete'] is False; print('Actual PowerShell JSONL accepted by Python; missing GPU remains incomplete, not physical evidence.')" $PSScriptRoot $output
     Require ($LASTEXITCODE -eq 0) 'Actual collector/Python data contract failed.'

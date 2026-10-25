@@ -11,6 +11,8 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# PowerShell ValidateSet accepts either case; the evidence schema is canonical.
+$Scenario = $Scenario.ToLowerInvariant()
 if ($env:OS -ne 'Windows_NT') { throw 'Windows is required.' }
 if ($DurationSeconds -lt 3 * $IntervalSeconds) { throw 'Duration must allow at least three sample intervals.' }
 if (-not [Diagnostics.Stopwatch]::IsHighResolution) { throw 'QPC clock is required for frame-time alignment.' }
