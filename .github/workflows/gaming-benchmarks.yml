@@ -5,13 +5,12 @@ on:
       - 'scripts/**'
       - '.github/workflows/gaming-benchmarks.yml'
   workflow_dispatch:
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: windows-2022
-    strategy:
-      fail-fast: false
-      matrix:
-        shell: [powershell, pwsh]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -22,6 +21,9 @@ jobs:
       - name: Compile-check Python tools
         run: python -m compileall -q scripts
 
-      - name: Read-only sampler policy and process-only smoke (not gaming qualification)
-        shell: ${{ matrix.shell }}
+      - name: Windows PowerShell 5.1 collector policy and process-only smoke
+        shell: powershell
+        run: ./scripts/test-desktop-performance.ps1
+      - name: PowerShell 7 collector policy and process-only smoke
+        shell: pwsh
         run: ./scripts/test-desktop-performance.ps1
