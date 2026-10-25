@@ -88,3 +88,15 @@ Qt→Rust acceptance also runs the production readiness probe and manual session
 rotation. The Windows voice fixture checks preference restoration, missing and
 returning devices and session/device failure cleanup without hardware capture.
 See [settings and recovery evidence](desktop-settings-recovery.md).
+
+
+Group 11's gaming tooling workflow runs Python analyzer/integrity tests and both
+Windows PowerShell 5.1/PowerShell 7 policy and real process-only collection tests.
+The latter compile bounded sleeping fake desktop/voice/game processes, never use
+real audio/video/game capture, verify child-loss invalidation and pass actual
+PowerShell JSONL through the Python reader. Synthetic GPU rows test attribution;
+missing VM GPU data stays incomplete. A successful workflow packages only an
+allowlisted set of operator source tools, guide and empty configuration, with a
+commit/hash inventory and ZIP checksum. No raw captures or fixtures are bundled.
+See [desktop gaming measurement](desktop-gaming-qualification.md); CI cannot
+satisfy actual gaming/media acceptance or justify speculative quality tuning.

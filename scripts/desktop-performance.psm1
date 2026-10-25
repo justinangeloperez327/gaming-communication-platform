@@ -70,7 +70,7 @@ function Convert-GpuSamples {
         $engine = [int]$Matches[4]; $kind = $Matches[5].ToLowerInvariant()
         $key = "$processIdValue/$adapter/$engine"
         $value = [double]$sample.CookedValue
-        if ($sample.Status -ne 0 -or [double]::IsNaN($value) -or [double]::IsInfinity($value) -or $value -lt 0 -or $value -gt 100 -or $seen.ContainsKey($key)) {
+        if ($sample.Status -notin @(0,1) -or [double]::IsNaN($value) -or [double]::IsInfinity($value) -or $value -lt 0 -or $value -gt 100 -or $seen.ContainsKey($key)) {
             throw 'Invalid or duplicate PID-attributed GPU counter.'
         }
         if ($rows.Count -ge 128) { throw 'Too many GPU counter rows.' }

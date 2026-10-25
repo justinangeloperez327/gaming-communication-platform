@@ -20,7 +20,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Name') {
         $ProcessId = $candidates[0].Id
     } finally { foreach ($candidate in $candidates) { $candidate.Dispose() } }
 }
-$logical = [int](Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
+$logical = [int](Get-CimInstance -Query "SELECT NumberOfLogicalProcessors FROM Win32_ComputerSystem").NumberOfLogicalProcessors
 if ($logical -lt 1) { throw 'Cannot determine logical processor count.' }
 $previous = Get-ProcessObservation $ProcessId
 $timer = [Diagnostics.Stopwatch]::StartNew(); $previousSeconds = 0.0

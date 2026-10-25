@@ -161,6 +161,16 @@ class DesktopPerformanceTests(unittest.TestCase):
             frames.write_text("\n".join(lines[:1000]))
             with self.assertRaises(ValueError):perf.read_frames(frames,sample,"0x123")
 
+    def test_missing_edge_frames_cannot_hide_boundary_stalls(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);path=root/"capture.jsonl";save_capture(path,capture("voice",1000))
+            sample=perf.read_capture(path,0,60);frames=root/"frames.csv";save_frames(frames,1000)
+            lines=frames.read_text().splitlines()
+            frames.write_text("\n".join([lines[0]]+lines[11:]))
+            with self.assertRaises(ValueError):perf.read_frames(frames,sample,"0x123")
+            frames.write_text("\n".join(lines[:-10]))
+            with self.assertRaises(ValueError):perf.read_frames(frames,sample,"0x123")
+
     def test_warmup_short_window_and_boolean_budget_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);data=fixture(root);data["warmup_seconds"]=30

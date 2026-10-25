@@ -28,10 +28,10 @@ foreach ($item in $set) {
     $observation = Get-ProcessObservation $item.pid; $initial[$item.pid] = $observation
     $metadata += @{ pid = $item.pid; role = $item.role; name = $item.name; start_utc = $observation.start_utc; sha256 = (Get-FileHash -LiteralPath $item.path -Algorithm SHA256).Hash.ToLowerInvariant() }
 }
-$system = Get-CimInstance Win32_ComputerSystem
-$osInfo = Get-CimInstance Win32_OperatingSystem
-$cpuNames = @((Get-CimInstance Win32_Processor).Name | Sort-Object)
-$gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object { @{ name = $_.Name; driver = $_.DriverVersion } })
+$system = Get-CimInstance -Query "SELECT NumberOfLogicalProcessors,TotalPhysicalMemory FROM Win32_ComputerSystem"
+$osInfo = Get-CimInstance -Query "SELECT LastBootUpTime,BuildNumber FROM Win32_OperatingSystem"
+$cpuNames = @((Get-CimInstance -Query "SELECT Name FROM Win32_Processor").Name | Sort-Object)
+$gpus = @(Get-CimInstance -Query "SELECT Name,DriverVersion FROM Win32_VideoController" | ForEach-Object { @{ name = $_.Name; driver = $_.DriverVersion } })
 $sha = [Security.Cryptography.SHA256]::Create()
 try { $boot = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes([Environment]::MachineName + '|' + $osInfo.LastBootUpTime.ToUniversalTime().ToString('o'))))).Replace('-','').ToLowerInvariant() }
 finally { $sha.Dispose() }

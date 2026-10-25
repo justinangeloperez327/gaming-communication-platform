@@ -138,7 +138,7 @@ def read_capture(path, warmup, minimum_seconds):
         if previous_qpc is not None and (qpc <= previous_qpc or (qpc-previous_qpc)/frequency > 3*interval+2):
             raise ValueError("Nonmonotonic clock or excessive sampling gap")
         observed_game = mapping(sample.get("game", {}))
-        if observed_game.get("pid") != game_id or observed_game.get("start_utc") != game["start_utc"]:
+        if number(observed_game.get("pid"), "sample game PID", 1, 2**31-1, True) != game_id or observed_game.get("start_utc") != game["start_utc"]:
             raise ValueError("Game process restarted")
         observed = sample.get("processes")
         if not isinstance(observed, list) or len(observed) != len(identities):
@@ -258,8 +258,14 @@ def read_frames(path, capture, swapchain):
             timestamps.append(stamp); durations.append(milliseconds)
     result = _frame.summarize_frame_times(durations)
     span = (timestamps[-1]-timestamps[0])/frequency + durations[-1]/1000
-    if span < capture["seconds"] - 2 or abs(sum(durations)/1000 - span) > max(.005, len(durations)*.000001):
+    leading = (timestamps[0]-first)/frequency
+    trailing = (last-timestamps[-1])/frequency - durations[-1]/1000
+    if (leading > durations[0]/1000 + .001 or trailing > durations[-1]/1000 + .001 or
+            abs(sum(durations)/1000 - span) > max(.005, len(durations)*.000001)):
         raise ValueError("Frame stream has gaps, overlapping frames or incomplete QPC-window coverage")
+    result["frame_metric"] = "PresentMon v2 CPU frame-start interval (FrameTime)"
+    result["time_domain"] = "Windows QPC"
+    result["trimmed_edge_seconds"] = leading + trailing
     result["excluded_rows"] = excluded
     return result
 
@@ -361,6 +367,6 @@ def analyze(manifest, base):
             "product_qualification_status": "pending_owner_acceptance" if kind == "operator_capture" and status == "limits_met" and REQUIRED_SCENARIOS <= ordering.keys() else "not_qualified", "evidence_kind": kind, "build_commit_declared": commit,
             "scope": sorted(ordering), "all_product_scenarios_present": REQUIRED_SCENARIOS <= ordering.keys(),
             "pairs": pairs, "limits": limits, "observed_binary_hashes": hashes,
-            "operator_attestations_unverified": attestations, "physical_capture_authenticated": False,
+            "operator_attestations_unverified": attestations, "scenario_labels_operator_declared": True, "physical_capture_authenticated": False,
             "physical_media_verified": False, "gaming_performance_verified_by_ci": False,
             "competitor_superiority_verified": False, "qualification_requires_owner_review": True}

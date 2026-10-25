@@ -16,10 +16,19 @@ $samples = @(
 $gpu = @(Convert-GpuSamples -Samples $samples -ProcessIds @(101))
 Require ($gpu.Count -eq 1 -and $gpu[0].percent -eq 25 -and $gpu[0].pid -eq 101) 'GPU attribution mixed unrelated PIDs.'
 MustFail { Convert-GpuSamples -Samples @($samples[0],$samples[0]) -ProcessIds @(101) }
+$samples[0].Status = 1
+Require (@(Convert-GpuSamples -Samples $samples -ProcessIds @(101)).Count -eq 1) 'New valid PDH counter data rejected.'
+$samples[0].Status = 5
+MustFail { Convert-GpuSamples -Samples $samples -ProcessIds @(101) }
+$samples[0].Status = 0
 $samples[0].CookedValue = [double]::NaN
 MustFail { Convert-GpuSamples -Samples $samples -ProcessIds @(101) }
 $samples[0].CookedValue = 101
 MustFail { Convert-GpuSamples -Samples $samples -ProcessIds @(101) }
+$actualGpu = Get-AttributedGpuObservation -ProcessIds @($PID)
+Require ($actualGpu.status -in @('ok','no_instances','unavailable')) 'Actual local GPU query has invalid status.'
+if ($actualGpu.status -eq 'ok') { foreach ($entry in $actualGpu.engines) { Require ($entry.pid -eq $PID) 'Actual GPU query leaked a foreign process.' } }
+Write-Host "Local GPU query status: $($actualGpu.status); this is not physical GPU qualification."
 $own = Get-ProcessObservation $PID
 Require ($own.pid -eq $PID -and $own.private_bytes -gt 0 -and $own.working_set_bytes -gt 0) 'Real process observation failed.'
 Assert-ProcessContinuity $own (Get-ProcessObservation $PID)
@@ -37,9 +46,9 @@ class Fixture {
  static void Main(string[] args) {
   if(args.Length > 0 && args[0] == "desktop") {
    using(var child = Process.Start(new ProcessStartInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"gcp-livekit-voice.exe"),"sleep") { UseShellExecute=false })) {
-    Thread.Sleep(30000); if(!child.HasExited) child.Kill();
+    Thread.Sleep(60000); if(!child.HasExited) child.Kill();
    }
-  } else Thread.Sleep(30000);
+  } else Thread.Sleep(60000);
  }
 }
 '@
@@ -59,11 +68,13 @@ class Fixture {
     Require ($children.Count -eq 1) 'Fixture voice child did not start.'
     $child = Get-Process -Id $children[0].ProcessId; $started.Add($child)
     $output = Join-Path $folder 'capture.jsonl'
-    & (Join-Path $PSScriptRoot 'capture-desktop-performance.ps1') -GameProcessId $game.Id -DesktopProcessId $desktop.Id -Scenario voice -DurationSeconds 5 -IntervalSeconds 1 -SkipGpu -OutputFile $output
+    & (Join-Path $PSScriptRoot 'capture-desktop-performance.ps1') -GameProcessId $game.Id -DesktopProcessId $desktop.Id -Scenario voice -DurationSeconds 8 -IntervalSeconds 1 -SkipGpu -OutputFile $output
     $records = @(Get-Content -LiteralPath $output | ForEach-Object { $_ | ConvertFrom-Json })
     Require ($records[0].processes.Count -eq 2 -and $records[-1].complete -and $records[-1].samples -ge 3) 'Process-only smoke did not capture complete desktop/native set.'
     Require ($records[1].gpu.status -eq 'not_requested') 'Unavailable GPU was invented as zero.'
-    MustFail { & (Join-Path $PSScriptRoot 'capture-desktop-performance.ps1') -GameProcessId $game.Id -DesktopProcessId $desktop.Id -Scenario voice -DurationSeconds 5 -IntervalSeconds 1 -SkipGpu -OutputFile $output }
+    & python -c "import sys; from pathlib import Path; sys.path.insert(0,sys.argv[1]); from desktop_performance import read_capture; result=read_capture(Path(sys.argv[2]),0,5); assert result['metrics']['cpu_percent_machine'] >= 0; assert result['metrics']['peak_private_mib_sampled'] > 0; assert result['metrics']['gpu_coverage_complete'] is False; print('Actual PowerShell JSONL accepted by Python; missing GPU remains incomplete, not physical evidence.')" $PSScriptRoot $output
+    Require ($LASTEXITCODE -eq 0) 'Actual collector/Python data contract failed.'
+    MustFail { & (Join-Path $PSScriptRoot 'capture-desktop-performance.ps1') -GameProcessId $game.Id -DesktopProcessId $desktop.Id -Scenario voice -DurationSeconds 8 -IntervalSeconds 1 -SkipGpu -OutputFile $output }
     MustFail { Get-DesktopProcessSet $desktop.Id baseline $desktop.SessionId }
     MustFail { Get-DesktopProcessSet $desktop.Id voice_view $desktop.SessionId }
     # Legacy CLI must reject ambiguity, pin a single PID and retain identity.

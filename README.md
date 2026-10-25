@@ -15,7 +15,7 @@ GCP is an experimental Windows x64 communication application for private gaming 
 | Screen sharing | Windows picker/publisher and explicit Watch viewer, source/channel consent, exact track authorization, Qt rendering and separate renewable leases | Qt rendering/process/API tests and separate production receiver core with synthetic SDK/SFU media; actual OS/GPU capture, physical quality and performance unverified |
 | Test video | Synthetic RGBA/NV12/BGRA patterns and externally encoded H.264 file publishing | Diagnostic fixtures; not evidence of screen capture or gaming performance |
 | Windows distribution | Qt/QML + voice/screen executables + LiveKit DLL staging, portable ZIP, per-user alpha installer, SHA-256 inventory and installed/extracted startup checks | Unsigned preview; clean consumer Windows PC still untested |
-| Performance | Process CPU/private memory samples, capture/encoder timing, exported game frame-time analysis | No measured gaming resource budget or advantage over other apps established |
+| Performance | Exact desktop/native process capture, PID-attributed GPU observations and QPC-aligned frame/CPU/private-memory/growth budgets; source-only operator toolkit | Tool fixtures/Windows process smoke pass separately from product tests; real gameplay/media qualification and measured optimization remain pending |
 
 See [long-session voice and controls](docs/long-session-voice.md) for the latest voice behavior and tests.
 Group 4's [voice evidence and acceptance guide](docs/usable-voice.md) separates
@@ -31,6 +31,10 @@ explains Group 8’s source-bound consent, supported profile and test boundaries
 Watch, exact-track subscription, rendering and cleanup.
 [Desktop settings and recovery](docs/desktop-settings-recovery.md) covers Group 10’s
 remembered devices, optional server address and explicit failure recovery.
+
+Group 11’s [desktop gaming measurement guide](docs/desktop-gaming-qualification.md)
+provides the owner-run capture commands, empty manifest, numerical gates and
+physical qualification boundaries. No actual gameplay result is included.
 
 The ZIP includes a [versioned notice baseline](docs/windows-third-party-notices.md); complete transitive attribution review remains pending.
 
