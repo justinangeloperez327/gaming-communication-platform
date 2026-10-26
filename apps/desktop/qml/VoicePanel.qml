@@ -7,6 +7,7 @@ Rectangle {
     required property var voice
     required property var directory
     required property var account
+    signal leaveRequested()
     property bool microphoneConsent: false
     property color panel: "#151e2b"
     property color borderTone: "#293649"
@@ -25,6 +26,7 @@ Rectangle {
     Connections {
         target: root.voice
         function onRunningChanged() { root.microphoneConsent = false }
+        function onDevicesChanged() { root.microphoneConsent = false }
     }
     radius: 6
     color: root.panel
@@ -73,6 +75,14 @@ Rectangle {
             defaultLabel: "Default speaker"
             onActivated: root.voice.selectOutput(currentValue)
         }
+        Text {
+            Layout.fillWidth: true
+            text: root.voice.deviceStatus
+            textFormat: Text.PlainText
+            color: root.mutedTone
+            wrapMode: Text.Wrap
+            Accessible.name: text
+        }
         CheckBox {
             text: "Push-to-talk · hold F8 (works outside this window)"
             checked: root.voice.pushToTalk
@@ -113,7 +123,7 @@ Rectangle {
             Button {
                 objectName: "voiceListenOnly"
                 text: "Listen only"
-                enabled: root.voice.available && root.account.signedIn && root.directory.channelId.length > 0 && !root.directory.busy && !root.voice.busy && !root.voice.scanning
+                enabled: root.voice.available && root.voice.outputAvailable && root.account.signedIn && root.directory.channelId.length > 0 && !root.directory.busy && !root.voice.busy && !root.voice.scanning
                 onClicked: {
                     root.microphoneConsent = false
                     root.voice.joinListenOnly()
@@ -122,7 +132,7 @@ Rectangle {
             Button {
                 objectName: "voiceJoinMicrophone"
                 text: "Join with mic"
-                enabled: root.voice.available && root.account.signedIn && root.directory.channelId.length > 0 && !root.directory.busy && !root.voice.busy && !root.voice.scanning && root.microphoneConsent
+                enabled: root.voice.available && root.voice.inputAvailable && root.voice.outputAvailable && root.account.signedIn && root.directory.channelId.length > 0 && !root.directory.busy && !root.voice.busy && !root.voice.scanning && root.microphoneConsent
                 onClicked: {
                     const consent = root.microphoneConsent
                     root.microphoneConsent = false
@@ -135,6 +145,7 @@ Rectangle {
                 enabled: root.voice.busy
                 onClicked: {
                     root.microphoneConsent = false
+                    root.leaveRequested()
                     root.voice.leave()
                 }
             }

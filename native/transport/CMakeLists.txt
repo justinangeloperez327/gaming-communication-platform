@@ -91,6 +91,22 @@ if(BUILD_TESTING)
             VERBATIM)
     endforeach()
 
+    add_executable(gcp-livekit-screen-contract tests/screen_contract.cpp src/screen_viewer.cpp)
+    target_compile_features(gcp-livekit-screen-contract PRIVATE cxx_std_20)
+    target_compile_definitions(gcp-livekit-screen-contract PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(gcp-livekit-screen-contract PRIVATE LiveKit::livekit)
+    target_link_directories(gcp-livekit-screen-contract PRIVATE "${GCP_LIVEKIT_RESOLVED_PREFIX}/lib")
+    if(MSVC)
+        target_compile_options(gcp-livekit-screen-contract PRIVATE /W4 /permissive- /EHsc)
+    endif()
+    foreach(_runtime IN ITEMS livekit.dll livekit_ffi.dll)
+        add_custom_command(TARGET gcp-livekit-screen-contract POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${GCP_LIVEKIT_RESOLVED_PREFIX}/bin/${_runtime}"
+                "$<TARGET_FILE_DIR:gcp-livekit-screen-contract>"
+            VERBATIM)
+    endforeach()
+
     add_executable(gcp-voice-control-tests tests/voice_control_tests.cpp)
     target_include_directories(gcp-voice-control-tests PRIVATE src)
     add_test(NAME voice_control_privacy_and_long_session_policy

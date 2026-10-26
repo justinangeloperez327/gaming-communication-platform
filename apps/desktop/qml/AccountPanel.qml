@@ -5,6 +5,8 @@ import QtQuick.Layouts
 Rectangle {
     id: panel
     required property var account
+    property var preferences: null
+    property var probe: null
     property bool registering: false
     property string formError: ""
     property color textTone: "#e7edf5"
@@ -80,6 +82,43 @@ Rectangle {
             Layout.fillWidth: true; visible: !panel.account.signedIn
             enabled: !panel.account.busy; maximumLength: 2048
             placeholderText: "https://your-gcp-server"; Accessible.name: "Server address"
+            Component.onCompleted: if (panel.preferences) text = panel.preferences.serverOrigin
+            onTextEdited: if (panel.probe) panel.probe.clear()
+        }
+        CheckBox {
+            objectName: "accountRememberServer"
+            visible: panel.preferences !== null && !panel.account.signedIn
+            text: "Remember this server address on this Windows profile"
+            checked: panel.preferences ? panel.preferences.rememberServer : false
+            enabled: !panel.account.busy
+            onToggled: if (panel.preferences) panel.preferences.rememberServer = checked
+        }
+        RowLayout {
+            visible: panel.probe !== null && !panel.account.signedIn
+            Button {
+                objectName: "accountCheckConnection"
+                text: panel.probe && panel.probe.busy ? "Checking…" : "Check connection"
+                enabled: panel.probe !== null && !panel.probe.busy && !panel.account.busy
+                onClicked: panel.probe.check(origin.text.trim())
+            }
+            Button {
+                objectName: "accountCancelCheck"
+                visible: panel.probe !== null && panel.probe.busy
+                text: "Cancel check"
+                onClicked: panel.probe.clear()
+            }
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: panel.probe !== null && !panel.account.signedIn && text.length > 0
+            text: panel.probe ? panel.probe.status : ""
+            textFormat: Text.PlainText; color: panel.mutedTone; wrapMode: Text.Wrap
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: panel.account.reauthenticationRequired
+            text: "Sign in again, choose your channel and explicitly join, share or watch again. Media never resumes automatically."
+            textFormat: Text.PlainText; color: panel.mutedTone; wrapMode: Text.Wrap
         }
         TextField {
             id: email; objectName: "accountEmail"

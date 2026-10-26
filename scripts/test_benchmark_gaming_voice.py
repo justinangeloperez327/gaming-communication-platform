@@ -1,6 +1,7 @@
 """Offline tests of combined voice and frame-time benchmark."""
 import importlib.util
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -48,6 +49,16 @@ class Tests(unittest.TestCase):
             telemetry.write_text('{"probe":"livekit_voice_session","cpu_percent_total_machine":1,"peak_private_bytes_sampled":1024,"session_seconds":60}\n')
             with self.assertRaises(ValueError):
                 benchmark.report([csv], [csv], [telemetry], "frame_ms", 0)
+
+    def test_legacy_alias_and_hardlink_inputs_are_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);(root/"sub").mkdir()
+            a=root/"base.csv";a.write_text("frame_ms\n"+"16\n"*200)
+            telemetry=root/"voice.txt";telemetry.write_text(json.dumps({"probe":"livekit_voice_session","cpu_percent_total_machine":1,
+                "peak_private_bytes_sampled":1024,"session_seconds":60,"memory_sample_count":29}))
+            with self.assertRaises(ValueError):benchmark.report([a],[root/"sub"/".."/"base.csv"],[telemetry],"frame_ms",0)
+            linked=root/"linked.csv";os.link(a,linked)
+            with self.assertRaises(ValueError):benchmark.report([a],[linked],[telemetry],"frame_ms",0)
 
     def test_rejects_zero_duration(self):
         with tempfile.TemporaryDirectory() as folder:

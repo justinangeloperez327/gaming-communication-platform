@@ -7,16 +7,21 @@
 
 #include <cstdint>
 #include <memory>
+#include <winrt/Windows.Graphics.Capture.h>
 
 namespace gcp::media {
 
-// Opt-in, developer-only source for GPU-backed Media Foundation samples.
+// Explicitly authorized source for GPU-backed Media Foundation samples.
 // No CPU pixel readback, audio capture, file recording or networking.
 // All capture resources share the encoder's D3D11 hardware device.
 class LiveMonitorCapture final {
 public:
     LiveMonitorCapture(ID3D11Device* device, ID3D11DeviceContext* context,
                        int monitor_index, UINT width, UINT height, UINT fps);
+    LiveMonitorCapture(ID3D11Device* device, ID3D11DeviceContext* context,
+                       const winrt::Windows::Graphics::Capture::GraphicsCaptureItem& item,
+                       UINT width, UINT height, UINT fps,
+                       UINT source_width, UINT source_height);
     ~LiveMonitorCapture();
 
     LiveMonitorCapture(const LiveMonitorCapture&) = delete;
@@ -28,6 +33,9 @@ public:
     bool take_next(std::uint64_t& previous_sequence,
                    Microsoft::WRL::ComPtr<IMFSample>& sample,
                    DWORD timeout_ms);
+    // Explicit keyframe feedback may need a fresh sample even on a static
+    // source. Clone the latest immutable NV12 surface entirely on the GPU.
+    Microsoft::WRL::ComPtr<IMFSample> repeat_for_keyframe(std::uint64_t& previous_sequence);
     std::uint64_t received() const;
     std::uint64_t converted() const;
     std::uint64_t dropped() const;

@@ -1,5 +1,6 @@
 #include "BoundedReply.h"
 #include "AccountSession.h"
+#include "DesktopSettings.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -42,7 +43,7 @@ QString requestError(int http, QNetworkReply::NetworkError error, bool registrat
     return QStringLiteral("Server returned an unexpected response. Try again or contact the owner.");
 }
 }
-AccountSession::AccountSession(QObject *parent) : QObject(parent) {
+AccountSession::AccountSession(QObject *parent, DesktopSettings *preferences) : QObject(parent), preferences_(preferences) {
     refreshTimer_.setSingleShot(true);
     connect(&refreshTimer_, &QTimer::timeout, this, &AccountSession::refresh);
 }
@@ -55,6 +56,7 @@ AccountSession::~AccountSession() {
     }
 }
 void AccountSession::clearSession() {
+    reauthenticationRequired_ = false;
     refreshTimer_.stop();
     access_.fill(QChar(0)); access_.clear();
     refresh_.fill(QChar(0)); refresh_.clear();
@@ -138,7 +140,9 @@ void AccountSession::sendAuth(const QString &path, const QByteArray &payload, Au
         if (err != QNetworkReply::NoError || http != expected ||
             bytes.size() > 16384 || !applyResponse(bytes, operation == AuthOperation::Refresh)) {
             clearSession();
-            status_ = requestError(http, err, operation == AuthOperation::Register);
+            reauthenticationRequired_ = operation == AuthOperation::Refresh;
+            status_ = (reauthenticationRequired_ ? QStringLiteral("Session ended. Sign in again. ") : QString{})
+                + requestError(http, err, operation == AuthOperation::Register);
             emit signedOut();
         }
         bytes.fill(0);
@@ -154,6 +158,8 @@ bool AccountSession::applyResponse(const QByteArray &bytes, bool isRefresh) {
     QString nextRefresh = obj.value(QStringLiteral("refresh_token")).toString();
     const int seconds = obj.value(QStringLiteral("expires_in")).toInt();
     if (!hexToken(access) || !hexToken(nextRefresh) || seconds < 60 || seconds > 86400) return false;
+    if (isRefresh && !userId_.isEmpty() && obj.value("user").toObject().value("id").toString() != userId_) return false;
+    reauthenticationRequired_ = false;
     QString name = obj.value(QStringLiteral("user")).toObject().value(QStringLiteral("display_name")).toString();
     if (!isRefresh) {
         displayName_ = name.left(80);
@@ -165,9 +171,11 @@ bool AccountSession::applyResponse(const QByteArray &bytes, bool isRefresh) {
     refresh_ = nextRefresh;
     status_ = QStringLiteral("Signed in");
     refreshTimer_.start(qMax(1000, (seconds - 60) * 1000));
+    if (!isRefresh && preferences_) preferences_->saveServerOrigin(origin_.toString());
     if (!isRefresh && serverOwner_) QTimer::singleShot(0, this, &AccountSession::loadInvitations);
     return true;
 }
+void AccountSession::refreshSession() { if (!invitationBusy()) refresh(); }
 void AccountSession::refresh() {
     if (!signedIn() || busy()) return;
     QJsonObject obj{{QStringLiteral("refresh_token"), refresh_}};

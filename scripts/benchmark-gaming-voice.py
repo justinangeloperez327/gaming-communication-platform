@@ -7,6 +7,7 @@ import statistics
 import sys
 from pathlib import Path
 import importlib.util
+from benchmark_io import checked_file, distinct_files
 
 spec = importlib.util.spec_from_file_location("gcp_frame_times", Path(__file__).with_name("compare-frame-times.py"))
 frame = importlib.util.module_from_spec(spec)
@@ -15,7 +16,7 @@ spec.loader.exec_module(frame)
 def load_voice(path):
     # Native CLI prints JSON probe records alongside status/events; accept exactly one final voice record.
     records = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
+    for line in checked_file(path).read_text(encoding="utf-8").splitlines():
         if len(line) > 16384:
             raise ValueError("Oversized telemetry line")
         if not line.startswith("{"):
@@ -44,8 +45,7 @@ def load_voice(path):
 def report(baseline, voice, telemetry, column, warmup):
     if not baseline or len(baseline) != len(voice) or len(voice) != len(telemetry):
         raise ValueError("An equal nonzero number of baseline, GCP and voice telemetry files is required")
-    if len(set(map(str, baseline + voice + telemetry))) != 3 * len(baseline):
-        raise ValueError("Each baseline, GCP and voice capture must be a distinct file")
+    distinct_files(baseline + voice + telemetry)
     frames = frame.evaluate(baseline, voice, column, warmup)
     stats = [load_voice(path) for path in telemetry]
     if any(item["session_seconds"] <= 0 for item in stats):

@@ -65,7 +65,9 @@ or community/channel authorization.
 
 The form checks confirmation and input bounds, clears password/code fields after
 dispatch, and offers cancellation. Tokens remain in memory; login persistence
-and OS credential storage are not implemented. Registration accepts HTTP 201;
+and OS credential storage are not implemented. Group 10 adds an opt-in saved
+server origin and explicit readiness/session recovery, while keeping email,
+credentials and consent transient; see [desktop settings](desktop-settings-recovery.md). Registration accepts HTTP 201;
 login and refresh accept HTTP 200. Static errors distinguish rejected invitations,
 duplicate accounts, invalid credentials, unavailable services and network/TLS
 failures without displaying arbitrary server error text.

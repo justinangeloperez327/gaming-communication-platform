@@ -12,6 +12,7 @@ import math
 import statistics
 import sys
 from pathlib import Path
+from benchmark_io import checked_file, distinct_files
 
 
 def summarize_frame_times(frame_times):
@@ -34,7 +35,7 @@ def summarize_frame_times(frame_times):
 
 def load_csv(path, column, warmup_seconds):
     durations = []
-    with Path(path).open("r", encoding="utf-8-sig", newline="") as source:
+    with checked_file(path).open("r", encoding="utf-8-sig", newline="") as source:
         reader = csv.DictReader(source)
         if reader.fieldnames is None or column not in reader.fieldnames:
             raise ValueError(f"{path}: missing requested frame-time column {column!r}")
@@ -65,8 +66,9 @@ def median_metrics(runs):
 
 
 def evaluate(baseline_files, streaming_files, column, warmup_seconds):
-    if len(baseline_files) != len(streaming_files):
+    if not baseline_files or len(baseline_files) != len(streaming_files):
         raise ValueError("Pass an equal number of baseline and streaming CSV runs")
+    distinct_files(list(baseline_files) + list(streaming_files))
     baseline_runs = [load_csv(p, column, warmup_seconds) for p in baseline_files]
     streaming_runs = [load_csv(p, column, warmup_seconds) for p in streaming_files]
     baseline = median_metrics(baseline_runs)

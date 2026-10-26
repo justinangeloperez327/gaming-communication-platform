@@ -3,6 +3,7 @@
 Linux x64 CI/development only. No media peers or physical acceptance evidence.
 """
 
+from contextlib import contextmanager
 import hashlib
 from pathlib import Path
 import platform
@@ -17,9 +18,12 @@ import urllib.request
 VERSION = "1.13.10"
 SHA256 = "c25a3e45fb922e9a93c6443d10c0ed041ba64342097e38632331736630283165"
 TEST = "livekit_eviction::control_contract::real_roomservice_contract"
+KEY = "gcp-contract-key"
+SECRET = "disposable-loopback-contract-secret-32bytes"
 
 
-def main():
+@contextmanager
+def running_sfu():
     if platform.system() != "Linux" or platform.machine() not in ("x86_64", "AMD64"):
         raise RuntimeError("The pinned fixture supports Linux x64 only")
     # Refuse to run against an unrelated service already occupying our port.
@@ -80,14 +84,7 @@ logging:
                         if time.monotonic() >= deadline:
                             raise RuntimeError("LiveKit startup timed out") from None
                         time.sleep(0.2)
-                result = subprocess.run(
-                    ["cargo", "test", "-p", "gaming-comms-server", "--lib", "--locked",
-                     TEST, "--", "--ignored", "--exact"],
-                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=300)
-                print(result.stdout)
-                result.check_returncode()
-                if "test result: ok. 1 passed; 0 failed; 0 ignored;" not in result.stdout:
-                    raise RuntimeError("The selected contract test did not run exactly once")
+                yield "ws://127.0.0.1:17880"
                 if server.poll() is not None:
                     raise RuntimeError("LiveKit exited during the contract test")
             except BaseException:
@@ -103,7 +100,19 @@ logging:
                     except subprocess.TimeoutExpired:
                         server.kill()
                         server.wait(timeout=5)
-        print(f"LiveKit {VERSION} control contract passed; media remains unverified")
+
+
+def main():
+    with running_sfu():
+        result = subprocess.run(
+            ["cargo", "test", "-p", "gaming-comms-server", "--lib", "--locked",
+             TEST, "--", "--ignored", "--exact"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=300)
+        print(result.stdout)
+        result.check_returncode()
+        if "test result: ok. 1 passed; 0 failed; 0 ignored;" not in result.stdout:
+            raise RuntimeError("The selected contract test did not run exactly once")
+    print(f"LiveKit {VERSION} control contract passed; media remains unverified")
 
 
 if __name__ == "__main__":

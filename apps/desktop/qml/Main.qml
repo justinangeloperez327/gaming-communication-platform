@@ -170,11 +170,13 @@ ApplicationWindow {
                         spacing: 1
                         Text {
                             text: accountSession.signedIn ? accountSession.displayName : "Signed out"
+                            textFormat: Text.PlainText
                             color: root.textTone
                             font.pixelSize: 12
                         }
                         Text {
                             text: accountSession.status
+                            textFormat: Text.PlainText
                             color: root.mutedTone
                             font.pixelSize: 11
                         }
@@ -244,7 +246,7 @@ ApplicationWindow {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Sign in, choose a community, and open a text channel or voice call. Screen sharing remains a separate diagnostic."
+                        text: "Sign in, choose a community, and open a text channel or voice call. Choose a window or display to share with your channel after confirming the source."
                         font.pixelSize: 14
                         color: root.mutedTone
                         wrapMode: Text.WordWrap
@@ -252,8 +254,17 @@ ApplicationWindow {
                     AccountPanel {
                         Layout.fillWidth: true
                         account: accountSession
+                        preferences: desktopSettings
+                        probe: serverProbe
                         textTone: root.textTone
                         mutedTone: root.mutedTone
+                    }
+                    SettingsPanel {
+                        Layout.fillWidth: true
+                        preferences: desktopSettings
+                        voice: voiceSession
+                        account: accountSession
+                        directory: channelDirectory
                     }
                     FriendsPanel {
                         Layout.fillWidth: true
@@ -288,11 +299,28 @@ ApplicationWindow {
                     }
                     VoicePanel {
                         Layout.fillWidth: true
+                        onLeaveRequested: { screenViewer.stop(); screenSession.stop() }
                         voice: voiceSession
                         directory: channelDirectory
                         account: accountSession
                         panel: root.panel
                         borderTone: root.borderTone
+                        textTone: root.textTone
+                        mutedTone: root.mutedTone
+                    }
+                    ScreenViewerPanel {
+                        Layout.fillWidth: true
+                        viewer: screenViewer
+                        directory: channelDirectory
+                        account: accountSession
+                        textTone: root.textTone
+                        mutedTone: root.mutedTone
+                    }
+                    ScreenPanel {
+                        Layout.fillWidth: true
+                        screen: screenSession
+                        directory: channelDirectory
+                        account: accountSession
                         textTone: root.textTone
                         mutedTone: root.mutedTone
                     }

@@ -1,5 +1,8 @@
 #include "BoundedReply.h"
+#include "NativeProcessEnvironment.h"
 #include "VoiceSession.h"
+#include "DesktopSettings.h"
+#include <QSet>
 #include "AccountSession.h"
 #include "ChannelDirectory.h"
 
@@ -17,21 +20,6 @@
 #include <utility>
 
 namespace {
-QProcessEnvironment nativeProcessEnvironment() {
-    auto env = QProcessEnvironment::systemEnvironment();
-    const QStringList credentials{
-        QStringLiteral("DATABASE_URL"), QStringLiteral("LIVEKIT_API_KEY"),
-        QStringLiteral("LIVEKIT_API_SECRET"), QStringLiteral("GCP_ACCESS_TOKEN"),
-        QStringLiteral("GCP_REFRESH_TOKEN"), QStringLiteral("LIVEKIT_URL"),
-        QStringLiteral("LIVEKIT_TOKEN")
-    };
-    // Windows environment names are case-insensitive. Remove the actual key
-    // spelling, including mixed-case values inherited from a developer shell.
-    for (const auto &key : env.keys()) {
-        if (credentials.contains(key, Qt::CaseInsensitive)) env.remove(key);
-    }
-    return env;
-}
 constexpr qsizetype deviceScanOutputLimit = 64 * 1024;
 bool permittedUrl(const QUrl &url) {
     if (!url.isValid() || url.userInfo().size() || url.hasFragment() || url.hasQuery()) return false;
@@ -44,7 +32,12 @@ bool uuidValid(const QString &value) {
 }
 }
 
-VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent, VoiceRuntime runtime) : QObject(parent), runtime_(std::move(runtime)), account_(account), directory_(directory) {
+VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory, QObject *parent, VoiceRuntime runtime, DesktopSettings *preferences) : QObject(parent), preferences_(preferences), runtime_(std::move(runtime)), account_(account), directory_(directory) {
+    if (preferences_) {
+        inputId_ = preferences_->inputId(); outputId_ = preferences_->outputId();
+        pushToTalk_ = preferences_->pushToTalk();
+        if (!inputId_.isEmpty() || !outputId_.isEmpty()) QTimer::singleShot(0, this, &VoiceSession::scanDevices);
+    }
     heartbeatTimer_.setInterval(1000);
     authorizationTimer_.setSingleShot(true);
     authorizationWatchdog_.setSingleShot(true);
@@ -65,11 +58,6 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
     // Scan diagnostics are unused; do not retain them in QProcess buffers.
     devices_.setStandardErrorFile(QProcess::nullDevice());
     connect(&devices_, &QProcess::readyReadStandardOutput, this, &VoiceSession::readDeviceScanOutput);
-    idleDeviceRefresh_.setInterval(30000);
-    connect(&idleDeviceRefresh_, &QTimer::timeout, this, [this]() {
-        if (account_->signedIn()) scanDevices();
-    });
-    idleDeviceRefresh_.start();
     connect(&deviceScanWatchdog_, &QTimer::timeout, this, [this]() {
         if (scanning()) devices_.kill();
     });
@@ -79,22 +67,29 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         readDeviceScanOutput();
         devices_.closeReadChannel(QProcess::StandardOutput);
         const QByteArray data = std::exchange(deviceScanOutput_, QByteArray{});
-        QVariantList inputs, outputs;
+        QVariantList inputs, outputs; QSet<QString> inputIds, outputIds;
+        bool valid = code == 0 && exit == QProcess::NormalExit && !deviceScanOverflow_;
         if (code == 0 && exit == QProcess::NormalExit && !deviceScanOverflow_) {
             for (const QByteArray &line : data.split('\n')) {
                 const bool input = line.startsWith("input [");
                 if (!input && !line.startsWith("output [")) continue;
-                const int split = line.indexOf(" | id=");
+                const int split = line.lastIndexOf(" | id=");
                 const int close = line.indexOf("] ");
-                if (split <= close || close < 0) continue;
+                if (split <= close || close < 0) { valid = false; break; }
                 const QString name = QString::fromUtf8(line.mid(close + 2, split - close - 2)).trimmed();
                 const QString id = QString::fromUtf8(line.mid(split + 6)).trimmed();
-                if (name.isEmpty() || name.size() > 256 || id.isEmpty() || id.size() > 512) continue;
+                auto &ids = input ? inputIds : outputIds;
+                if (name.isEmpty() || name.size() > 256 || id.isEmpty() || !DesktopSettings::validDeviceId(id) ||
+                    ids.contains(id) || ids.size() >= 128) { valid = false; break; }
+                for (const auto c : name) if (c.category() == QChar::Other_Control) valid = false;
+                ids.insert(id);
                 QVariantMap item{{QStringLiteral("name"), name}, {QStringLiteral("id"), id}};
                 if (input) inputs.append(item); else outputs.append(item);
             }
         }
-        if (code != 0 || exit != QProcess::NormalExit || deviceScanOverflow_) {
+        if (!valid) {
+            scanValid_ = false;
+            deviceStatus_ = QStringLiteral("Audio device scan failed. Saved choices are retained; scan again before using them.");
             // Failed scans must not erase a previously selected device.
             setStatus(QStringLiteral("Audio device scan failed; retry manually"));
             emit devicesChanged();
@@ -102,13 +97,10 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         }
         inputs_ = inputs;
         outputs_ = outputs;
-        bool foundInput = false;
-        for (const auto &item : inputs_)
-            if (item.toMap().value(QStringLiteral("id")).toString() == inputId_) foundInput = true;
-        if (!foundInput) inputId_.clear();
-        bool foundOutput = false;
-        for (const auto &item : outputs_) if (item.toMap().value("id").toString() == outputId_) foundOutput = true;
-        if (!foundOutput) outputId_.clear();
+        scanValid_ = true;
+        deviceStatus_ = !inputAvailable() || !outputAvailable()
+            ? QStringLiteral("A saved audio device is unavailable. Reconnect it and scan again, or explicitly choose another device or Default.")
+            : QStringLiteral("Audio devices checked. Selected IDs apply on the next join; physical audio is not tested.");
         emit devicesChanged();
     });
     connect(&devices_, &QProcess::started, this, [this]() {
@@ -120,6 +112,8 @@ VoiceSession::VoiceSession(AccountSession *account, ChannelDirectory *directory,
         if (error == QProcess::FailedToStart) {
             devices_.setProcessEnvironment(QProcessEnvironment());
             deviceScanWatchdog_.stop();
+            scanValid_ = false;
+            deviceStatus_ = QStringLiteral("Cannot start audio device scan. Check the native voice executable and dependencies.");
             setStatus(QStringLiteral("Cannot start audio device scan; retry manually"));
             emit devicesChanged();
         }
@@ -335,20 +329,42 @@ void VoiceSession::readDeviceScanOutput() {
     }
 }
 void VoiceSession::selectInput(const QString &id) {
-    if (busy()) return;
-    if (id.isEmpty()) { inputId_.clear(); emit devicesChanged(); return; }
+    if (busy() || scanning()) return;
+    if (id.isEmpty()) { inputId_.clear(); persistChoices(); emit devicesChanged(); return; }
     for (const auto &item : inputs_)
         if (item.toMap().value(QStringLiteral("id")).toString() == id) {
-            inputId_ = id; emit devicesChanged(); return;
+            inputId_ = id; persistChoices(); emit devicesChanged(); return;
         }
 }
 void VoiceSession::selectOutput(const QString &id) {
-    if (busy()) return;
-    if (id.isEmpty()) { outputId_.clear(); emit devicesChanged(); return; }
+    if (busy() || scanning()) return;
+    if (id.isEmpty()) { outputId_.clear(); persistChoices(); emit devicesChanged(); return; }
     for (const auto &item : outputs_)
         if (item.toMap().value(QStringLiteral("id")).toString() == id) {
-            outputId_ = id; emit devicesChanged(); return;
+            outputId_ = id; persistChoices(); emit devicesChanged(); return;
         }
+}
+
+bool VoiceSession::deviceAvailable(const QString &id, const QVariantList &devices) const {
+    if (id.isEmpty()) return true; // Default is an explicit choice, never a fallback for a saved ID.
+    if (!scanValid_) return false;
+    for (const auto &item : devices) if (item.toMap().value("id").toString() == id) return true;
+    return false;
+}
+bool VoiceSession::inputAvailable() const { return deviceAvailable(inputId_, inputs_); }
+bool VoiceSession::outputAvailable() const { return deviceAvailable(outputId_, outputs_); }
+void VoiceSession::persistChoices() {
+    deviceStatus_ = !inputAvailable() || !outputAvailable()
+        ? QStringLiteral("A saved audio device is unavailable. Reconnect it and scan again, or explicitly choose another device or Default.")
+        : QStringLiteral("Audio choices apply on the next join. Default follows Windows; microphone consent is still required.");
+    if (preferences_) preferences_->saveAudio(inputId_, outputId_, pushToTalk_);
+}
+void VoiceSession::resetSavedSettings() {
+    if (busy() || scanning()) return;
+    inputId_.clear(); outputId_.clear(); pushToTalk_ = false;
+    if (preferences_) preferences_->reset();
+    deviceStatus_ = QStringLiteral("Saved settings reset. Default devices apply on the next join; microphone consent is still required.");
+    emit devicesChanged(); emit controlsChanged();
 }
 
 void VoiceSession::setStatus(const QString &value) {
@@ -358,6 +374,10 @@ void VoiceSession::setStatus(const QString &value) {
 void VoiceSession::start(bool publishMicrophone) {
     if (busy() || scanning()) return;
     if (!available()) { setStatus(QStringLiteral("Native voice executable is missing")); return; }
+    if (!outputAvailable() || (publishMicrophone && !inputAvailable())) {
+        setStatus(QStringLiteral("Saved audio device unavailable or unverified. Scan devices, reconnect it or explicitly choose another device or Default."));
+        return;
+    }
     requestAuthorization(publishMicrophone, false);
 }
 
@@ -611,6 +631,7 @@ void VoiceSession::setPushToTalk(bool enabled) {
         if (microphoneEnabled_) muteWatchdog_.start(1000);
     }
     pushToTalk_ = enabled;
+    persistChoices();
     muted_ = true; // Explicit Enable mic is required after any mode switch.
     emit controlsChanged();
 }

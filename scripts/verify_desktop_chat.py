@@ -9,6 +9,7 @@ import socket
 import subprocess
 import tempfile
 import time
+from test_livekit_control_contract import running_sfu, KEY, SECRET
 from urllib.parse import urlparse
 from urllib.request import build_opener, ProxyHandler
 
@@ -17,6 +18,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", type=Path, required=True)
     parser.add_argument("--client", type=Path, required=True)
+    parser.add_argument("--screen-fixture", type=Path, required=True)
+    parser.add_argument("--viewer-fixture", type=Path, required=True)
     args = parser.parse_args()
     database = urlparse(os.environ.get("DATABASE_URL", ""))
     # Migrations/bootstrap are only permitted in this dedicated CI database.
@@ -37,7 +40,10 @@ def main():
     env["GCP_BIND_ADDRESS"] = f"127.0.0.1:{port}"
     origin = f"http://127.0.0.1:{port}"
     opener = build_opener(ProxyHandler({}))
-    with tempfile.TemporaryFile(mode="w+") as log:
+    with running_sfu() as sfu_url, tempfile.TemporaryFile(mode="w+") as log:
+        # Real signed screen leases and SFU control readiness; the native peer
+        # remains an explicit protocol fixture, with no OS capture or media.
+        env.update(LIVEKIT_URL=sfu_url, LIVEKIT_API_KEY=KEY, LIVEKIT_API_SECRET=SECRET)
         server = subprocess.Popen([str(args.server.resolve())], env=env, stdout=log, stderr=subprocess.STDOUT)
         try:
             deadline = time.monotonic() + 20
@@ -53,7 +59,9 @@ def main():
                 if time.monotonic() >= deadline:
                     raise RuntimeError("disposable API readiness timed out")
                 time.sleep(0.1)
-            client_env = env | {"GCP_CHAT_ORIGIN": origin, "GCP_CHAT_PASSWORD": password}
+            client_env = env | {"GCP_CHAT_ORIGIN": origin, "GCP_CHAT_PASSWORD": password,
+                                "GCP_SCREEN_FIXTURE_PROGRAM": str(args.screen_fixture.resolve()),
+                                "GCP_VIEW_FIXTURE_PROGRAM": str(args.viewer_fixture.resolve())}
             subprocess.run([str(args.client.resolve())], env=client_env, check=True, timeout=150)
         except BaseException:
             log.seek(0)

@@ -11,10 +11,11 @@ GCP is an experimental Windows x64 communication application for private gaming 
 | Text | Desktop paginated history, plain-text send/edit/delete, independent text/voice selection and live reconnect recovery | Qt/QML/HTTP/WS, real Qt→Rust→PostgreSQL and retry/authorization tests; physical two-PC acceptance pending |
 | Friends and DMs | Desktop exact-handle requests, accept/decline/cancel, block/unblock, private history/composer and live DM recovery | Shipped Qt controls, real Qt→Rust→PostgreSQL and authorization/socket tests; single-process events, no physical two-PC acceptance |
 | Voice | Listen-only, per-call mic consent, mute/F8 PTT, device selection, muted recovery with immediate access recheck, and Leave | Qt/QProcess policy tests and real loopback synthetic PCM transport/mute/isolation/rejoin/active-eviction contract; physical audibility unverified |
-| Screen sharing | Separate consent-gated monitor diagnostics: CPU-readback publishing and GPU BGRA→NV12→hardware-class H.264→LiveKit bridge | No desktop sharing/viewing UI; hardware, remote playback and driver compatibility unverified |
+| Settings/recovery | Saved audio IDs/PTT mode, opt-in server address, missing-device guidance, explicit readiness/session checks and reset | Windows/Linux Qt file/network/QML checks; no credential/consent persistence, automatic media join or physical device qualification |
+| Screen sharing | Windows picker/publisher and explicit Watch viewer, source/channel consent, exact track authorization, Qt rendering and separate renewable leases | Qt rendering/process/API tests and separate production receiver core with synthetic SDK/SFU media; actual OS/GPU capture, physical quality and performance unverified |
 | Test video | Synthetic RGBA/NV12/BGRA patterns and externally encoded H.264 file publishing | Diagnostic fixtures; not evidence of screen capture or gaming performance |
-| Windows distribution | Qt/QML + voice executable + LiveKit DLL staging, portable ZIP, per-user alpha installer, SHA-256 inventory and installed/extracted startup checks | Unsigned preview; clean consumer Windows PC still untested |
-| Performance | Process CPU/private memory samples, capture/encoder timing, exported game frame-time analysis | No measured gaming resource budget or advantage over other apps established |
+| Windows distribution | Qt/QML + voice/screen executables + LiveKit DLL staging, portable ZIP, per-user alpha installer, SHA-256 inventory and installed/extracted startup checks | Unsigned preview; clean consumer Windows PC still untested |
+| Performance | Exact desktop/native process capture, PID-attributed GPU observations and QPC-aligned frame/CPU/private-memory/growth budgets; source-only operator toolkit | Tool fixtures/Windows process smoke pass separately from product tests; real gameplay/media qualification and measured optimization remain pending |
 
 See [long-session voice and controls](docs/long-session-voice.md) for the latest voice behavior and tests.
 Group 4's [voice evidence and acceptance guide](docs/usable-voice.md) separates
@@ -23,6 +24,17 @@ Use [desktop communities](docs/desktop-communities.md) to create a private space
 add channels and invite existing accounts. See [desktop messaging](docs/desktop-messaging.md)
 for text history, send retries, live updates and their limits.
 [Friends and private messages](docs/desktop-friends.md) adds separate private conversations without changing voice selection.
+See [screen authorization](docs/screen-authorization.md) for Group 7's lease API,
+voice/screen separation. [Desktop screen publisher](docs/desktop-screen-publisher.md)
+explains Group 8’s source-bound consent, supported profile and test boundaries.
+[Desktop screen viewer](docs/desktop-screen-viewer.md) adds Group 9’s explicit
+Watch, exact-track subscription, rendering and cleanup.
+[Desktop settings and recovery](docs/desktop-settings-recovery.md) covers Group 10’s
+remembered devices, optional server address and explicit failure recovery.
+
+Group 11’s [desktop gaming measurement guide](docs/desktop-gaming-qualification.md)
+provides the owner-run capture commands, empty manifest, numerical gates and
+physical qualification boundaries. No actual gameplay result is included.
 
 The ZIP includes a [versioned notice baseline](docs/windows-third-party-notices.md); complete transitive attribution review remains pending.
 
@@ -38,7 +50,7 @@ cmake --build build/desktop --config Release --parallel
 ctest --test-dir build/desktop -C Release --output-on-failure
 ```
 
-LiveKit v1.12.2 is opt-in and its downloaded archive is pinned by SHA-256. Without the opt-in flags the Qt shell builds without native voice. See [desktop voice](docs/desktop-voice.md), [hardware streaming diagnostic](docs/hardware-livekit.md), and [development](docs/development.md).
+LiveKit v1.12.2 is opt-in and its downloaded archive is pinned by SHA-256. Without the opt-in flags the Qt shell builds without native voice/screen processes. See [desktop voice](docs/desktop-voice.md), [hardware streaming diagnostic](docs/hardware-livekit.md), and [development](docs/development.md).
 
 ## Backend
 
@@ -73,7 +85,7 @@ CI additionally tests staged and extracted Qt/QML startup, native SDK initializa
 
 ## Verification boundaries
 
-CI runs actual Qt channel/friend/private-message controllers against Rust/PostgreSQL and exercises shipped
+CI runs actual Qt channel/friend/private-message and screen-lease controllers against Rust/PostgreSQL and exercises shipped
 QML with controlled network failures. It also builds Windows media code and runs
 a real loopback LiveKit synthetic-audio
 contract: room joins, decoded PCM, mute/unmute, isolation, explicit rejoin and

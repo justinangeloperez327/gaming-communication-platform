@@ -10,7 +10,7 @@ if ($output.StartsWith($build + [IO.Path]::DirectorySeparatorChar, [StringCompar
     throw 'Output must be outside the build tree'
 }
 if (-not (Test-Path -LiteralPath $build -PathType Container)) { throw "Build directory missing" }
-$required = @('gcp-desktop.exe', 'gcp-livekit-voice.exe', 'livekit.dll', 'livekit_ffi.dll')
+$required = @('gcp-desktop.exe', 'gcp-livekit-voice.exe','gcp-livekit-screen.exe', 'livekit.dll', 'livekit_ffi.dll')
 foreach ($file in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $build $file) -PathType Leaf)) { throw "Missing bundle dependency: $file" }
 }
