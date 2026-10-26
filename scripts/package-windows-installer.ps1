@@ -22,7 +22,10 @@ New-Item -ItemType Directory -Path $output | Out-Null
 $label = $config.tag.Substring(1)
 $numeric = $config.version
 if ($FixtureVersion) { $numeric = $FixtureVersion; $label = "$FixtureVersion-qualification-fixture" }
-& $compiler "/DBundleDir=$root" "/DOutputDirPath=$output" "/DReleaseVersion=$label" "/DNumericVersion=$numeric" (Join-Path $PSScriptRoot '../packaging/windows/gcp.iss')
+$manifestHash = (Get-FileHash -LiteralPath (Join-Path $root 'SHA256-MANIFEST.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+$legacy = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../packaging/windows/previous-alpha.json') -Raw | ConvertFrom-Json
+if ($legacy.manifest_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $legacy.tag -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.1$') { throw 'Invalid pinned legacy manifest identity' }
+& $compiler "/DBundleDir=$root" "/DOutputDirPath=$output" "/DReleaseVersion=$label" "/DNumericVersion=$numeric" "/DPayloadManifestSha256=$manifestHash" "/DLegacyManifestSha256=$($legacy.manifest_sha256)" "/DLegacyReleaseLabel=$($legacy.tag.Substring(1))" (Join-Path $PSScriptRoot '../packaging/windows/gcp.iss')
 if ($LASTEXITCODE -ne 0) { throw "Installer compiler failed: $LASTEXITCODE" }
 $installer = Join-Path $output "GCP-$label-windows-x64-setup.exe"
 if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'Installer missing' }

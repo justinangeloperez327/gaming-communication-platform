@@ -166,7 +166,7 @@ jobs:
         run: python scripts/windows_pe_dependencies.py --bundle build/gcp-windows-test --commit "${{ github.event.pull_request.head.sha || github.sha }}" --output build/windows-pe-imports.json
       - name: Test packaged Qt/QML runtime and native LiveKit startup
         shell: pwsh
-        run: ./scripts/test-windows-runtime.ps1 -BundleDirectory build/gcp-windows-test
+        run: ./scripts/test-windows-runtime.ps1 -BundleDirectory build/gcp-windows-test -CheckMissingTlsRejection
       - name: Record CI-only Windows bundle acceptance
         shell: pwsh
         run: |

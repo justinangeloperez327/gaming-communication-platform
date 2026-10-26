@@ -10,6 +10,15 @@
 #ifndef NumericVersion
   #error NumericVersion is required
 #endif
+#ifndef PayloadManifestSha256
+  #error PayloadManifestSha256 is required
+#endif
+#ifndef LegacyManifestSha256
+  #error LegacyManifestSha256 is required
+#endif
+#ifndef LegacyReleaseLabel
+  #error LegacyReleaseLabel is required
+#endif
 
 [Setup]
 AppId={{F6CA3831-848C-4148-831E-804B1F6DC06B}
@@ -21,9 +30,10 @@ AppPublisherURL=https://github.com/justinangeloperez327/gaming-communication-pla
 DefaultDirName={localappdata}\Programs\GCP-Alpha
 DefaultGroupName=Gaming Communication Platform Alpha
 PrivilegesRequired=lowest
-ArchitecturesAllowed=x64compatible
+ArchitecturesAllowed=x64compatible and not arm64
 ArchitecturesInstallIn64BitMode=x64compatible
-MinVersion=10.0
+; CreateForMonitor requires Windows 10 1903 (18362); ARM64 emulation is unqualified.
+MinVersion=10.0.18362
 OutputDir={#OutputDirPath}
 OutputBaseFilename=GCP-{#ReleaseVersion}-windows-x64-setup
 Compression=lzma2
@@ -46,6 +56,10 @@ Source: "{#BundleDir}\GCP-PAYLOAD-PATHS.txt"; Flags: dontcopy
 [Icons]
 Name: "{group}\Gaming Communication Platform Alpha"; Filename: "{app}\gcp-desktop.exe"; WorkingDir: "{app}"
 Name: "{autodesktop}\Gaming Communication Platform Alpha"; Filename: "{app}\gcp-desktop.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+
+[Registry]
+; Bind the installed manifest to the verified input compiled into this Setup.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\{{F6CA3831-848C-4148-831E-804B1F6DC06B}_is1"; ValueType: string; ValueName: "GCPPayloadManifestSHA256"; ValueData: "{#PayloadManifestSha256}"; Flags: uninsdeletevalue
 
 [Code]
 const
@@ -102,7 +116,7 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  OldLabel, OldDirectory, Value, OldPath, Why: String;
+  OldLabel, OldDirectory, OldManifestHash, Value, OldPath, Why: String;
   OldVersion, NewVersion: Int64;
   OldLines, NewLines: TArrayOfString;
   NewPaths, Seen: TStringList;
@@ -126,6 +140,15 @@ begin
   end;
   Why := 'The previous payload cannot be upgraded safely. Uninstall first, then install this build. Saved preferences are preserved.';
   if not SmallTextFile(ExpandConstant('{app}\SHA256-MANIFEST.json'), OldLines) then begin Result := Why; Exit; end;
+  Value := GetSHA256OfFile(ExpandConstant('{app}\SHA256-MANIFEST.json'));
+  if not RegQueryStringValue(HKCU, UninstallKey, 'GCPPayloadManifestSHA256', OldManifestHash) then begin
+    // The old published alpha predates this registry fingerprint. Recognize
+    // only its independently pinned exact payload, never an arbitrary manifest.
+    if (CompareText(OldLabel, '{#LegacyReleaseLabel}') <> 0) or
+       (CompareText(Value, '{#LegacyManifestSha256}') <> 0) then begin Result := Why; Exit; end;
+  end else if CompareText(Value, OldManifestHash) <> 0 then begin
+    Result := Why; Exit;
+  end;
   ExtractTemporaryFile('GCP-PAYLOAD-PATHS.txt');
   if not SmallTextFile(ExpandConstant('{tmp}\GCP-PAYLOAD-PATHS.txt'), NewLines) then begin Result := Why; Exit; end;
   NewPaths := TStringList.Create; Seen := TStringList.Create;

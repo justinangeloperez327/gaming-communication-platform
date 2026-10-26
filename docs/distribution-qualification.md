@@ -14,7 +14,7 @@ release, certificate or installer technology is introduced.
 | Attribution material | The pinned catalog retains original Qt 6.8.3 source attribution metadata, copyright/license material and conditional-component records, plus exact Rust SDK/WebRTC/libsoxr source evidence. Staging also collects available Qt SBOMs/licenses and pinned SDK archive notices. This is a source notice superset, not a resolved binary SBOM or complete source/relinking delivery. |
 | PE imports | A bounded reader inspects every executable's regular and delayed imports without loading code, resolving them to packaged files or an explicit Windows system/API-set policy. Unknown DLLs fail acceptance. This does not establish every dynamically loaded module or consumer-PC compatibility. |
 | Portable ZIP | All manifest files, including hidden files, are archived and checked after extraction. Directory links, changed files, ambiguous paths and missing notice material fail verification. |
-| Runtime isolation | The staged, extracted and installed Qt/QML application and native voice/screen self-tests run with developer PATH, Qt plugin and QML overrides cleared. A hosted developer runner remains different from a clean consumer PC. |
+| Runtime isolation | The staged, extracted and installed Qt/QML application (including real TLS-provider availability and zero QML warnings) and native voice/screen self-tests run with developer PATH, Qt plugin and QML overrides cleared. The staged check also removes/restores TLS plugins and requires a specific TLS failure. No remote certificate handshake is claimed. A hosted developer runner remains different from a clean consumer PC. |
 | Signature inventory | Authenticode status, signature type, publisher certificate thumbprint and timestamp certificate are observed again during verification. Editing JSON to say `Valid` cannot pass. |
 | Installer policy | Fresh install, controlled older-version upgrade, pinned published-alpha same-version refresh, missing/corrupt-file repair, shortcuts and uninstall/reinstall are exercised. Downgrades, removed previously owned files, relocation and corrupt/unsafe manifests are rejected before changing the installed payload. |
 | User data | A user-file fixture and non-secret audio/server preference fixture retain identical bytes through upgrade, rejection and uninstall. A test-only helper reads the real per-user path through the production DesktopSettings class without GUI/network/media initialization. Actual devices and owner-profile behavior remain separate checks. |
@@ -33,7 +33,12 @@ cross-version migration. The old published assets are left unchanged.
 ## Build and test
 
 Build-time checks use PowerShell 7, Python 3.12+, the pinned Qt/LiveKit SDKs, VS 2022 x64
-redistributables and Inno Setup 6. A friend running the resulting app needs none
+redistributables and Inno Setup 6. Setup targets x64 Windows 10 1903 (18362) or
+later / Windows 11. The monitor capture interop API needs that Windows minimum;
+ARM64 emulation is not qualified and Setup refuses it. See the
+[Microsoft API requirement](https://learn.microsoft.com/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createformonitor).
+
+A friend running the resulting app needs none
 of these build tools. The shared host still needs the separately configured
 [server stack](server-stack.md).
 
@@ -77,7 +82,10 @@ The published `v0.1.0-alpha.1` is an older build; it is not updated by this work
 Close GCP and both native media processes before replacing it. A compatible
 in-place upgrade replaces the installed payload and keeps unrelated files and
 per-profile preferences. Repair reinstalls the selected version's exact files.
-Setup refuses a downgrade or a payload that omits a previously installed file,
+Setup compares the prior manifest with the fingerprint compiled into its installer
+and recorded in its per-user uninstall key. The exact pinned published alpha is recognized by its known manifest hash;
+other missing fingerprints require uninstall/reinstall. It refuses a downgrade or a
+payload that omits a previously installed file,
 rather than leaving obsolete runtime DLLs or deleting paths from an editable old
 manifest. It also refuses unknown/corrupt manifests and changing the registered
 installation folder during an upgrade.
@@ -120,6 +128,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer signing failed' }
 ./scripts/verify-windows-publisher-signatures.ps1 -BundleDirectory $SignedBundleDirectory -Installer $Installer -ExpectedThumbprint $ExpectedThumbprint
 ```
 
+Before shipping a signed build, rerun installed-startup/repair/uninstall checks
+against that exact signed Setup.
+
 The read-only verifier requires all three GCP executables and Setup to have valid
 embedded, timestamped signatures from that exact certificate. It neither signs
 nor approves vendor DLL licensing, SmartScreen reputation, physical media or
@@ -136,7 +147,7 @@ and checking that installed file remain part of a future owner signing run.
    portable/installer artifact and checksum together; verify the extracted file's
    SHA-256 with `Get-FileHash` before running it. An unsigned checksum establishes
    integrity relative to that trusted source, not publisher authentication.
-2. On a separate Windows 10/11 gaming PC without Qt/VS development tools, test
+2. On a separate supported Windows 10/11 x64 gaming PC without Qt/VS development tools, test
    startup, invited sign-in, messaging/DMs, device choices, explicit consent,
    Leave/Stop/Watch cleanup, relogin and network/device interruptions. Neither
    microphone nor screen capture should start during installation.

@@ -69,6 +69,7 @@ function Check-Payload([string]$ExpectedBundle, [string]$Version) {
     if ((Get-ItemProperty -LiteralPath $registry).DisplayVersion -cne $Version) { throw 'Installed version registration mismatch' }
     if ((Get-FileHash -LiteralPath (Join-Path $appDir 'SHA256-MANIFEST.json') -Algorithm SHA256).Hash -cne
         (Get-FileHash -LiteralPath (Join-Path $ExpectedBundle 'SHA256-MANIFEST.json') -Algorithm SHA256).Hash) { throw 'Installed manifest does not match the selected installer payload' }
+    if ((Get-ItemProperty -LiteralPath $registry).GCPPayloadManifestSHA256 -ine (Get-FileHash -LiteralPath (Join-Path $appDir 'SHA256-MANIFEST.json') -Algorithm SHA256).Hash) { throw 'Installed manifest fingerprint registration mismatch' }
     $script:snapshotCount++
     $snapshot = Join-Path $testRoot "snapshot-$script:snapshotCount"
     New-Item -ItemType Directory -Path $snapshot | Out-Null
@@ -102,8 +103,10 @@ function Installed-State {
 function Reject-Unchanged([string]$Program, [string]$Directory = $appDir) {
     $state = Installed-State
     $version = (Get-ItemProperty -LiteralPath $registry).DisplayVersion
+    $fingerprint = (Get-ItemProperty -LiteralPath $registry).GCPPayloadManifestSHA256
     Install $Program $true $Directory
-    if ((Installed-State) -cne $state -or (Get-ItemProperty -LiteralPath $registry).DisplayVersion -cne $version) { throw 'Rejected upgrade changed installed state' }
+    if ((Installed-State) -cne $state -or (Get-ItemProperty -LiteralPath $registry).DisplayVersion -cne $version -or
+        (Get-ItemProperty -LiteralPath $registry).GCPPayloadManifestSHA256 -cne $fingerprint) { throw 'Rejected upgrade changed installed state' }
     Check-Preservation
 }
 function Uninstall {
@@ -142,6 +145,15 @@ try {
     Check-Payload $BundleDirectory $label
     Reject-Unchanged $compatible
     Reject-Unchanged $installerPath (Join-Path $testRoot 'Different Location')
+    $savedFingerprint = (Get-ItemProperty -LiteralPath $registry).GCPPayloadManifestSHA256
+    try {
+        Remove-ItemProperty -LiteralPath $registry -Name GCPPayloadManifestSHA256
+        Reject-Unchanged $installerPath
+    } finally { Set-ItemProperty -LiteralPath $registry -Name GCPPayloadManifestSHA256 -Value $savedFingerprint }
+    try {
+        Set-ItemProperty -LiteralPath $registry -Name DisplayVersion -Value 'unknown-fixture'
+        Reject-Unchanged $installerPath
+    } finally { Set-ItemProperty -LiteralPath $registry -Name DisplayVersion -Value $label }
     $manifestPath = Join-Path $appDir 'SHA256-MANIFEST.json'
     $savedManifest = [IO.File]::ReadAllBytes($manifestPath)
     try {
@@ -181,7 +193,8 @@ $report = [ordered]@{ schema_version = 1; commit_sha = $CommitSha; artifact_kind
     historical_installer_sha256 = $previousRelease.installer_sha256
     checks = @('fresh_current_install','older_fixture_to_current_upgrade','same_version_repair','exact_payload_and_shortcuts',
         'downgrade_rejected_unchanged','stale_owned_file_upgrade_rejected_unchanged','relocation_rejected_unchanged',
-        'corrupt_unsafe_manifest_rejected_unchanged','isolated_installed_runtime','user_file_and_preference_fixture_preserved','uninstall_cleanup',
+        'corrupt_unsafe_manifest_rejected_unchanged','missing_fingerprint_unknown_version_rejected_unchanged',
+        'isolated_installed_runtime','user_file_and_preference_fixture_preserved','uninstall_cleanup',
         'production_settings_location_and_read','missing_and_corrupt_file_repair','pinned_published_alpha_same_version_refresh')
     historical_same_version_refresh_verified = $true
     historical_release_migration_verified = $false; clean_consumer_windows_verified = $false

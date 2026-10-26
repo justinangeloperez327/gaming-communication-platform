@@ -29,8 +29,8 @@ $report = [ordered]@{
     executables = @($rows | Sort-Object path)
 }
 $target = [IO.Path]::GetFullPath($OutputFile)
+if ($target.StartsWith($root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Signing inventory must be outside the bundle' }
 $folder = [IO.Path]::GetDirectoryName($target)
 if (-not [IO.Directory]::Exists($folder)) { [IO.Directory]::CreateDirectory($folder) | Out-Null }
-if ($target.StartsWith($root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Signing inventory must be outside the bundle' }
 Write-NewJsonFile $target $report
 Write-Host "Executable signature inventory written. $unsignedCount executable(s) lack a valid Authenticode signature."

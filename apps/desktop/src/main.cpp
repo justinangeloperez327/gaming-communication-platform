@@ -15,6 +15,7 @@
 #include <QQmlContext>
 #include <QtGlobal>
 #include <QTimer>
+#include <QSslSocket>
 
 #include <cstdlib>
 #include <cstdio>
@@ -42,6 +43,16 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Gaming Communication Platform"));
     QCoreApplication::setOrganizationName(QStringLiteral("GCP"));
+    if (smokeQml) {
+        // Loading QML alone does not establish that a relocated package can use
+        // HTTPS/WSS. Inspect the real TLS provider without opening a connection.
+        if (!QSslSocket::supportsSsl()) {
+            std::fprintf(stderr, "GCP Qt TLS backend unavailable\n");
+            return EXIT_FAILURE;
+        }
+        const auto backend = QSslSocket::activeBackend().toUtf8();
+        std::fprintf(stderr, "GCP Qt TLS backend: %s\n", backend.constData());
+    }
 
     DesktopSettings preferences(smokeQml ? QString{} : DesktopSettings::defaultFileName());
     ServerProbe probe;
@@ -54,7 +65,11 @@ int main(int argc, char *argv[])
     FriendsDirectory friends(&account);
     ChatSession chat(&account, &directory);
     ChatSession directChat(&account, &friends);
+    bool qmlWarnings = false;
     QQmlApplicationEngine engine;
+    if (smokeQml) {
+        QObject::connect(&engine, &QQmlEngine::warnings, &app, [&qmlWarnings](const auto&) { qmlWarnings = true; });
+    }
     engine.rootContext()->setContextProperty(QStringLiteral("desktopSettings"), &preferences);
     engine.rootContext()->setContextProperty(QStringLiteral("serverProbe"), &probe);
     engine.rootContext()->setContextProperty(QStringLiteral("voiceSession"), &voice);
@@ -80,8 +95,8 @@ int main(int argc, char *argv[])
     if (smokeQml) {
         // Exercise actual QML module and plugin loading, unlike --self-test.
         // A missing module triggers objectCreationFailed and exits nonzero.
-        QTimer::singleShot(2500, &app, [&app, &engine]() {
-            app.exit(engine.rootObjects().isEmpty() ? EXIT_FAILURE : EXIT_SUCCESS);
+        QTimer::singleShot(2500, &app, [&app, &engine, &qmlWarnings]() {
+            app.exit(engine.rootObjects().isEmpty() || qmlWarnings ? EXIT_FAILURE : EXIT_SUCCESS);
         });
     }
     return app.exec();
