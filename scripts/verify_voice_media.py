@@ -1,4 +1,4 @@
-"""Windows x64 loopback SFU + pinned C++ SDK media contract, synthetic PCM only.
+"""Windows x64 loopback SFU + pinned C++ SDK contracts, synthetic PCM/pixels.
 
 No backend/user secrets, microphone, speakers, physical peers or public service.
 The Rust/stack suites separately exercise token authorization and reconciliation.
@@ -30,20 +30,23 @@ KEY = "gcp-media-ci-key"
 LOG_LIMIT = 1024 * 1024
 URL = (f"https://github.com/livekit/livekit/releases/download/v{VERSION}/"
        f"livekit_{VERSION}_windows_amd64.zip")
-PROTOCOL_PREFIXES = ("GCP_MEDIA_STAGE:", "GCP_MEDIA_CONTRACT:", "GCP_MEDIA_READY_FOR_EVICTION")
+SCREEN_IDENTITY = "gcp-screen-publish-00000000-0000-0000-0000-000000000071"
+PROTOCOL_PREFIXES = ("GCP_MEDIA_STAGE:", "GCP_MEDIA_CONTRACT:", "GCP_MEDIA_READY_FOR_EVICTION",
+                     "GCP_SCREEN_STAGE:", "GCP_SCREEN_CONTRACT:", "GCP_SCREEN_READY_FOR_EVICTION")
 
 
-def token(secret, identity, room, *, publish=False, admin=False):
+def token(secret, identity, room, *, publish=False, admin=False,
+          sources=None, subscribe=True, ttl=300):
     def encode(value):
         return base64.urlsafe_b64encode(value).rstrip(b"=")
     now = int(time.time())
     grant = {"roomAdmin": True, "room": room} if admin else {
         "roomJoin": True, "room": room, "canPublish": publish,
-        "canPublishSources": ["microphone"] if publish else [],
-        "canSubscribe": True, "canPublishData": False, "canUpdateOwnMetadata": False,
+        "canPublishSources": sources if sources is not None else (["microphone"] if publish else []),
+        "canSubscribe": subscribe, "canPublishData": False, "canUpdateOwnMetadata": False,
     }
     claims = {"iss": KEY, "sub": identity, "iat": now, "nbf": now - 2,
-              "exp": now + 300, "jti": secrets.token_hex(16), "video": grant}
+              "exp": now + ttl, "jti": secrets.token_hex(16), "video": grant}
     unsigned = b".".join(encode(json.dumps(value, separators=(",", ":")).encode())
                          for value in ({"alg": "HS256", "typ": "JWT"}, claims))
     signature = hmac.new(secret.encode(), unsigned, hashlib.sha256).digest()
@@ -94,13 +97,16 @@ def extract_server(archive, root):
         return executable
 
 
-def control(secret, room, action):
+def control(secret, room, action, identity=IDENTITY):
     # Literal loopback, fixed methods, no redirects or inherited proxy settings.
     if action not in ("GetParticipant", "RemoveParticipant"):
         raise ValueError("Unsupported fixture control operation")
+    body = {"room": room, "identity": identity}
+    if action == "RemoveParticipant":
+        body["revoke_token_ts"] = int(time.time()) + 1
     request = urllib.request.Request(
         f"{ORIGIN}/twirp/livekit.RoomService/{action}", method="POST",
-        data=json.dumps({"room": room, "identity": IDENTITY}).encode(),
+        data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json", "Authorization": "Bearer " +
                  token(secret, "gcp-media-ci-control", room, admin=True)})
 
@@ -137,7 +143,60 @@ def stop(child):
         child.wait(timeout=5)
 
 
-def run(executable):
+def screen_environment(env, secret, room):
+    """Disposable fixture grants matching the Rust grant tests; no production API keys."""
+    result = dict(env)
+    for variable, identity, publish in [
+            ("GCP_MEDIA_SCREEN_PUBLISHER_TOKEN", SCREEN_IDENTITY, True),
+            ("GCP_MEDIA_SCREEN_OTHER_TOKEN", "gcp-screen-publish-00000000-0000-0000-0000-000000000072", True),
+            ("GCP_MEDIA_SCREEN_VIEWER_TOKEN", "gcp-screen-view-00000000-0000-0000-0000-000000000073", False)]:
+        result[variable] = token(secret, identity, room, publish=publish,
+                                 sources=["screen_share"] if publish else [],
+                                 subscribe=not publish, ttl=60)
+    return result
+
+
+def run_screen(executable, env, secret, root, server, server_log_path):
+    executable = executable.resolve(strict=True)
+    if not executable.is_file():
+        raise RuntimeError("Screen contract executable missing")
+    screen_room = "gcp-screen-" + str(uuid.uuid4())
+    child = None
+    log_path = root / "screen.log"
+    with log_path.open("wb") as log:
+        try:
+            child = subprocess.Popen([str(executable)], cwd=executable.parent,
+                                     env=screen_environment(env, secret, screen_room),
+                                     stdout=log, stderr=subprocess.STDOUT)
+            deadline = time.monotonic() + 120
+            evicted = False
+            while child.poll() is None:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Screen contract timed out")
+                if server.poll() is not None or server_log_path.stat().st_size > LOG_LIMIT:
+                    raise RuntimeError("Loopback SFU exited or exceeded output limit")
+                lines = protocol_lines(log_path)
+                if "GCP_SCREEN_READY_FOR_EVICTION" in lines and not evicted:
+                    participant = control(secret, screen_room, "GetParticipant", SCREEN_IDENTITY)
+                    tracks = participant.get("tracks", [])
+                    if (participant.get("identity") != SCREEN_IDENTITY or len(tracks) != 1 or
+                            tracks[0].get("source") not in (3, "SCREEN_SHARE") or
+                            tracks[0].get("type") not in (1, "VIDEO")):
+                        raise RuntimeError("Expected exact publisher-owned screen video track")
+                    control(secret, screen_room, "RemoveParticipant", SCREEN_IDENTITY)
+                    evicted = True
+                time.sleep(0.1)
+            lines = protocol_lines(log_path)
+            for line in lines:
+                print(line)
+            if child.returncode != 0 or not evicted or not any(
+                    line.startswith("GCP_SCREEN_CONTRACT:passed ") for line in lines):
+                raise RuntimeError("Screen authorization contract did not pass")
+        finally:
+            stop(child)
+
+
+def run(executable, screen_executable=None):
     if platform.system() != "Windows" or platform.machine() not in ("AMD64", "x86_64"):
         raise RuntimeError("The pinned media fixture supports Windows x64 only")
     executable = executable.resolve(strict=True)
@@ -213,6 +272,8 @@ logging:
                 if media.returncode != 0 or not evicted or not any(
                         line.startswith("GCP_MEDIA_CONTRACT:passed ") for line in lines):
                     raise RuntimeError("Real media assertions did not pass")
+                if screen_executable is not None:
+                    run_screen(screen_executable, env, secret, root, server, server_log_path)
             finally:
                 stop(media)
                 stop(server)
@@ -222,5 +283,6 @@ logging:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--executable", type=Path, required=True)
+    parser.add_argument("--screen-executable", type=Path)
     args = parser.parse_args()
-    run(args.executable)
+    run(args.executable, args.screen_executable)

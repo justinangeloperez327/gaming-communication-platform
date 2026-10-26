@@ -11,7 +11,7 @@ GCP is an experimental Windows x64 communication application for private gaming 
 | Text | Desktop paginated history, plain-text send/edit/delete, independent text/voice selection and live reconnect recovery | Qt/QML/HTTP/WS, real Qt→Rust→PostgreSQL and retry/authorization tests; physical two-PC acceptance pending |
 | Friends and DMs | Desktop exact-handle requests, accept/decline/cancel, block/unblock, private history/composer and live DM recovery | Shipped Qt controls, real Qt→Rust→PostgreSQL and authorization/socket tests; single-process events, no physical two-PC acceptance |
 | Voice | Listen-only, per-call mic consent, mute/F8 PTT, device selection, muted recovery with immediate access recheck, and Leave | Qt/QProcess policy tests and real loopback synthetic PCM transport/mute/isolation/rejoin/active-eviction contract; physical audibility unverified |
-| Screen sharing | Separate consent-gated monitor diagnostics: CPU-readback publishing and GPU BGRA→NV12→hardware-class H.264→LiveKit bridge | No desktop sharing/viewing UI; hardware, remote playback and driver compatibility unverified |
+| Screen sharing | Separate publisher/viewer authorization leases, screen-only grants, ownership lookup and revocation; existing consent-gated monitor diagnostics | No desktop sharing/viewing UI; synthetic SDK/SFU and API tests are separate from physical capture/remote quality acceptance |
 | Test video | Synthetic RGBA/NV12/BGRA patterns and externally encoded H.264 file publishing | Diagnostic fixtures; not evidence of screen capture or gaming performance |
 | Windows distribution | Qt/QML + voice executable + LiveKit DLL staging, portable ZIP, per-user alpha installer, SHA-256 inventory and installed/extracted startup checks | Unsigned preview; clean consumer Windows PC still untested |
 | Performance | Process CPU/private memory samples, capture/encoder timing, exported game frame-time analysis | No measured gaming resource budget or advantage over other apps established |
@@ -23,6 +23,8 @@ Use [desktop communities](docs/desktop-communities.md) to create a private space
 add channels and invite existing accounts. See [desktop messaging](docs/desktop-messaging.md)
 for text history, send retries, live updates and their limits.
 [Friends and private messages](docs/desktop-friends.md) adds separate private conversations without changing voice selection.
+See [screen authorization](docs/screen-authorization.md) for Group 7's lease API,
+voice/screen separation and the consent contract for the upcoming desktop work.
 
 The ZIP includes a [versioned notice baseline](docs/windows-third-party-notices.md); complete transitive attribution review remains pending.
 
