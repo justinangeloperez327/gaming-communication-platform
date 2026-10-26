@@ -8,7 +8,7 @@ $root = [IO.Path]::GetFullPath($BundleDirectory)
 $inventory = Get-Content -LiteralPath $InventoryFile -Raw | ConvertFrom-Json
 if ($inventory.schema_version -ne 2 -or $inventory.artifact_kind -cne 'unsigned_windows_test_bundle' -or
     $inventory.production_qualified -isnot [bool] -or $inventory.production_qualified -ne $false) { throw 'Unexpected inventory qualification' }
-$files = @(Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object { $_.Extension -in @('.exe','.dll') })
+$files = @(Get-ChildItem -LiteralPath $root -Recurse -Force -File | Where-Object { $_.Extension -in @('.exe','.dll') })
 $entries = @($inventory.executables)
 if ($entries.Count -ne $files.Count -or [int]$inventory.executable_count -ne $files.Count) {
     throw 'Executable inventory count mismatch'

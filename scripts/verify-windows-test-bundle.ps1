@@ -37,7 +37,7 @@ foreach ($entry in $items) {
     }
     if ($expected.ContainsKey($path)) { throw 'Duplicate manifest entry' }
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing file: $relative" }
-    $file = Get-Item -LiteralPath $path
+    $file = Get-Item -LiteralPath $path -Force
     if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Bundle links are not permitted' }
     if ($file.Length -ne [int64]$entry.bytes) { throw "File size mismatch: $relative" }
     $digest = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()

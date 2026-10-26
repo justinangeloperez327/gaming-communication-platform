@@ -50,6 +50,7 @@ try {
     $fixture[69] = 0; [IO.File]::WriteAllBytes($pe,$fixture)
     Rejected { Assert-WindowsX64PE $pe } 'wrong PE architecture'
     $fixture[69] = 0x86; [IO.File]::WriteAllBytes($pe,$fixture)
+    (Get-Item -LiteralPath $pe).Attributes = [IO.FileAttributes]::Hidden
     Save-Report
     $signatures = $root + '-signatures.json'
     & (Join-Path $PSScriptRoot 'inventory-windows-signatures.ps1') -BundleDirectory $root -OutputFile $signatures

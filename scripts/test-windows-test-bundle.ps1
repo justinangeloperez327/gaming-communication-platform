@@ -53,7 +53,8 @@ try {
     Write-Manifest $manifest
     # Regenerate the general manifest after removing a required notice. The
     # pinned baseline, not a self-consistent payload inventory, must reject it.
-    foreach ($name in @('third-party/livekit/NOTICE', 'third-party/README.md')) {
+    foreach ($name in @('third-party/livekit/NOTICE', 'third-party/README.md', 'third-party/livekit/WEBRTC-NOTICE.md',
+            'third-party/livekit/RUST-SDK-LICENSE', 'third-party/livekit/SOXR-LICENCE')) {
         $path = Join-Path $root $name
         $saved = [IO.File]::ReadAllBytes($path)
         Remove-Item -LiteralPath $path

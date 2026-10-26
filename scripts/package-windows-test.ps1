@@ -34,6 +34,8 @@ if ($Matches[1] -ne $catalog.qt_version) { throw 'Qt deployment version does not
 $sdkConfig = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../cmake/GcpLiveKit.cmake') -Raw
 if ($sdkConfig -notmatch 'set\(GCP_LIVEKIT_VERSION\s+"([^"]+)"\)' -or
     $Matches[1] -ne $catalog.livekit_sdk_version) { throw 'LiveKit SDK version does not match notice baseline' }
+if ($sdkConfig -notmatch 'set\(GCP_LIVEKIT_WINDOWS_X64_SHA256\s+"([0-9a-f]{64})"\)' -or
+    $Matches[1] -cne $catalog.livekit_windows_archive_sha256) { throw 'LiveKit archive pin does not match notice baseline' }
 if (Test-Path -LiteralPath $output) { throw 'Use a new, empty output directory (refusing overwrite)' }
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 foreach ($file in $required) { Copy-Item -LiteralPath (Join-Path $build $file) -Destination $output }

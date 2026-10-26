@@ -52,7 +52,7 @@ No software encoder, CPU raw-pixel path, system audio or HDR tone mapping is add
 | Text/friends/DMs | Shipped QML/controller protocol tests, real two-account Qt/Rust/PostgreSQL delivery, concurrent retries and bilateral revocation | Physical/deployed acceptance; push/unread/search/attachments/typing UI, durable outbox and cross-server events |
 | Screen authorization | Real PostgreSQL/API signatures, consent/role/access/ownership/expiry/stop tests; real SDK/SFU source rejection, synthetic decode, room isolation and selected publisher removal in a separate execution | Physical OS capture, remote quality and GPU/driver acceptance |
 | Screen publisher | Shipped Qt/QML plus real subprocess and HTTP failure fixtures; real Rust-issued lease create/renew/stop/access removal with a protocol-only native peer | Windows picker permissions/content, actual GPU encoder publishing, physical receiver and real SDK/network interruptions |
-| Windows distribution | Hosted staged/extracted/installed runtime and dependency-integrity checks | Consumer Windows PC, upgrades, complete transitive licensing/source obligations and owner publisher signing |
+| Windows distribution | Hosted staged/extracted/installed runtime and dependency-integrity checks | Consumer Windows PC, historical upgrades/interruption recovery, complete transitive licensing/source obligations and owner publisher signing |
 | Desktop recovery | Real settings files, bounded Qt readiness/probe faults, missing-device/process fixtures and real Rust session rotation | Actual consumer-profile persistence, USB/Bluetooth/privacy permissions and network failure acceptance |
 | Performance | Full desktop/native process sampler, GPU-attributed/QPC-aligned analyzer and strict input/quality declarations; fixture and process-only tests | Actual matched gaming/quality captures and reviewed budgets; no measured performance gain or physical qualification yet |
 
@@ -147,3 +147,21 @@ Group 11’s [measurement tools](desktop-gaming-qualification.md) are implemente
 and tested with fixtures and actual process-only CI. It remains physically
 unqualified until owner gameplay captures, budgets and media-quality review.
 Group 12 signing/attribution/consumer-PC distribution qualification is separate.
+
+## Group 12 distribution qualification
+
+[PR #90](https://github.com/justinangeloperez327/gaming-communication-platform/pull/90)
+consolidates Groups 7–11 for `main` and adds exact PE/build-input provenance,
+available upstream attribution material, real signature re-observation, hidden-file
+ZIP coverage, isolated runtime checks and guarded installer upgrades. See the
+[distribution evidence and owner handoff](distribution-qualification.md).
+
+Older-version wrappers use current executables and altered config/owned-file
+fixtures. They establish Setup policy, payload replacement and preservation, not
+migration from an actual historical release. Preference-file preservation is
+separate from Qt preference interpretation and physical device behavior.
+
+Complete Qt/transitive and LiveKit FFI/WebRTC/codecs/Microsoft attribution/source
+reconciliation, owner signing, consumer-PC/historical upgrade/interruption tests,
+actual two-PC media and matched gaming measurements still require evidence. The
+alpha version is unchanged; publication now requires an explicit manual opt-in.

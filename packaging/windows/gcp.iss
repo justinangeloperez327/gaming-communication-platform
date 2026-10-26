@@ -77,7 +77,8 @@ function SafePayloadPath(Value: String): Boolean;
 var I: Integer;
 begin
   Result := False;
-  if (Value = '') or (Value[1] = '/') or (Pos('\', Value) > 0) or
+  if Value = '' then Exit;
+  if (Value[1] = '/') or (Pos('\', Value) > 0) or
      (Pos(':', Value) > 0) or (Pos('*', Value) > 0) or (Pos('?', Value) > 0) or
      (Pos('//', Value) > 0) or (Pos('/../', '/' + Value + '/') > 0) or
      (Pos('/./', '/' + Value + '/') > 0) then Exit;

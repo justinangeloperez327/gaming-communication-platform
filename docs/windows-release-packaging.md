@@ -1,22 +1,30 @@
-# Group 46 — Windows desktop test packaging
+# Windows desktop test packaging
 
-Group 45's CI and benchmark tooling tests passed and PR #48 was merged. The Windows desktop presently requires `gcp-desktop.exe`, the separate `gcp-livekit-voice.exe` and `gcp-livekit-screen.exe` executables, Qt Quick/QML runtime files, and the LiveKit native DLL dependencies. A compiled application alone does not establish a portable Windows package.
+The current desktop payload includes `gcp-desktop.exe`, native voice and screen
+executables, Qt Quick/QML and WebSockets modules, `livekit.dll`, `livekit_ffi.dll`
+and app-local VS 2022 x64 CRT DLLs. The package still requires a separate
+configured backend/database/SFU host.
 
-The `scripts/package-windows-test.ps1` staging script packages an **unsigned test bundle**, checking that the desktop, native voice/screen executables, `livekit.dll` and `livekit_ffi.dll` exist before copying anything. It invokes Qt's `windeployqt` to stage Qt/QML runtime dependencies and emits a relative-path SHA-256 manifest for post-copy inspection. The tool refuses overwriting an existing output directory.
-
-Example on a Windows developer machine after a Release build and after making `windeployqt` accessible in PATH:
+`scripts/package-windows-test.ps1` stages a new directory using the pinned Qt
+6.8.3 and LiveKit C++ SDK 1.12.2. It preserves upstream DLL bytes, records executable
+provenance against the actual input trees/archive, collects available upstream
+attribution material, and writes the payload list plus SHA-256/size manifest.
+Unknown input binaries, changed SDK pins and existing output directories fail.
+`qt.conf` supplies relative runtime paths. Packaging requires PowerShell 7 and the
+normal developer SDKs; an end user does not need these build tools.
 
 ```powershell
-pwsh -File scripts/package-windows-test.ps1 -BuildDirectory build/desktop/Release -OutputDirectory dist/gcp-windows-test
+./scripts/package-windows-test.ps1 -BuildDirectory build/desktop/Release -OutputDirectory dist/gcp-windows-test -CommitSha (git rev-parse HEAD)
+./scripts/test-windows-runtime.ps1 -BundleDirectory dist/gcp-windows-test
 ```
 
-This script intentionally does not publish an installer or tag a release, does not sign binaries, does not verify Windows SmartScreen or antivirus outcomes, does not attest third-party licensing completeness, and does not prove actual audio hardware compatibility.
+The portable ZIP includes hidden manifest files. Staged, extracted and installed
+startup checks clear developer Qt/QML/plugin and PATH overrides. Hash and source
+records do not substitute for owner signing or a separate consumer Windows PC.
 
-## Release acceptance
-
-- Test the staged directory on a separate clean Windows installation without developer Qt installations.
-- Confirm Qt platform and QML modules, LiveKit DLL loading, and native voice/screen process startup.
-- Verify microphone and listen-only device consent, account logout, community/channel switching, network recovery, and SFU revocation.
-- Measure idle, listen-only and publishing CPU/RAM on gaming hardware while collecting matched frame-time data.
-- Review dependency licenses, provenance, code signing, installer upgrade/uninstall behavior and rollback.
-- Produce signed, versioned release artifacts only after all gates are satisfied.
+See [distribution qualification](distribution-qualification.md) for the complete
+build/test commands, guarded installer upgrade policy, owner signing order and
+private testing handoff, and [notice coverage](windows-third-party-notices.md) for
+the remaining exact-build attribution/source reconciliation. No measured gaming
+saving, physical two-PC quality, consumer-PC acceptance or stable release approval
+is implied by these tools. Group 12 does not publish or deploy a service.

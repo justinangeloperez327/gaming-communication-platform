@@ -2,6 +2,9 @@
 
 This private test bundle uses Qt 6.8.3 (including Qt WebSockets for desktop
 text events) and the LiveKit C++ SDK 1.12.2.
+The Rust SDK license, WebRTC notice and soxr license at the C++ SDK submodule
+revision are included as upstream references. Their inclusion does not attest
+that every described component is compiled into the shipped DLLs.
 The accompanying catalog records exact upstream commits, source URLs, file
 sizes and SHA-256 hashes for the included baseline texts. They are upstream
 texts, not a license granted to GCP by this document. Including alternative
@@ -20,3 +23,8 @@ and applicable component notices. Keep that review with the exact build.
 This baseline is not a compliance certificate or an approval to distribute.
 See docs/windows-third-party-notices.md in the source repository for the
 remaining packaging work. The alpha installer uses this same baseline.
+
+Newer builds also carry `DISTRIBUTION-INVENTORY.json` and available upstream Qt
+SBOM/license and SDK archive notice files under `third-party/build`. These bind
+executable build inputs and evidence bytes; they do not select a Qt license,
+authenticate a manually supplied Qt SDK, or close transitive attribution review.

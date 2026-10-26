@@ -17,6 +17,12 @@ GCP is an experimental Windows x64 communication application for private gaming 
 | Windows distribution | Qt/QML + voice/screen executables + LiveKit DLL staging, portable ZIP, per-user alpha installer, SHA-256 inventory and installed/extracted startup checks | Unsigned preview; clean consumer Windows PC still untested |
 | Performance | Exact desktop/native process capture, PID-attributed GPU observations and QPC-aligned frame/CPU/private-memory/growth budgets; source-only operator toolkit | Tool fixtures/Windows process smoke pass separately from product tests; real gameplay/media qualification and measured optimization remain pending |
 
+[Windows distribution qualification](docs/distribution-qualification.md) covers
+Group 12's byte-bound dependency inventory, isolated startup, guarded upgrade
+policy and owner signing/private-PC handoff. Existing published alpha downloads
+are older builds; current features require the matching reviewed CI artifact.
+Consumer-PC, physical media/gameplay and complete attribution acceptance remain open.
+
 See [long-session voice and controls](docs/long-session-voice.md) for the latest voice behavior and tests.
 Group 4's [voice evidence and acceptance guide](docs/usable-voice.md) separates
 synthetic media checks from the owner's pending two-PC test.

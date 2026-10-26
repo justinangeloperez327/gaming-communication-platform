@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'windows-distribution.psm1') -Force
 $root = [IO.Path]::GetFullPath($BundleDirectory)
 & (Join-Path $PSScriptRoot 'verify-windows-test-bundle.ps1') -BundleDirectory $root
-$executables = @(Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object {
+$executables = @(Get-ChildItem -LiteralPath $root -Recurse -Force -File | Where-Object {
     $_.Extension -in @('.exe', '.dll')
 })
 if ($executables.Count -lt 4) { throw 'No executable dependency inventory available' }
