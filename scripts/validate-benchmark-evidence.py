@@ -5,6 +5,7 @@ import json
 import math
 import sys
 from pathlib import Path
+from benchmark_io import checked_file
 
 FIELDS = ("hardware_cpu", "hardware_gpu", "ram_gib", "windows_build",
           "gpu_driver", "game", "game_version", "graphics_preset",
@@ -30,12 +31,7 @@ def validate(manifest, base):
             value = item.get(key)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"Missing {key} for run #{index}")
-            path = (base / value).resolve()
-            if path in seen: raise ValueError("Duplicate capture file")
-            seen.add(path)
-            if not path.is_file(): raise ValueError(f"Missing capture: run #{index} {key}")
-            if path.stat().st_size <= 0 or path.stat().st_size > 100 * 1024 * 1024:
-                raise ValueError("Empty or oversized capture file")
+            checked_file(base / value, seen)
     return {"evidence_files_present": True, "run_count": len(pairs),
             "metadata_fields_present": True, "physical_capture_authenticated": False,
             "audio_quality_verified": False, "gpu_utilization_verified": False}

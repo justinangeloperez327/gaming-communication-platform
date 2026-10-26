@@ -13,3 +13,10 @@ python -m compileall -q scripts
 ```
 
 Still needed for a real performance claim: three or more properly matched Windows gameplay captures per condition, system specifications, audio quality and GPU measurements, and matched competitor trials. Do not represent CI test success as measured in-game performance.
+
+Group 11 additionally rejects path aliases/hard links and prevents overwrite of
+prior pipeline results. Its [desktop analyzer](desktop-gaming-qualification.md)
+binds input hashes, actual process identities and one QPC time window, validates
+build/boot/duration/order, and gates every run rather than accepting a median
+that hides a regression. Synthetic or operator-declared origin is never
+authenticated as physical evidence.

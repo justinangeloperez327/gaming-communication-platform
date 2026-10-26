@@ -5,9 +5,13 @@ on:
       - 'scripts/**'
       - '.github/workflows/gaming-benchmarks.yml'
   workflow_dispatch:
+permissions:
+  contents: read
+
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: windows-2022
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -17,3 +21,31 @@ jobs:
         run: python -m unittest discover -s scripts -p "test_*.py" -v
       - name: Compile-check Python tools
         run: python -m compileall -q scripts
+
+      - name: Windows PowerShell 5.1 collector policy and process-only smoke
+        shell: powershell
+        run: ./scripts/test-desktop-performance.ps1
+      - name: PowerShell 7 collector policy and process-only smoke
+        shell: pwsh
+        run: ./scripts/test-desktop-performance.ps1
+
+  package:
+    name: Package source-only operator tools
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Build allowlisted toolkit and checksum (no evidence)
+        run: python scripts/package-performance-tools.py --output build/gcp-gaming-tools.zip --commit "${{ github.event.pull_request.head.sha || github.sha }}"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: gcp-gaming-measurement-tools
+          path: |
+            build/gcp-gaming-tools.zip
+            build/gcp-gaming-tools.sha256
+          if-no-files-found: error
+          retention-days: 7

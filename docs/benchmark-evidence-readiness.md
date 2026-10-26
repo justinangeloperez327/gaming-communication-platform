@@ -1,5 +1,10 @@
 # Group 45 — Performance evidence and release-readiness gates
 
+Historical native voice-only manifest. Use Group 11’s
+[desktop gaming measurement](desktop-gaming-qualification.md) and its empty
+manifest for the shipped Qt/native app. Physical acceptance remains pending;
+metadata and numeric checks do not establish capture origin.
+
 Group 44's main CI and benchmark tooling tests passed. This group adds `scripts/validate-benchmark-evidence.py`, which checks a locally supplied human-authored capture manifest: Windows/game/hardware/tool metadata, at least three paired runs, distinct existing baseline/GCP/voice data files, and bounded nonempty file sizes. The validator checks metadata presence, **not truth or origin**, and never calls a synthetic fixture real benchmark evidence.
 
 A manifest can be placed next to the local capture files:

@@ -1,11 +1,12 @@
-# Current stabilization audit — Group 10
+# Current stabilization audit — Group 11
 
 GCP remains an experimental private Windows communication application. Groups
 1–5 are merged; [Group 6 / #84](https://github.com/justinangeloperez327/gaming-communication-platform/pull/84),
 [Group 7 / #85](https://github.com/justinangeloperez327/gaming-communication-platform/pull/85),
 [Group 8 / #86](https://github.com/justinangeloperez327/gaming-communication-platform/pull/86),
-[Group 9 / #87](https://github.com/justinangeloperez327/gaming-communication-platform/pull/87)
-and [Group 10 / #88](https://github.com/justinangeloperez327/gaming-communication-platform/pull/88)
+[Group 9 / #87](https://github.com/justinangeloperez327/gaming-communication-platform/pull/87),
+[Group 10 / #88](https://github.com/justinangeloperez327/gaming-communication-platform/pull/88),
+and [Group 11 / #89](https://github.com/justinangeloperez327/gaming-communication-platform/pull/89)
 form the current stack. Merge prerequisites before their dependent PRs. This
 work merges none of them. Groups 8/9 implement the source picker/publisher and
 explicit desktop viewer; actual physical media acceptance remains pending. The existing unsigned alpha
@@ -29,11 +30,12 @@ new installer implementation is included.
 | Capture lifecycle | Serviced asynchronous encoder output during static input waits, elapsed-time capture timestamps, bounded input/event backlog and synchronized capture teardown | Compiled Windows path; GPU behavior and resource savings still need physical acceptance |
 | Screen viewer | Explicit authenticated discovery/Watch, backend exact-SID subscription, native receive-only process, Qt SceneGraph, credit-bounded frames and terminal interruption/visibility cleanup | PR #87; rendered synthetic pixels with a protocol child, real Rust track authorization and separate real SDK/SFU production receiver core; physical end-to-end remains unverified |
 | Settings/recovery | Atomic bounded audio IDs/PTT preferences, opt-in server origin, explicit missing-device/Default handling, readiness/session checks and safe relogin | PR #88; Windows/Linux file/network/QML and real Qt→Rust readiness/rotation checks; no credential or consent persistence and no physical device verification |
+| Gaming measurement | Whole Qt/native process identity, QPC-aligned PresentMon data, PID-attributed GPU engines, bounded inputs and per-run CPU/RAM/growth/frame budgets; source-only tool artifact | PR #89; Python and Windows PowerShell/process fixtures. Actual gameplay/quality/budget acceptance and measured optimization remain pending |
 | Resources | Virtualized/capped text models, bounded requests, frames, queues, HTTP/socket replies and timeouts; two screen leases per login | Explicit limits/regressions; no measured gaming resource reduction or exhaustive leak-free claim |
 | Distribution | Required Qt WebSockets and native voice/screen payloads, ZIP integrity and extracted/installed startup, signing inventory and existing alpha installer lifecycle | Hosted Windows checks; full attribution, owner signing, consumer-PC/version-upgrade qualification pending |
 
 The C++20/Qt, Rust/Axum/PostgreSQL and native LiveKit architecture remains.
-Groups 7–10 add no third-party runtime dependency, SDK update or broker. Group 7's explicit
+Groups 7–11 add no third-party runtime dependency, SDK update or broker. Group 7's explicit
 migration adds screen leases. Separate screen rooms prevent voice subscriptions
 from silently receiving screen tracks; voice JWTs remain microphone-only.
 Group 8 reuses the existing GPU capture/converter/hardware encoder through an
@@ -52,7 +54,7 @@ No software encoder, CPU raw-pixel path, system audio or HDR tone mapping is add
 | Screen publisher | Shipped Qt/QML plus real subprocess and HTTP failure fixtures; real Rust-issued lease create/renew/stop/access removal with a protocol-only native peer | Windows picker permissions/content, actual GPU encoder publishing, physical receiver and real SDK/network interruptions |
 | Windows distribution | Hosted staged/extracted/installed runtime and dependency-integrity checks | Consumer Windows PC, upgrades, complete transitive licensing/source obligations and owner publisher signing |
 | Desktop recovery | Real settings files, bounded Qt readiness/probe faults, missing-device/process fixtures and real Rust session rotation | Actual consumer-profile persistence, USB/Bluetooth/privacy permissions and network failure acceptance |
-| Performance | Telemetry/export tools and fixture validation | Matched actual gaming CPU/GPU/RAM/frame-time measurements; no measured budgets yet |
+| Performance | Full desktop/native process sampler, GPU-attributed/QPC-aligned analyzer and strict input/quality declarations; fixture and process-only tests | Actual matched gaming/quality captures and reviewed budgets; no measured performance gain or physical qualification yet |
 
 ## Security and consent boundaries
 
@@ -93,12 +95,13 @@ a baseline, not complete attribution. No stable-distribution approval is implied
 
 ## Checks and evidence
 
-The [PR #88 checks](https://github.com/justinangeloperez327/gaming-communication-platform/pull/88/checks)
+The [PR #89 checks](https://github.com/justinangeloperez327/gaming-communication-platform/pull/89/checks)
 record the exact tested head and each required result. The PR description is the
 checked-head audit record, including run links, counts and any failures fixed;
 this maintained guide records capability and acceptance boundaries. The editing host has no
 Rust/Qt/Windows toolchains; those checks execute in CI. Local portable native
-control/parser checks and all 50 Python tests pass. Address/undefined sanitizer
+control/parser checks and the current Python suite pass; the checked-head PR audit
+records the exact count. Address/undefined sanitizer
 checks run locally with LeakSanitizer disabled because this host runs under
 ptrace; the normal full sanitizer invocation remains in CI.
 
@@ -140,5 +143,7 @@ fallback policy. Missing IDs are retained and block affected joins, never
 silently replaced. Recurring idle scans are removed; returning devices do not
 rejoin media. Manual session checks rotate once and fail closed on uncertain
 replies; they add no password-reset/email recovery or persistent login.
-The next roadmap stage is Group 11 actual gaming qualification, followed by
-Group 12 signing/attribution/consumer-PC distribution qualification.
+Group 11’s [measurement tools](desktop-gaming-qualification.md) are implemented
+and tested with fixtures and actual process-only CI. It remains physically
+unqualified until owner gameplay captures, budgets and media-quality review.
+Group 12 signing/attribution/consumer-PC distribution qualification is separate.
