@@ -38,6 +38,29 @@
       "upstream_commit": "5a34a65c3bfcd699bcb80261cb5f178f2fcf6174",
       "sha256": "6d0f7c5e0deb284362296c5da110dd353831da2e67ca77cb5abc051b951b0fac",
       "bytes": 553
+    },
+    {
+      "path": "livekit/WEBRTC-NOTICE.md",
+      "source_url": "https://raw.githubusercontent.com/livekit/rust-sdks/a6f93a16fa71fe811d040de175e070e233d9b1fe/webrtc-sys/NOTICE.md",
+      "upstream_commit": "a6f93a16fa71fe811d040de175e070e233d9b1fe",
+      "sha256": "d6aea75749fea86fda6bf81453bfb507a005de04d21d8a77ef9625fd19c39cc7",
+      "bytes": 24700
+    },
+    {
+      "path": "livekit/RUST-SDK-LICENSE",
+      "source_url": "https://raw.githubusercontent.com/livekit/rust-sdks/a6f93a16fa71fe811d040de175e070e233d9b1fe/LICENSE",
+      "upstream_commit": "a6f93a16fa71fe811d040de175e070e233d9b1fe",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357
+    },
+    {
+      "path": "livekit/SOXR-LICENCE",
+      "source_url": "https://raw.githubusercontent.com/livekit/rust-sdks/a6f93a16fa71fe811d040de175e070e233d9b1fe/soxr-sys/src/LICENCE",
+      "upstream_commit": "a6f93a16fa71fe811d040de175e070e233d9b1fe",
+      "sha256": "dc98676341fdcd29d9f279c9679d6a75288785b174ded8d1b2e316c366166135",
+      "bytes": 1024
     }
-  ]
+  ],
+  "livekit_rust_revision": "a6f93a16fa71fe811d040de175e070e233d9b1fe",
+  "livekit_windows_archive_sha256": "196f1e86b306c427baed71eeea8c1ea1f8f40a10f087e646447719e3c647bdbb"
 }

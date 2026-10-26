@@ -2,7 +2,12 @@
 $ErrorActionPreference = 'Stop'
 $root = Join-Path ([IO.Path]::GetTempPath()) ("gcp-package-test-" + [Guid]::NewGuid().ToString('N'))
 function Write-Manifest($entries) {
-    ConvertTo-Json -InputObject @($entries) -Depth 4 | Set-Content (Join-Path $root 'SHA256-MANIFEST.json') -Encoding utf8
+    $records = @($entries | Where-Object { $_.path -cne 'GCP-PAYLOAD-PATHS.txt' })
+    $list = Join-Path $root 'GCP-PAYLOAD-PATHS.txt'
+    [IO.File]::WriteAllLines($list, @((@($records.path) + @('GCP-PAYLOAD-PATHS.txt','SHA256-MANIFEST.json')) | Sort-Object -Unique), [Text.UTF8Encoding]::new($false))
+    $records += [pscustomobject]@{ path = 'GCP-PAYLOAD-PATHS.txt'; bytes = (Get-Item -LiteralPath $list).Length
+        sha256 = (Get-FileHash -LiteralPath $list -Algorithm SHA256).Hash.ToLowerInvariant() }
+    ConvertTo-Json -InputObject @($records) -Depth 4 | Set-Content (Join-Path $root 'SHA256-MANIFEST.json') -Encoding utf8
 }
 function Expect-Rejected([string]$case) {
     $failed = $false
@@ -33,6 +38,19 @@ try {
     }
     Write-Manifest $manifest
     & (Join-Path $PSScriptRoot 'verify-windows-test-bundle.ps1') -BundleDirectory $root
+    # Hidden files must survive ZIP creation, not be silently dropped by Compress-Archive.
+    $hidden = Join-Path $root '.hidden-required.txt'
+    [IO.File]::WriteAllText($hidden, 'hidden fixture')
+    (Get-Item -LiteralPath $hidden -Force).Attributes = [IO.FileAttributes]::Hidden
+    $hiddenEntry = [pscustomobject]@{ path = '.hidden-required.txt'; bytes = (Get-Item -LiteralPath $hidden -Force).Length
+        sha256 = (Get-FileHash -LiteralPath $hidden -Algorithm SHA256).Hash.ToLowerInvariant() }
+    Write-Manifest ($manifest + $hiddenEntry)
+    & (Join-Path $PSScriptRoot 'package-private-windows-zip.ps1') -BundleDirectory $root -OutputZip ($root + '.zip')
+    Expand-Archive -LiteralPath ($root + '.zip') -DestinationPath ($root + '-extracted')
+    & (Join-Path $PSScriptRoot 'verify-windows-test-bundle.ps1') -BundleDirectory ($root + '-extracted')
+    if (-not (Test-Path -LiteralPath (Join-Path ($root + '-extracted') '.hidden-required.txt'))) { throw 'ZIP omitted a hidden manifest file' }
+    Remove-Item -LiteralPath $hidden -Force
+    Write-Manifest $manifest
     # Regenerate the general manifest after removing a required notice. The
     # pinned baseline, not a self-consistent payload inventory, must reject it.
     foreach ($name in @('third-party/livekit/NOTICE', 'third-party/README.md')) {
@@ -86,7 +104,7 @@ try {
     Write-Manifest ($manifest | Select-Object -Skip 1)
     Expect-Rejected 'missing required executable'
     $original = $manifest[0].path
-    foreach ($unsafe in @('../escape.dll','C:\escape.dll','qml/../../escape.dll','*.dll')) {
+    foreach ($unsafe in @('../escape.dll','C:\escape.dll','qml/../../escape.dll','*.dll','qml/./module.dll','qml//module.dll','bad./module.dll')) {
         $manifest[0].path = $unsafe
         Write-Manifest $manifest
         Expect-Rejected 'unsafe path'
@@ -107,4 +125,5 @@ try {
     Write-Host 'Synthetic integrity rejection fixtures passed; no runtime qualification.'
 } finally {
     if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
+    Remove-Item -LiteralPath ($root + '.zip'), ($root + '-extracted') -Recurse -Force -ErrorAction SilentlyContinue
 }
