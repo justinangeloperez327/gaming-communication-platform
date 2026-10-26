@@ -68,3 +68,11 @@ checksum-pinned SFU for real control readiness and Rust-issued screen leases.
 The test-only native peer never captures or transmits media. The Windows
 publisher remains subject to the physical acceptance in
 [desktop screen publisher](desktop-screen-publisher.md).
+
+Group 9 adds `desktop_screen_viewer_render_and_lifecycle` (actual Qt SceneGraph
+with a protocol fixture) and `screen_viewer_frame_credit_and_scope` (portable
+sanitizers). The API runner also requires
+`--viewer-fixture build/chat-api/gcp-view-process-fixture`; it checks real viewer
+leases/discovery and negative live-track authorization without fabricating media.
+The separate Windows synthetic SFU contract uses `screen_viewer.cpp`, the same
+exact-track receiver core as production. See [viewer evidence](desktop-screen-viewer.md).

@@ -11,7 +11,7 @@ GCP is an experimental Windows x64 communication application for private gaming 
 | Text | Desktop paginated history, plain-text send/edit/delete, independent text/voice selection and live reconnect recovery | Qt/QML/HTTP/WS, real Qt→Rust→PostgreSQL and retry/authorization tests; physical two-PC acceptance pending |
 | Friends and DMs | Desktop exact-handle requests, accept/decline/cancel, block/unblock, private history/composer and live DM recovery | Shipped Qt controls, real Qt→Rust→PostgreSQL and authorization/socket tests; single-process events, no physical two-PC acceptance |
 | Voice | Listen-only, per-call mic consent, mute/F8 PTT, device selection, muted recovery with immediate access recheck, and Leave | Qt/QProcess policy tests and real loopback synthetic PCM transport/mute/isolation/rejoin/active-eviction contract; physical audibility unverified |
-| Screen sharing | Windows window/display picker, explicit source/channel consent, separate publisher process, GPU hardware H.264 and renewable screen-only leases | Qt/process/API tests plus separate synthetic SDK/SFU evidence; desktop viewer is Group 9; actual OS/GPU capture, physical quality and performance unverified |
+| Screen sharing | Windows picker/publisher and explicit Watch viewer, source/channel consent, exact track authorization, Qt rendering and separate renewable leases | Qt rendering/process/API tests and separate production receiver core with synthetic SDK/SFU media; actual OS/GPU capture, physical quality and performance unverified |
 | Test video | Synthetic RGBA/NV12/BGRA patterns and externally encoded H.264 file publishing | Diagnostic fixtures; not evidence of screen capture or gaming performance |
 | Windows distribution | Qt/QML + voice/screen executables + LiveKit DLL staging, portable ZIP, per-user alpha installer, SHA-256 inventory and installed/extracted startup checks | Unsigned preview; clean consumer Windows PC still untested |
 | Performance | Process CPU/private memory samples, capture/encoder timing, exported game frame-time analysis | No measured gaming resource budget or advantage over other apps established |
@@ -26,6 +26,8 @@ for text history, send retries, live updates and their limits.
 See [screen authorization](docs/screen-authorization.md) for Group 7's lease API,
 voice/screen separation. [Desktop screen publisher](docs/desktop-screen-publisher.md)
 explains Group 8’s source-bound consent, supported profile and test boundaries.
+[Desktop screen viewer](docs/desktop-screen-viewer.md) adds Group 9’s explicit
+Watch, exact-track subscription, rendering and cleanup.
 
 The ZIP includes a [versioned notice baseline](docs/windows-third-party-notices.md); complete transitive attribution review remains pending.
 

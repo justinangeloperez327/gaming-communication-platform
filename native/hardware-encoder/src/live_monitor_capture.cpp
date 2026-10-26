@@ -3,6 +3,7 @@
 
 #include <Windows.h>
 #include <d3d11_4.h>
+#include <mfapi.h>
 #include <dxgi.h>
 #include <windows.graphics.capture.interop.h>
 #include <windows.graphics.directx.direct3d11.interop.h>
@@ -44,6 +45,9 @@ struct State {
     std::mutex video_context_mutex;
     GpuColorConverter converter;
     ComPtr<IMFSample> latest;
+    ComPtr<ID3D11Texture2D> retained_nv12;
+    ComPtr<ID3D11Device> device;
+    ComPtr<ID3D11DeviceContext> context;
     std::uint64_t sequence = 0;
     const UINT width;
     const UINT height;
@@ -58,7 +62,7 @@ struct State {
 
     State(ID3D11Device* device, ID3D11DeviceContext* context,
           UINT w, UINT h, UINT rate, UINT source_w, UINT source_h)
-        : converter(device, context, w, h, rate, source_w, source_h),
+        : converter(device, context, w, h, rate, source_w, source_h), device(device), context(context),
           width(source_w), height(source_h), fps(rate) {}
 
     void receive(const Direct3D11CaptureFramePool& pool) {
@@ -100,6 +104,15 @@ struct State {
             now - source_started).count() / 100;
         auto sample = converter.convert(
             surface.Get(), ts, 10'000'000LL / fps);
+        // Retain one immutable GPU image for a later viewer's keyframe/PLI.
+        // New conversions never overwrite it; repeat samples get a GPU copy.
+        ComPtr<IMFMediaBuffer> buffer;
+        winrt::check_hresult(sample->GetBufferByIndex(0, buffer.GetAddressOf()));
+        ComPtr<IMFDXGIBuffer> dxgi_buffer;
+        winrt::check_hresult(buffer.As(&dxgi_buffer));
+        ComPtr<ID3D11Texture2D> nv12;
+        winrt::check_hresult(dxgi_buffer->GetResource(IID_PPV_ARGS(nv12.GetAddressOf())));
+        retained_nv12 = nv12;
         {
             std::lock_guard lock(mutex);
             if (latest) dropped.fetch_add(1);
@@ -223,7 +236,7 @@ struct LiveMonitorCapture::Impl {
             // Wait for it before returning to MFShutdown/device teardown.
             std::lock_guard context_guard(state->video_context_mutex);
             std::lock_guard sample_guard(state->mutex);
-            state->latest.Reset();
+            state->latest.Reset(); state->retained_nv12.Reset();
         }
     }
 };
@@ -265,6 +278,37 @@ bool LiveMonitorCapture::take_next(
     sample = std::move(state->latest);
     previous_sequence = state->sequence;
     return static_cast<bool>(sample);
+}
+
+Microsoft::WRL::ComPtr<IMFSample> LiveMonitorCapture::repeat_for_keyframe(std::uint64_t& previous_sequence) {
+    const auto state = impl_->state;
+    std::lock_guard context_guard(state->video_context_mutex);
+    if (!state->active.load() || !state->retained_nv12) return {};
+    {
+        std::lock_guard sample_guard(state->mutex);
+        // A fresh WGC callback may win the race after take_next timed out.
+        // Consume that sample first; never submit an older queued timestamp
+        // after the new repeated sample.
+        if (state->latest) {
+            previous_sequence = state->sequence;
+            return std::move(state->latest);
+        }
+    }
+    D3D11_TEXTURE2D_DESC description{};
+    state->retained_nv12->GetDesc(&description);
+    ComPtr<ID3D11Texture2D> texture;
+    winrt::check_hresult(state->device->CreateTexture2D(&description, nullptr, texture.GetAddressOf()));
+    state->context->CopyResource(texture.Get(), state->retained_nv12.Get());
+    ComPtr<IMFMediaBuffer> buffer;
+    winrt::check_hresult(MFCreateDXGISurfaceBuffer(__uuidof(ID3D11Texture2D), texture.Get(), 0, FALSE, buffer.GetAddressOf()));
+    ComPtr<IMFSample> sample;
+    winrt::check_hresult(MFCreateSample(sample.GetAddressOf()));
+    winrt::check_hresult(sample->AddBuffer(buffer.Get()));
+    const auto now = Clock::now();
+    winrt::check_hresult(sample->SetSampleTime(std::chrono::duration_cast<std::chrono::nanoseconds>(now - state->source_started).count() / 100));
+    winrt::check_hresult(sample->SetSampleDuration(10'000'000LL / state->fps));
+    state->last_sample = now;
+    return sample;
 }
 
 std::uint64_t LiveMonitorCapture::received() const {

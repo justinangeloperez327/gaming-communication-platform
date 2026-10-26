@@ -32,7 +32,7 @@ URL = (f"https://github.com/livekit/livekit/releases/download/v{VERSION}/"
        f"livekit_{VERSION}_windows_amd64.zip")
 SCREEN_IDENTITY = "gcp-screen-publish-00000000-0000-0000-0000-000000000071"
 PROTOCOL_PREFIXES = ("GCP_MEDIA_STAGE:", "GCP_MEDIA_CONTRACT:", "GCP_MEDIA_READY_FOR_EVICTION",
-                     "GCP_SCREEN_STAGE:", "GCP_SCREEN_CONTRACT:", "GCP_SCREEN_READY_FOR_EVICTION")
+                     "GCP_SCREEN_STAGE:", "GCP_SCREEN_CONTRACT:", "GCP_SCREEN_READY_FOR_EVICTION", "GCP_SCREEN_DESKTOP_CONNECTED")
 
 
 def token(secret, identity, room, *, publish=False, admin=False,
@@ -146,10 +146,12 @@ def stop(child):
 def screen_environment(env, secret, room):
     """Disposable fixture grants matching the Rust grant tests; no production API keys."""
     result = dict(env)
+    result["GCP_MEDIA_SCREEN_ROOM"] = room
     for variable, identity, publish in [
             ("GCP_MEDIA_SCREEN_PUBLISHER_TOKEN", SCREEN_IDENTITY, True),
             ("GCP_MEDIA_SCREEN_OTHER_TOKEN", "gcp-screen-publish-00000000-0000-0000-0000-000000000072", True),
-            ("GCP_MEDIA_SCREEN_VIEWER_TOKEN", "gcp-screen-view-00000000-0000-0000-0000-000000000073", False)]:
+            ("GCP_MEDIA_SCREEN_VIEWER_TOKEN", "gcp-screen-view-00000000-0000-0000-0000-000000000073", False),
+            ("GCP_MEDIA_SCREEN_DESKTOP_TOKEN", "gcp-screen-view-00000000-0000-0000-0000-000000000075", False)]:
         result[variable] = token(secret, identity, room, publish=publish,
                                  sources=["screen_share"] if publish else [],
                                  subscribe=not publish, ttl=60)
@@ -167,15 +169,40 @@ def run_screen(executable, env, secret, root, server, server_log_path):
         try:
             child = subprocess.Popen([str(executable)], cwd=executable.parent,
                                      env=screen_environment(env, secret, screen_room),
-                                     stdout=log, stderr=subprocess.STDOUT)
+                                     stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT)
             deadline = time.monotonic() + 120
             evicted = False
+            subscribed = False
+            last_ping = 0.0
             while child.poll() is None:
                 if time.monotonic() >= deadline:
                     raise RuntimeError("Screen contract timed out")
                 if server.poll() is not None or server_log_path.stat().st_size > LOG_LIMIT:
                     raise RuntimeError("Loopback SFU exited or exceeded output limit")
                 lines = protocol_lines(log_path)
+                if time.monotonic() - last_ping >= 1:
+                    try:
+                        child.stdin.write(b"ping\n")
+                        child.stdin.flush()
+                    except BrokenPipeError:
+                        pass
+                    last_ping = time.monotonic()
+                if "GCP_SCREEN_DESKTOP_CONNECTED" in lines and not subscribed:
+                    participant = control(secret, screen_room, "GetParticipant", SCREEN_IDENTITY)
+                    tracks = participant.get("tracks", [])
+                    if len(tracks) != 1 or tracks[0].get("source") not in (3, "SCREEN_SHARE") or tracks[0].get("type") not in (1, "VIDEO"):
+                        raise RuntimeError("Missing publisher-owned screen for product viewer")
+                    sid = tracks[0].get("sid", "")
+                    if not sid.startswith("TR_") or len(sid) > 128 or not all(c.isascii() and (c.isalnum() or c in "_-") for c in sid):
+                        raise RuntimeError("Invalid real SFU track SID")
+                    body = {"room": screen_room, "identity": "gcp-screen-view-00000000-0000-0000-0000-000000000075", "track_sids": [sid], "subscribe": True}
+                    request = urllib.request.Request(ORIGIN + "/twirp/livekit.RoomService/UpdateSubscriptions", data=json.dumps(body).encode(),
+                        headers={"Content-Type": "application/json", "Authorization": "Bearer " + token(secret, "fixture-control", screen_room, admin=True)})
+                    with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=5) as response:
+                        if response.status != 200:
+                            raise RuntimeError("Product viewer subscription rejected")
+                    child.stdin.write(f"track {sid}\nnext\n".encode("ascii")); child.stdin.flush()
+                    subscribed = True
                 if "GCP_SCREEN_READY_FOR_EVICTION" in lines and not evicted:
                     participant = control(secret, screen_room, "GetParticipant", SCREEN_IDENTITY)
                     tracks = participant.get("tracks", [])
@@ -189,7 +216,7 @@ def run_screen(executable, env, secret, root, server, server_log_path):
             lines = protocol_lines(log_path)
             for line in lines:
                 print(line)
-            if child.returncode != 0 or not evicted or not any(
+            if child.returncode != 0 or not evicted or not subscribed or not any(
                     line.startswith("GCP_SCREEN_CONTRACT:passed ") for line in lines):
                 raise RuntimeError("Screen authorization contract did not pass")
         finally:

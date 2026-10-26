@@ -1,5 +1,8 @@
 #include "VoiceSession.h"
 #include "ScreenSession.h"
+#include "ScreenViewer.h"
+#include "ScreenVideoItem.h"
+#include <qqml.h>
 #include "AccountSession.h"
 #include "ChannelDirectory.h"
 #include "ChatSession.h"
@@ -42,12 +45,15 @@ int main(int argc, char *argv[])
     ChannelDirectory directory(&account);
     VoiceSession voice(&account, &directory);
     ScreenSession screen(&account, &directory);
+    ScreenViewer viewer(&account, &directory);
+    qmlRegisterType<ScreenVideoItem>("Gcp.Media", 1, 0, "ScreenVideo");
     FriendsDirectory friends(&account);
     ChatSession chat(&account, &directory);
     ChatSession directChat(&account, &friends);
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("voiceSession"), &voice);
     engine.rootContext()->setContextProperty(QStringLiteral("screenSession"), &screen);
+    engine.rootContext()->setContextProperty(QStringLiteral("screenViewer"), &viewer);
     engine.rootContext()->setContextProperty(QStringLiteral("accountSession"), &account);
     engine.rootContext()->setContextProperty(QStringLiteral("channelDirectory"), &directory);
     engine.rootContext()->setContextProperty(QStringLiteral("chatSession"), &chat);
@@ -60,6 +66,7 @@ int main(int argc, char *argv[])
         []() { QCoreApplication::exit(EXIT_FAILURE); },
         Qt::QueuedConnection
     );
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &viewer, &ScreenViewer::stop);
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &screen, &ScreenSession::stop);
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &voice, &VoiceSession::leave);
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &account, &AccountSession::signOut);

@@ -33,6 +33,9 @@ public:
     bool take_next(std::uint64_t& previous_sequence,
                    Microsoft::WRL::ComPtr<IMFSample>& sample,
                    DWORD timeout_ms);
+    // Explicit keyframe feedback may need a fresh sample even on a static
+    // source. Clone the latest immutable NV12 surface entirely on the GPU.
+    Microsoft::WRL::ComPtr<IMFSample> repeat_for_keyframe(std::uint64_t& previous_sequence);
     std::uint64_t received() const;
     std::uint64_t converted() const;
     std::uint64_t dropped() const;

@@ -1,4 +1,5 @@
 #include "ScreenSession.h"
+#include "ScreenToken.h"
 #include "AccountSession.h"
 #include "ChannelDirectory.h"
 #include "ChatProtocol.h"
@@ -19,21 +20,6 @@
 
 namespace {
 using gcp::transport::screen_now_ms;
-bool grantsMatch(const QString& token, const QString& identity, const QString& room) {
-    const auto encoded = token.toLatin1();
-    if (!gcp::transport::screen_jwt(encoded.toStdString())) return false;
-    const auto parts = encoded.split('.');
-    const auto bytes = QByteArray::fromBase64(parts[1], QByteArray::Base64UrlEncoding);
-    const auto jwt = QJsonDocument::fromJson(bytes).object();
-    const auto video = jwt.value("video").toObject();
-    const auto sources = video.value("canPublishSources").toArray();
-    return jwt.value("sub").toString() == identity && video.value("room").toString() == room &&
-        video.value("roomJoin") == QJsonValue(true) && video.value("canPublish") == QJsonValue(true) &&
-        video.value("canSubscribe") == QJsonValue(false) && video.value("canPublishData") == QJsonValue(false) &&
-        sources.size() == 1 && sources[0].toString() == QStringLiteral("screen_share") &&
-        !video.value("roomAdmin").toBool() && !video.value("roomCreate").toBool() &&
-        !video.value("roomList").toBool() && !video.value("roomRecord").toBool();
-}
 QString failure(int code) {
     if (code == 401) return QStringLiteral("Screen sharing stopped: sign in again, then choose a source.");
     if (code == 403 || code == 404) return QStringLiteral("Screen sharing stopped: access to this channel was removed.");
@@ -176,7 +162,7 @@ bool ScreenSession::applyGrant(const QByteArray& bytes, bool renew, qint64 reque
     const auto seconds = json.value("expires_in").toDouble(-1);
     if (!ChatProtocol::uuid(id) || id != lease_ || json.value("purpose").toString() != QStringLiteral("publish") ||
         json.value("participant_identity").toString() != identity || json.value("room").toString() != room ||
-        !gcp::transport::permitted_livekit_url(url.toStdString()) || !grantsMatch(token, identity, room) ||
+        !gcp::transport::permitted_livekit_url(url.toStdString()) || !screenTokenMatches(token, identity, room, true) ||
         !std::isfinite(seconds) || seconds < 1 || seconds > 60 || std::floor(seconds) != seconds) return false;
     const auto expires = requestedAt + static_cast<qint64>(seconds * 1000);
     const auto remaining = expires - screen_now_ms();
