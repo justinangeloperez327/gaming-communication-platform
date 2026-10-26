@@ -163,7 +163,7 @@ jobs:
           ./scripts/verify-windows-test-bundle.ps1 -BundleDirectory build/gcp-windows-test
       - name: Test packaged Qt/QML runtime and native LiveKit startup
         shell: pwsh
-        run: ./scripts/test-windows-runtime.ps1 -BundleDirectory build/gcp-windows-test
+        run: ./scripts/test-windows-runtime.ps1 -BundleDirectory build/gcp-windows-test -CheckMissingTlsRejection
       - name: Record CI-only Windows bundle acceptance
         shell: pwsh
         run: |

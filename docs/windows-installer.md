@@ -2,7 +2,8 @@
 
 The existing alpha installer installs the Qt desktop and native LiveKit voice and
 screen processes for the current Windows user under
-`%LOCALAPPDATA%\Programs\GCP-Alpha`. It requests no administrator rights, creates
+`%LOCALAPPDATA%\Programs\GCP-Alpha`. Setup targets x64 Windows 10 1903 (18362) or later / Windows 11 and rejects ARM64
+emulation. It requests no administrator rights, creates
 no service or firewall exception, deploys no backend and starts no microphone or
 screen capture. It creates a Start menu shortcut and offers an optional desktop
 shortcut. A configured GCP backend, PostgreSQL and LiveKit host remain separate.
@@ -18,7 +19,8 @@ for private testing of newer source.
 
 Setup keeps its stable alpha AppId. Compatible upgrades and same-version repair
 preserve unrelated files and preferences. Downgrades, relocation, removed old
-payload files and unreadable/unsafe manifests require an explicit uninstall
+payload files and unreadable/unsafe manifests or an absent/mismatched installer-recorded manifest
+fingerprint require an explicit uninstall
 before installation. No old-manifest path is used to delete user files. Windows
 Settings > Apps removes the installed payload and shortcuts while leaving user
 files and per-profile preferences. Close the desktop and both native processes

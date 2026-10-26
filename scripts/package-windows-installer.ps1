@@ -22,7 +22,8 @@ New-Item -ItemType Directory -Path $output | Out-Null
 $label = $config.tag.Substring(1)
 $numeric = $config.version
 if ($FixtureVersion) { $numeric = $FixtureVersion; $label = "$FixtureVersion-qualification-fixture" }
-& $compiler "/DBundleDir=$root" "/DOutputDirPath=$output" "/DReleaseVersion=$label" "/DNumericVersion=$numeric" (Join-Path $PSScriptRoot '../packaging/windows/gcp.iss')
+$manifestHash = (Get-FileHash -LiteralPath (Join-Path $root 'SHA256-MANIFEST.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+& $compiler "/DBundleDir=$root" "/DOutputDirPath=$output" "/DReleaseVersion=$label" "/DNumericVersion=$numeric" "/DPayloadManifestSha256=$manifestHash" (Join-Path $PSScriptRoot '../packaging/windows/gcp.iss')
 if ($LASTEXITCODE -ne 0) { throw "Installer compiler failed: $LASTEXITCODE" }
 $installer = Join-Path $output "GCP-$label-windows-x64-setup.exe"
 if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'Installer missing' }

@@ -13,7 +13,7 @@ release, certificate or installer technology is introduced.
 | Build inventory | `DISTRIBUTION-INVENTORY.json` binds the source commit, executable hashes/versions/origins, pinned SDK archive and available upstream evidence. All product-acceptance flags remain false. |
 | Attribution material | The pinned baseline additionally contains the exact Rust SDK license, WebRTC notice and soxr license at the C++ SDK's Rust submodule revision. Staging collects license/notice files from the pinned SDK archive and available Qt `sbom`/`licenses` directories. These references do not prove which transitive code was compiled or complete licensing obligations. |
 | Portable ZIP | All manifest files, including hidden files, are archived and checked after extraction. Directory links, changed files, ambiguous paths and missing notice material fail verification. |
-| Runtime isolation | The staged, extracted and installed Qt/QML application and native voice/screen self-tests run with developer PATH, Qt plugin and QML overrides cleared. A hosted developer runner remains different from a clean consumer PC. |
+| Runtime isolation | The staged, extracted and installed Qt/QML application (including real TLS-provider availability and zero QML warnings) and native voice/screen self-tests run with developer PATH, Qt plugin and QML overrides cleared. The staged check also removes/restores TLS plugins and requires a specific TLS failure. No remote certificate handshake is claimed. A hosted developer runner remains different from a clean consumer PC. |
 | Signature inventory | Authenticode status, signature type, publisher certificate thumbprint and timestamp certificate are observed again during verification. Editing JSON to say `Valid` cannot pass. |
 | Installer policy | Fresh current install, an older-version fixture upgrade, repair, shortcut/payload checks and uninstall are exercised. Downgrades, removed previously owned files, relocation and corrupt/unsafe old manifests are rejected before changing the installed payload. |
 | User data | A known user-file fixture and a non-secret preference-file fixture retain identical bytes across upgrade, rejection and uninstall. The startup smoke intentionally does not read preferences. Actual owner preference/device behavior is a separate check. |
@@ -27,7 +27,11 @@ migration from the previously published alpha. They are not uploaded as download
 ## Build and test
 
 Build-time packaging uses PowerShell 7, the pinned Qt/LiveKit SDKs, VS 2022 x64
-redistributables and Inno Setup 6. A friend running the resulting app needs none
+redistributables and Inno Setup 6. Setup targets x64 Windows 10 1903 (18362) or later / Windows 11. The monitor
+capture interop API needs that Windows minimum; ARM64 emulation is not qualified
+and Setup refuses it. See the [Microsoft API requirement](https://learn.microsoft.com/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createformonitor).
+
+A friend running the resulting app needs none
 of these build tools. The shared host still needs the separately configured
 [server stack](server-stack.md).
 
@@ -66,7 +70,10 @@ The published `v0.1.0-alpha.1` is an older build; it is not updated by this work
 Close GCP and both native media processes before replacing it. A compatible
 in-place upgrade replaces the installed payload and keeps unrelated files and
 per-profile preferences. Repair reinstalls the selected version's exact files.
-Setup refuses a downgrade or a payload that omits a previously installed file,
+Setup compares the prior manifest with the fingerprint compiled into its installer
+and recorded in its per-user uninstall key. A missing fingerprint (including the
+older published alpha) requires uninstall/reinstall. It refuses a downgrade or a
+payload that omits a previously installed file,
 rather than leaving obsolete runtime DLLs or deleting paths from an editable old
 manifest. It also refuses unknown/corrupt manifests and changing the registered
 installation folder during an upgrade.
@@ -108,6 +115,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer signing failed' }
 ./scripts/verify-windows-publisher-signatures.ps1 -BundleDirectory $SignedBundleDirectory -Installer $Installer -ExpectedThumbprint $ExpectedThumbprint
 ```
 
+Before shipping a signed build, rerun installed-startup/repair/uninstall checks
+against that exact signed Setup.
+
 The read-only verifier requires all three GCP executables and Setup to have valid
 embedded, timestamped signatures from that exact certificate. It neither signs
 nor approves vendor DLL licensing, SmartScreen reputation, physical media or
@@ -121,7 +131,7 @@ automatic updater is implemented.
    portable/installer artifact and checksum together; verify the extracted file's
    SHA-256 with `Get-FileHash` before running it. An unsigned checksum establishes
    integrity relative to that trusted source, not publisher authentication.
-2. On a separate Windows 10/11 gaming PC without Qt/VS development tools, test
+2. On a separate supported Windows 10/11 x64 gaming PC without Qt/VS development tools, test
    startup, invited sign-in, messaging/DMs, device choices, explicit consent,
    Leave/Stop/Watch cleanup, relogin and network/device interruptions. Neither
    microphone nor screen capture should start during installation.
