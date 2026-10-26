@@ -1,6 +1,7 @@
 #include "AccountSession.h"
 #include "ChannelDirectory.h"
 #include "ChatSession.h"
+#include "FriendsDirectory.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -40,7 +41,9 @@ int main(int argc, char **argv) {
         require(!origin.isEmpty() && !password.isEmpty(), "disposable acceptance environment required");
         AccountSession owner, friendAccount;
         ChannelDirectory ownerRooms(&owner), friendRooms(&friendAccount);
+        FriendsDirectory ownerFriends(&owner), peerFriends(&friendAccount);
         ChatSession ownerChat(&owner, &ownerRooms);
+        ChatSession ownerDirect(&owner, &ownerFriends), peerDirect(&friendAccount, &peerFriends);
         owner.signIn(origin, "chat-owner@example.test", password);
         require(waitFor([&]() { return owner.signedIn() && !owner.busy() && !ownerRooms.busy() &&
             !owner.invitationBusy() && !owner.invitationStatus().isEmpty(); }) && owner.serverOwner(), "real owner login and initial invitation list");
@@ -106,10 +109,77 @@ int main(int argc, char **argv) {
         receiver->refreshLatest();
         require(waitFor([&]() { return !receiver->loading() && !receiver->canMutate() && model(*receiver)->rowCount() == 0 && receiver->draft().isEmpty(); }), "real authorization loss purges peer history and draft");
         receiver->sendDraft(); require(!receiver->sending(), "no automatic delivery after access removal");
+        // Friends and DMs are independent of shared-community membership.
+        require(waitFor([&]() { return ownerFriends.verified() && peerFriends.verified() && !ownerFriends.busy() && !peerFriends.busy(); }), "initial social snapshots");
+        const auto requestFriend = [&]() {
+            ownerFriends.sendRequest("chat_friend");
+            require(waitFor([&]() { return ownerFriends.verified() && !ownerFriends.busy() && ownerFriends.requests().size() == 1; }), "outgoing friend request");
+            peerFriends.refresh();
+            require(waitFor([&]() { return peerFriends.verified() && !peerFriends.busy() && peerFriends.requests().size() == 1; }), "incoming friend request");
+            return peerFriends.requests().first().toMap().value("id").toString();
+        };
+        auto requestId = requestFriend();
+        require(peerFriends.requests().first().toMap().value("user_id").toString() == owner.userId(), "pending request profile belongs to the other account");
+        ownerFriends.acceptRequest(requestId); require(!ownerFriends.busy(), "sender cannot accept own outgoing request");
+        ownerFriends.cancelRequest(requestId);
+        require(waitFor([&]() { return ownerFriends.verified() && !ownerFriends.busy() && ownerFriends.requests().isEmpty(); }), "sender cancels pending request");
+        peerFriends.refresh(); require(waitFor([&]() { return peerFriends.verified() && !peerFriends.busy() && peerFriends.requests().isEmpty(); }), "cancel removed recipient request");
+        requestId = requestFriend(); peerFriends.declineRequest(requestId);
+        require(waitFor([&]() { return peerFriends.verified() && !peerFriends.busy() && peerFriends.requests().isEmpty(); }), "recipient decline");
+        ownerFriends.refresh(); require(waitFor([&]() { return ownerFriends.verified() && !ownerFriends.busy() && ownerFriends.requests().isEmpty(); }), "decline removed sender pending state");
+        requestId = requestFriend(); peerFriends.acceptRequest(requestId);
+        require(waitFor([&]() { return peerFriends.verified() && !peerFriends.busy() && peerFriends.friends().size() == 1; }), "recipient accepts friendship");
+        ownerFriends.refresh(); require(waitFor([&]() { return ownerFriends.verified() && !ownerFriends.busy() && ownerFriends.friends().size() == 1; }), "sender discovers friendship");
+        ownerFriends.openConversation(friendAccount.userId());
+        require(waitFor([&]() { return ownerFriends.verified() && !ownerFriends.busy() && !ownerFriends.conversationId().isEmpty(); }), "open real private conversation");
+        const auto privateId = ownerFriends.conversationId();
+        peerFriends.refresh(); require(waitFor([&]() { return peerFriends.verified() && !peerFriends.busy() && peerFriends.conversations().size() == 1; }), "recipient discovers private conversation");
+        peerFriends.chooseConversation(privateId);
+        require(waitFor([&]() { return ownerDirect.live() && peerDirect.live() && ownerDirect.canMutate() && peerDirect.canMutate(); }), "actual DM sockets and history authorized");
+        require(!ownerDirect.canModerate() && !peerDirect.canModerate(), "community ownership never grants DM moderation rights");
+        ownerDirect.setDraft("private 🎮 <b>literal</b>"); ownerDirect.sendDraft();
+        require(waitFor([&]() { return !ownerDirect.sending() && ownerDirect.draft().isEmpty() && model(peerDirect)->rowCount() == 1; }), "private send and live delivery");
+        const auto privateMessage = model(ownerDirect)->rows().last().id;
+        require(model(peerDirect)->find(privateMessage)->body == "private 🎮 <b>literal</b>", "private Unicode text is exact");
+        peerDirect.editMessage(privateMessage, "forbidden"); peerDirect.deleteMessage(privateMessage);
+        require(!peerDirect.sending(), "peer cannot rewrite or delete another DM author's message");
+        ownerDirect.editMessage(privateMessage, "edited private text");
+        require(waitFor([&]() { return !ownerDirect.sending() && model(peerDirect)->find(privateMessage)->body == "edited private text"; }), "private live edit");
+        peerDirect.setDraft("private reply"); peerDirect.sendDraft();
+        require(waitFor([&]() { return !peerDirect.sending() && peerDirect.draft().isEmpty() && !find(ownerDirect, "private reply").isEmpty(); }), "private bidirectional delivery");
+        const auto privateReply = find(ownerDirect, "private reply"); ownerDirect.deleteMessage(privateReply);
+        require(!ownerDirect.sending(), "community owner cannot delete a peer's DM");
+        ownerDirect.deleteMessage(privateMessage);
+        require(waitFor([&]() { return !ownerDirect.sending() && model(peerDirect)->find(privateMessage)->deletedMs; }), "private tombstone delivery");
+        peerFriends.closeConversation(); require(model(peerDirect)->rowCount() == 0, "closing private chat clears visible history");
+        ownerDirect.setDraft("private offline creation"); ownerDirect.sendDraft();
+        require(waitFor([&]() { return !ownerDirect.sending() && ownerDirect.draft().isEmpty(); }), "private offline send");
+        const auto offlinePrivate = find(ownerDirect, "private offline creation"); ownerDirect.editMessage(offlinePrivate, "private offline edit");
+        require(waitFor([&]() { return !ownerDirect.sending() && model(ownerDirect)->find(offlinePrivate)->body == "private offline edit"; }), "private offline edit saved");
+        peerFriends.chooseConversation(privateId);
+        require(waitFor([&]() { return peerDirect.live() && peerDirect.canMutate() && model(peerDirect)->find(offlinePrivate) && model(peerDirect)->find(offlinePrivate)->body == "private offline edit" && model(peerDirect)->find(privateMessage)->deletedMs; }), "private resubscribe recovers edits and deletions");
+        ownerDirect.setDraft("owner draft before block"); peerDirect.setDraft("peer draft before block");
+        ownerFriends.blockUser(friendAccount.userId());
+        require(waitFor([&]() { return ownerFriends.verified() && !ownerFriends.busy() && ownerFriends.blocks().size() == 1 && ownerFriends.conversationId().isEmpty() && peerFriends.conversationId().isEmpty() && model(ownerDirect)->rowCount() == 0 && model(peerDirect)->rowCount() == 0; }), "blocking revokes both active desktop DMs");
+        require(ownerDirect.draft().isEmpty() && peerDirect.draft().isEmpty() && !ownerDirect.canSubmit() && !peerDirect.canSubmit(), "blocking clears both drafts without delivery");
+        ownerFriends.unblockUser(friendAccount.userId());
+        require(waitFor([&]() { return ownerFriends.verified() && !ownerFriends.busy() && ownerFriends.blocks().isEmpty() && ownerFriends.friends().isEmpty(); }), "unblocking does not restore friendship");
+        peerFriends.refresh(); require(waitFor([&]() { return peerFriends.verified() && !peerFriends.busy(); }), "peer social recovery");
+        requestId = requestFriend(); peerFriends.acceptRequest(requestId);
+        require(waitFor([&]() { return peerFriends.verified() && !peerFriends.busy() && peerFriends.friends().size() == 1; }), "explicit re-friend");
+        ownerFriends.refresh(); require(waitFor([&]() { return ownerFriends.verified() && !ownerFriends.busy() && ownerFriends.friends().size() == 1; }), "sender re-friend snapshot");
+        ownerFriends.openConversation(friendAccount.userId());
+        require(waitFor([&]() { return ownerFriends.verified() && !ownerFriends.busy() && ownerFriends.conversationId() == privateId && ownerDirect.canMutate(); }), "re-friend reopens the retained canonical conversation");
+        peerFriends.refresh(); require(waitFor([&]() { return peerFriends.verified() && !peerFriends.busy(); }), "peer conversation list refreshed");
+        peerFriends.chooseConversation(privateId);
+        require(waitFor([&]() { return peerDirect.canMutate() && peerDirect.live(); }), "peer reopens retained DM");
+        peerFriends.removeFriend(owner.userId());
+        require(waitFor([&]() { return peerFriends.verified() && !peerFriends.busy() && peerFriends.friends().isEmpty() && peerFriends.conversationId().isEmpty() && ownerFriends.conversationId().isEmpty(); }), "unfriend revokes both DM sessions");
+        require(voiceSelections == 0 && ownerRooms.channelId() == voice, "all social/private operations preserve the independent voice selection");
         ownerRooms.deleteCommunity();
         require(waitFor([&]() { return !ownerRooms.busy() && ownerRooms.communityId().isEmpty(); }), "test community cleanup");
         friendAccount.signOut(); owner.signOut();
-        std::cout << "Real Qt controllers -> Rust HTTP/WebSockets -> PostgreSQL acceptance passed. No physical media or deployed service tested.\n";
+        std::cout << "Real Qt controllers -> Rust HTTP/WebSockets -> PostgreSQL channel/friends/DM acceptance passed. No physical media or deployed service tested.\n";
         return 0;
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }
 }

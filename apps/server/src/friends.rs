@@ -73,6 +73,14 @@ pub(crate) struct UserLinkView {
     display_name: String,
 }
 
+#[derive(Serialize)]
+pub(crate) struct PendingRequestView {
+    #[serde(flatten)]
+    request: FriendRequestView,
+    #[serde(flatten)]
+    other: UserLinkView,
+}
+
 fn request_view(row: &sqlx::postgres::PgRow) -> Result<FriendRequestView, AuthError> {
     let rid: Uuid = row.try_get("id").map_err(err)?;
     let from: Uuid = row.try_get("sender_id").map_err(err)?;
@@ -149,19 +157,27 @@ pub(crate) async fn send_request(
 pub(crate) async fn requests(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Vec<FriendRequestView>>, AuthError> {
+) -> Result<Json<Vec<PendingRequestView>>, AuthError> {
     let (pool, user) = actor(&state, &headers).await?;
     let rows = sqlx::query(
-        "SELECT id,sender_id,receiver_id FROM friend_requests
-         WHERE status='pending' AND (sender_id=$1 OR receiver_id=$1)
-         ORDER BY created_at DESC,id DESC LIMIT 100",
+        "SELECT r.id,r.sender_id,r.receiver_id,u.id AS user_id,u.handle,u.display_name
+         FROM friend_requests r JOIN users u ON u.id=CASE WHEN r.sender_id=$1 THEN r.receiver_id ELSE r.sender_id END
+         WHERE r.status='pending' AND (r.sender_id=$1 OR r.receiver_id=$1)
+         ORDER BY r.created_at DESC,r.id DESC LIMIT 100",
     )
     .bind(user)
     .fetch_all(&pool)
     .await
     .map_err(err)?;
     Ok(Json(
-        rows.iter().map(request_view).collect::<Result<_, _>>()?,
+        rows.iter()
+            .map(|row| {
+                Ok(PendingRequestView {
+                    request: request_view(row)?,
+                    other: user_view(row)?,
+                })
+            })
+            .collect::<Result<_, AuthError>>()?,
     ))
 }
 
@@ -234,6 +250,48 @@ pub(crate) async fn decline(
     resolve(state, headers, request, false).await
 }
 
+pub(crate) async fn cancel_request(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(raw): Path<String>,
+) -> Result<StatusCode, AuthError> {
+    let (pool, user) = actor(&state, &headers).await?;
+    let request = id(&raw)?;
+    let other: Uuid = sqlx::query_scalar(
+        "SELECT receiver_id FROM friend_requests WHERE id=$1 AND sender_id=$2 AND status='pending'",
+    )
+    .bind(request)
+    .bind(user)
+    .fetch_optional(&pool)
+    .await
+    .map_err(err)?
+    .ok_or(AuthError::NotFound)?;
+    let mut tx = pool.begin().await.map_err(err)?;
+    lock_pair(&mut tx, user, other).await?;
+    let removed = sqlx::query(
+        "DELETE FROM friend_requests WHERE id=$1 AND sender_id=$2 AND status='pending'",
+    )
+    .bind(request)
+    .bind(user)
+    .execute(&mut *tx)
+    .await
+    .map_err(err)?;
+    if removed.rows_affected() != 1 {
+        return Err(AuthError::NotFound);
+    }
+    tx.commit().await.map_err(err)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn direct_room(
+    tx: &mut Transaction<'_, Postgres>,
+    user: Uuid,
+    other: Uuid,
+) -> Result<Option<Uuid>, AuthError> {
+    sqlx::query_scalar("SELECT id FROM dm_conversations WHERE user_low=LEAST($1::uuid,$2::uuid) AND user_high=GREATEST($1::uuid,$2::uuid)")
+        .bind(user).bind(other).fetch_optional(&mut **tx).await.map_err(err)
+}
+
 pub(crate) async fn list_friends(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -262,6 +320,7 @@ pub(crate) async fn remove_friend(
     let other = id(&raw)?;
     let mut tx = pool.begin().await.map_err(err)?;
     lock_pair(&mut tx, user, other).await?;
+    let room = direct_room(&mut tx, user, other).await?;
     let removed = sqlx::query(
         "DELETE FROM friendships WHERE user_low=LEAST($1::uuid,$2::uuid)
           AND user_high=GREATEST($1::uuid,$2::uuid)",
@@ -275,6 +334,9 @@ pub(crate) async fn remove_friend(
         return Err(AuthError::NotFound);
     }
     tx.commit().await.map_err(err)?;
+    if let Some(room) = room {
+        state.dm_realtime.access_changed(room, user);
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -287,6 +349,7 @@ pub(crate) async fn block(
     let other = id(&input.user_id)?;
     let mut tx = pool.begin().await.map_err(err)?;
     lock_pair(&mut tx, user, other).await?;
+    let room = direct_room(&mut tx, user, other).await?;
     sqlx::query(
         "INSERT INTO user_blocks(blocker_id,blocked_id) VALUES($1,$2)
          ON CONFLICT DO NOTHING",
@@ -316,6 +379,9 @@ pub(crate) async fn block(
     .await
     .map_err(err)?;
     tx.commit().await.map_err(err)?;
+    if let Some(room) = room {
+        state.dm_realtime.access_changed(room, user);
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

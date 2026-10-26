@@ -1,4 +1,4 @@
-# Real-time channel events and ephemeral presence — Group 24
+# Authenticated channel and direct-message events
 
 The Rust server supports a **single-server WebSocket event stream** for authenticated text-channel members. The WebSocket does **not** accept message creation, editing or deletion commands; all durable writes continue to use the Group 23, PostgreSQL-authorized HTTP message routes. Message bodies are intentionally excluded from WebSocket notifications.
 
@@ -62,3 +62,22 @@ The [desktop client](desktop-messaging.md) implements bounded reconnect/backoff,
 `apps/server/tests/realtime_socket.rs` uses an actual loopback WebSocket server and temporary PostgreSQL user sessions to exercise authentication denial, nonmember denial, authorized subscription, message create/edit/delete notification, identifier-only payloads, typing, removal of a member while connected, and denial of subsequent connections. Remaining physical-device tests are unrelated to the backend event transport.
 
 Queue regression tests flood one channel while another subscriber remains unread, verify that only the flooded channel lags, confirm cleanup after the last listener drops (including concurrent drops), and check that a new subscription has no historical replay. These are deterministic in-process queue tests; the PostgreSQL/WebSocket integration tests continue to validate authorization and event delivery. There is no global connection cap or cross-instance event transport.
+
+
+## Direct-message subscriptions
+
+Group 6 adds `GET /v1/dms/{conversation_id}/events` with the same Authorization
+header, bounds, identifier event types, reconnect/history requirements and
+session checks. Its wire payload uses `conversation_id` instead of `channel_id`.
+A separate hub isolates private topics from community topics even for equal UUIDs.
+Only the two current unblocked friends may subscribe. Ordered pair-locked
+create/edit/delete operations publish after commit; block/unfriend publishes an
+access-change wakeup after commit, and the subscriber must reauthorize before
+forwarding anything. A failed check closes the stream. The same periodic check
+also catches session revocation without further activity.
+
+The [private desktop client](desktop-friends.md) subscribes only to its selected
+conversation, refetches authorized content by ID, and restores current recent
+history after interruption. Friend/request/block/conversation lists use bounded
+30-second HTTP refresh, not a separate push stream. No unread badges or
+cross-process/private event replay is implied.

@@ -105,5 +105,6 @@ UI as the security boundary. See [messages](messages.md) and [events](realtime.m
 The [PR checks](https://github.com/justinangeloperez327/gaming-communication-platform/pull/83/checks)
 identify exact tested heads and outcomes. Physical two-PC messaging, deployed
 HTTPS/proxy/network behavior, audio devices, screen sharing and gaming performance
-remain unverified. Group 6 adds the desktop friends/DM flows; those APIs are still
-separate from this text-channel UI.
+remain unverified. The [Group 6 private client](desktop-friends.md) reuses this composer, model and
+transport controller with conversation-specific authorization. Private and
+channel selection stay independent.

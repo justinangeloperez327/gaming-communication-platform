@@ -14,6 +14,7 @@ class AccountSession final : public QObject {
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(QString displayName READ displayName NOTIFY changed)
     Q_PROPERTY(QString userId READ userId NOTIFY changed)
+    Q_PROPERTY(QString handle READ handle NOTIFY changed)
     Q_PROPERTY(bool serverOwner READ serverOwner NOTIFY changed)
     Q_PROPERTY(bool invitationBusy READ invitationBusy NOTIFY changed)
     Q_PROPERTY(QString invitationStatus READ invitationStatus NOTIFY changed)
@@ -28,6 +29,7 @@ public:
     QString status() const { return status_; }
     QString displayName() const { return displayName_; }
     QString userId() const { return userId_; }
+    QString handle() const { return handle_; }
     bool serverOwner() const { return serverOwner_; }
     bool invitationBusy() const { return invitationPending_ != nullptr; }
     QString invitationStatus() const { return invitationStatus_; }
@@ -66,6 +68,7 @@ private:
     QString status_ = QStringLiteral("Signed out");
     QString displayName_;
     QString userId_;
+    QString handle_;
     bool serverOwner_ = false;
     QString invitationStatus_;
     QString invitationCode_;
