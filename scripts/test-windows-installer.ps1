@@ -57,6 +57,7 @@ try {
     $env:QT_DEBUG_PLUGINS = '1'
     Invoke-CheckedProcess (Join-Path $appDir 'gcp-desktop.exe') @('--smoke-qml') 20
     Invoke-CheckedProcess (Join-Path $appDir 'gcp-livekit-voice.exe') @('--self-test') 20
+    Invoke-CheckedProcess (Join-Path $appDir 'gcp-livekit-screen.exe') @('--self-test') 20
     # User-created files must survive uninstall; remove only installed payload files.
     Set-Content -LiteralPath (Join-Path $appDir 'user-keep.txt') -Value 'preserve'
     Invoke-CheckedProcess (Join-Path $appDir 'unins000.exe') @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$testRoot/uninstall.log`"")

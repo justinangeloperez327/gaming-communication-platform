@@ -165,6 +165,8 @@ int main(int argc, char **argv) {
         qputenv("DATABASE_URL", "dummy-database-credential");
         qputenv("LIVEKIT_API_KEY", "dummy-admin-key");
         qputenv("LiVeKiT_ApI_SeCrEt", "dummy-admin-secret");
+        qputenv("GCP_MEDIA_SECRET", "dummy-media-secret");
+        qputenv("GCP_POSTGRES_ADMIN_PASSWORD", "dummy-db-admin");
         qputenv("GCP_ACCESS_TOKEN", "dummy-access");
         qputenv("GCP_REFRESH_TOKEN", "dummy-refresh");
         qputenv("LIVEKIT_URL", "wss://inherited.invalid");

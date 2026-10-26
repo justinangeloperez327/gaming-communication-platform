@@ -54,6 +54,8 @@ jobs:
           /tmp/gcp-parser-tests
           g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/voice_control_tests.cpp -o /tmp/gcp-voice-control-tests
           /tmp/gcp-voice-control-tests
+          g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/screen_control_tests.cpp -o /tmp/gcp-screen-control-tests
+          /tmp/gcp-screen-control-tests
           g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/livekit_url_tests.cpp -o /tmp/gcp-livekit-url-tests
           /tmp/gcp-livekit-url-tests
       - name: Offline physical GPU evidence validator tests
@@ -62,7 +64,7 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
   desktop-chat-api:
-    name: Qt to Rust messaging acceptance
+    name: Qt to Rust messaging and screen lease acceptance
     # Pin the SDK acceptance environment; no GUI/display or media stack needed.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -98,8 +100,8 @@ jobs:
         run: |
           cmake -S apps/desktop/tests/api -B build/chat-api -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DCMAKE_BUILD_TYPE=Release
           cmake --build build/chat-api --parallel 2
-      - name: Real desktop onboarding, channel/friends/DM delivery and revocation
-        run: python3 scripts/verify_desktop_chat.py --server target/debug/gaming-comms-server --client build/chat-api/gcp-chat-api-acceptance
+      - name: Real desktop onboarding, messaging, screen leases and revocation
+        run: python3 scripts/verify_desktop_chat.py --server target/debug/gaming-comms-server --client build/chat-api/gcp-chat-api-acceptance --screen-fixture build/chat-api/gcp-screen-process-fixture
 
   server-stack:
     name: Self-hosted stack acceptance
@@ -167,6 +169,8 @@ jobs:
             }
             $child.Dispose()
           }
+          & ./build/gcp-windows-test/gcp-livekit-screen.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged screen publisher self-test failed" }
           & ./build/gcp-windows-test/gcp-livekit-voice.exe --self-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged LiveKit voice self-test failed: $LASTEXITCODE" }
       - name: Record CI-only Windows bundle acceptance
@@ -220,6 +224,8 @@ jobs:
             if (-not $child.HasExited) { Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue }
             $child.Dispose()
           }
+          & (Join-Path $unpacked 'gcp-livekit-screen.exe') --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Extracted screen publisher self-test failed" }
           & (Join-Path $unpacked 'gcp-livekit-voice.exe') --self-test
           if ($LASTEXITCODE -ne 0) { throw "Extracted ZIP LiveKit self-test failed: $LASTEXITCODE" }
           $zipSha = (Get-FileHash -LiteralPath build/gcp-private-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()

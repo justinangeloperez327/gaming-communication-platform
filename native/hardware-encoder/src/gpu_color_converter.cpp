@@ -19,11 +19,14 @@ void require(HRESULT result, const char* operation) {
 
 GpuColorConverter::GpuColorConverter(
     ID3D11Device* device, ID3D11DeviceContext* context,
-    UINT width, UINT height, UINT fps)
-    : width_(width), height_(height), device_(device) {
+    UINT width, UINT height, UINT fps, UINT input_width, UINT input_height)
+    : width_(width), height_(height),
+      input_width_(input_width ? input_width : width),
+      input_height_(input_height ? input_height : height), device_(device) {
     if (!device || !context || width < 160 || width > 1920 ||
         height < 90 || height > 1080 || (width % 2) || (height % 2) ||
-        fps < 1 || fps > 60) {
+        fps < 1 || fps > 60 || input_width_ < 160 || input_width_ > 1920 ||
+        input_height_ < 90 || input_height_ > 1080) {
         throw std::invalid_argument("Invalid hardware BGRA to NV12 conversion configuration");
     }
 
@@ -34,8 +37,8 @@ GpuColorConverter::GpuColorConverter(
 
     D3D11_VIDEO_PROCESSOR_CONTENT_DESC contents{};
     contents.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
-    contents.InputWidth = width;
-    contents.InputHeight = height;
+    contents.InputWidth = input_width_;
+    contents.InputHeight = input_height_;
     contents.OutputWidth = width;
     contents.OutputHeight = height;
     contents.InputFrameRate.Numerator = fps;
@@ -65,16 +68,19 @@ GpuColorConverter::GpuColorConverter(
             "Create GPU video processor");
 
     RECT region{0, 0, static_cast<LONG>(width_), static_cast<LONG>(height_)};
+    RECT source_region{0, 0, static_cast<LONG>(input_width_),
+                       static_cast<LONG>(input_height_)};
     video_context_->VideoProcessorSetStreamFrameFormat(
         processor_.Get(), 0, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
     video_context_->VideoProcessorSetStreamSourceRect(
-        processor_.Get(), 0, TRUE, &region);
+        processor_.Get(), 0, TRUE, &source_region);
     video_context_->VideoProcessorSetStreamDestRect(
         processor_.Get(), 0, TRUE, &region);
     video_context_->VideoProcessorSetOutputTargetRect(
         processor_.Get(), TRUE, &region);
-    // Production output colorimetry (SDR/HDR) requires source metadata.
-    // This proof uses only SDR synthetic test frames.
+    // BGRA8 capture is SDR-only. Preserve the full source rectangle, including
+    // odd window dimensions, by GPU conversion to the nearest even NV12 size.
+    // HDR tone mapping is not implemented.
 }
 
 Microsoft::WRL::ComPtr<IMFSample> GpuColorConverter::convert(
@@ -86,7 +92,7 @@ Microsoft::WRL::ComPtr<IMFSample> GpuColorConverter::convert(
     D3D11_TEXTURE2D_DESC source_desc{};
     bgra->GetDesc(&source_desc);
     if (source_desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM ||
-        source_desc.Width != width_ || source_desc.Height != height_ ||
+        source_desc.Width != input_width_ || source_desc.Height != input_height_ ||
         source_desc.ArraySize != 1 || source_desc.SampleDesc.Count != 1 ||
         source_desc.Usage != D3D11_USAGE_DEFAULT) {
         throw std::invalid_argument("Incompatible BGRA source texture");

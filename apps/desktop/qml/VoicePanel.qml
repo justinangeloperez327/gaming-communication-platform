@@ -7,6 +7,7 @@ Rectangle {
     required property var voice
     required property var directory
     required property var account
+    signal leaveRequested()
     property bool microphoneConsent: false
     property color panel: "#151e2b"
     property color borderTone: "#293649"
@@ -135,6 +136,7 @@ Rectangle {
                 enabled: root.voice.busy
                 onClicked: {
                     root.microphoneConsent = false
+                    root.leaveRequested()
                     root.voice.leave()
                 }
             }
