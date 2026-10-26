@@ -158,8 +158,10 @@ ZIP coverage, isolated runtime checks and guarded installer upgrades. See the
 
 Older-version wrappers use current executables and altered config/owned-file
 fixtures. They establish Setup policy, payload replacement and preservation, not
-migration from an actual historical release. Preference-file preservation is
-separate from Qt preference interpretation and physical device behavior.
+migration from an actual historical release. A separate checksum-pinned published
+alpha test exercises historical same-version refresh. A test-only helper reads
+preserved preferences through the production Qt class at its real per-user path;
+physical device behavior and owner-profile acceptance remain open.
 
 Complete Qt/transitive and LiveKit FFI/WebRTC/codecs/Microsoft attribution/source
 reconciliation, owner signing, consumer-PC/historical upgrade/interruption tests,

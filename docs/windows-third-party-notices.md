@@ -1,7 +1,7 @@
-# Windows third-party notice baseline
+# Windows third-party source notices
 
 The portable bundle now includes `third-party/README.md`, `catalog.json`, Qt
-baseline license texts and the LiveKit C++/Rust SDK, WebRTC and soxr reference
+license texts, pinned Qt source attribution/copyright material and the LiveKit C++/Rust SDK, WebRTC and soxr reference
 license/notice files at pinned upstream revisions. The catalog pins
 the upstream commits, original UTF-8 bytes, sizes and SHA-256 hashes. Git
 attributes disable line-ending conversion for these files so Windows checkout
@@ -33,7 +33,7 @@ logic, not license completeness or runtime behavior.
   chosen distribution route rather than treating these texts as sufficient.
 
 The packaged catalog deliberately says
-`baseline_only_transitive_attributions_pending`. CI passing means that the
+`expanded_source_notices_build_review_pending`. CI passing means that the
 declared baseline is present and intact; it does not close the attribution,
 clean-PC, signing, physical media or gaming-performance acceptance gates.
 No installer, service deployment or public release is created.
@@ -54,7 +54,16 @@ the exact release ZIP digest. The extra reference texts were checked against the
 upstream Git blobs; a reference does not establish that every described component
 is present in this binary build.
 
-The declared coverage remains `baseline_only_transitive_attributions_pending`.
+`source-catalog.json` maps the retained Qt source metadata and license/copyright
+files to exact module revisions. Conditional/unused components can be present;
+this is a source notice superset, not proof of deployed Qt build configuration.
+The Rust source evidence includes the workspace lockfile, FFI manifest and
+resampler build/header material at the SDK submodule revision. The workspace
+lockfile includes build/example/platform-only crates and is not a Windows FFI SBOM.
+In particular, the resampler build compiles libsoxr statically and its header
+identifies LGPL v2.1; source/relinking review must cover it explicitly.
+
+The declared coverage is `expanded_source_notices_build_review_pending`.
 Reconcile exact module/build features, FFI Rust dependencies, WebRTC/codecs and
 Microsoft material before marking attribution complete. Source delivery and the
 chosen Qt licensing route also remain owner review items. See the

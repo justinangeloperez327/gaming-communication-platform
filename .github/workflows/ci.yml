@@ -161,6 +161,9 @@ jobs:
           $env:PATH = "$env:QT_ROOT_DIR\\bin;$env:PATH"
           ./scripts/package-windows-test.ps1 -BuildDirectory build/desktop/Release -OutputDirectory build/gcp-windows-test -CommitSha "${{ github.event.pull_request.head.sha || github.sha }}"
           ./scripts/verify-windows-test-bundle.ps1 -BundleDirectory build/gcp-windows-test
+      - name: Inspect regular and delayed PE import closure without loading code
+        shell: pwsh
+        run: python scripts/windows_pe_dependencies.py --bundle build/gcp-windows-test --commit "${{ github.event.pull_request.head.sha || github.sha }}" --output build/windows-pe-imports.json
       - name: Test packaged Qt/QML runtime and native LiveKit startup
         shell: pwsh
         run: ./scripts/test-windows-runtime.ps1 -BundleDirectory build/gcp-windows-test
@@ -202,6 +205,8 @@ jobs:
           Expand-Archive -LiteralPath build/gcp-private-windows-x64.zip -DestinationPath $unpacked
           ./scripts/verify-windows-test-bundle.ps1 -BundleDirectory $unpacked
           ./scripts/verify-windows-distribution-inventory.ps1 -BundleDirectory $unpacked -ExpectedCommit "${{ github.event.pull_request.head.sha || github.sha }}"
+          python scripts/windows_pe_dependencies.py --bundle $unpacked --commit "${{ github.event.pull_request.head.sha || github.sha }}" --output build/windows-pe-imports-extracted.json
+          if ($LASTEXITCODE -ne 0) { throw 'Extracted PE import inspection failed' }
           ./scripts/test-windows-runtime.ps1 -BundleDirectory $unpacked
           $zipSha = (Get-FileHash -LiteralPath build/gcp-private-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
           $zipSha | Set-Content -LiteralPath build/gcp-private-windows-x64.sha256 -Encoding ascii
@@ -222,12 +227,20 @@ jobs:
       - name: Build older-version upgrade policy fixtures (never release assets)
         shell: pwsh
         run: ./scripts/build-windows-upgrade-fixtures.ps1 -BundleDirectory build/gcp-windows-test -OutputDirectory build/installer-policy-fixtures
+      - name: Download the checksum-pinned published alpha for historical refresh testing
+        shell: pwsh
+        run: |
+          $previous = Get-Content packaging/windows/previous-alpha.json -Raw | ConvertFrom-Json
+          New-Item -ItemType Directory -Path build/historical-alpha | Out-Null
+          $path = Join-Path (Resolve-Path build/historical-alpha).Path 'published-alpha-setup.exe'
+          Invoke-WebRequest -Uri $previous.installer_url -OutFile $path
+          if ((Get-Item -LiteralPath $path).Length -ne $previous.installer_bytes -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $previous.installer_sha256) { throw 'Historical installer bytes differ from pin' }
       - name: Exercise installed application, guarded upgrades and uninstall
         shell: pwsh
         run: |
           $installer = @(Get-ChildItem -LiteralPath build/installer -Filter '*-setup.exe')
           if ($installer.Count -ne 1) { throw 'Expected exactly one installer' }
-          ./scripts/test-windows-installer.ps1 -Installer $installer[0].FullName -BundleDirectory build/gcp-windows-test -FixtureDirectory build/installer-policy-fixtures -CommitSha "${{ github.event.pull_request.head.sha || github.sha }}" -OutputFile build/windows-installer-acceptance.json
+          ./scripts/test-windows-installer.ps1 -Installer $installer[0].FullName -BundleDirectory build/gcp-windows-test -FixtureDirectory build/installer-policy-fixtures -SettingsProbe build/desktop/Release/gcp-installed-preferences-check.exe -PreviousInstaller build/historical-alpha/published-alpha-setup.exe -CommitSha "${{ github.event.pull_request.head.sha || github.sha }}" -OutputFile build/windows-installer-acceptance.json
       - name: Upload distribution inventory and installer policy evidence
         uses: actions/upload-artifact@v6
         with:
@@ -235,6 +248,8 @@ jobs:
           path: |
             build/gcp-windows-test/DISTRIBUTION-INVENTORY.json
             build/windows-installer-acceptance.json
+            build/windows-pe-imports.json
+            build/windows-pe-imports-extracted.json
           if-no-files-found: error
           retention-days: 7
       - name: Upload verified preview installer

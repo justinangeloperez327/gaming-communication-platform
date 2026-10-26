@@ -42,7 +42,7 @@ Group 11’s [desktop gaming measurement guide](docs/desktop-gaming-qualificatio
 provides the owner-run capture commands, empty manifest, numerical gates and
 physical qualification boundaries. No actual gameplay result is included.
 
-The ZIP includes a [versioned notice baseline](docs/windows-third-party-notices.md); complete transitive attribution review remains pending.
+The ZIP includes [pinned source notices and build evidence](docs/windows-third-party-notices.md); complete build-specific attribution and source-delivery review remain pending.
 
 See the [current stabilization audit](docs/stabilization-status.md) for completed fixes, verified functionality, CI evidence and remaining installer blockers. The [15 October audit](docs/stabilization-audit.md) and older numbered group documents are historical; use this README and current subsystem guides for present capability boundaries.
 

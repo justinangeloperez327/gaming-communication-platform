@@ -11,22 +11,28 @@ release, certificate or installer technology is introduced.
 | --- | --- |
 | Executable provenance | Every deployed EXE/DLL has an AMD64 PE header and a hash matching a known build input: a GCP executable, the pinned LiveKit release archive, the selected VS x64 CRT, or the installed Qt SDK. Unknown or changed inputs fail staging. This does not authenticate a manually supplied Qt installation. |
 | Build inventory | `DISTRIBUTION-INVENTORY.json` binds the source commit, executable hashes/versions/origins, pinned SDK archive and available upstream evidence. All product-acceptance flags remain false. |
-| Attribution material | The pinned baseline additionally contains the exact Rust SDK license, WebRTC notice and soxr license at the C++ SDK's Rust submodule revision. Staging collects license/notice files from the pinned SDK archive and available Qt `sbom`/`licenses` directories. These references do not prove which transitive code was compiled or complete licensing obligations. |
+| Attribution material | The pinned catalog retains original Qt 6.8.3 source attribution metadata, copyright/license material and conditional-component records, plus exact Rust SDK/WebRTC/libsoxr source evidence. Staging also collects available Qt SBOMs/licenses and pinned SDK archive notices. This is a source notice superset, not a resolved binary SBOM or complete source/relinking delivery. |
+| PE imports | A bounded reader inspects every executable's regular and delayed imports without loading code, resolving them to packaged files or an explicit Windows system/API-set policy. Unknown DLLs fail acceptance. This does not establish every dynamically loaded module or consumer-PC compatibility. |
 | Portable ZIP | All manifest files, including hidden files, are archived and checked after extraction. Directory links, changed files, ambiguous paths and missing notice material fail verification. |
 | Runtime isolation | The staged, extracted and installed Qt/QML application and native voice/screen self-tests run with developer PATH, Qt plugin and QML overrides cleared. A hosted developer runner remains different from a clean consumer PC. |
 | Signature inventory | Authenticode status, signature type, publisher certificate thumbprint and timestamp certificate are observed again during verification. Editing JSON to say `Valid` cannot pass. |
-| Installer policy | Fresh current install, an older-version fixture upgrade, repair, shortcut/payload checks and uninstall are exercised. Downgrades, removed previously owned files, relocation and corrupt/unsafe old manifests are rejected before changing the installed payload. |
-| User data | A known user-file fixture and a non-secret preference-file fixture retain identical bytes across upgrade, rejection and uninstall. The startup smoke intentionally does not read preferences. Actual owner preference/device behavior is a separate check. |
+| Installer policy | Fresh install, controlled older-version upgrade, pinned published-alpha same-version refresh, missing/corrupt-file repair, shortcuts and uninstall/reinstall are exercised. Downgrades, removed previously owned files, relocation and corrupt/unsafe manifests are rejected before changing the installed payload. |
+| User data | A user-file fixture and non-secret audio/server preference fixture retain identical bytes through upgrade, rejection and uninstall. A test-only helper reads the real per-user path through the production DesktopSettings class without GUI/network/media initialization. Actual devices and owner-profile behavior remain separate checks. |
 
 The older installers use versions `0.0.0-qualification-fixture` and
 `0.0.1-qualification-fixture`, wrap the **current real executables**, and change
 an existing config; one also owns an obsolete text file. They are not historical
 GCP releases. Their tests verify Setup policy, replacement and rejection, not a
 migration from the previously published alpha. They are not uploaded as downloads.
+The separate historical refresh downloads the actual published alpha using the
+size and SHA-256 in `packaging/windows/previous-alpha.json`, verifies its installed
+manifest, and refreshes it with the current build. Since the release label remains
+unchanged, this proves a historical **same-version refresh**, not historical
+cross-version migration. The old published assets are left unchanged.
 
 ## Build and test
 
-Build-time packaging uses PowerShell 7, the pinned Qt/LiveKit SDKs, VS 2022 x64
+Build-time checks use PowerShell 7, Python 3.12+, the pinned Qt/LiveKit SDKs, VS 2022 x64
 redistributables and Inno Setup 6. A friend running the resulting app needs none
 of these build tools. The shared host still needs the separately configured
 [server stack](server-stack.md).
@@ -40,7 +46,11 @@ $commit = git rev-parse HEAD
 ./scripts/package-private-windows-zip.ps1 -BundleDirectory build/gcp-windows-test -OutputZip build/gcp-private-windows-x64.zip
 ./scripts/package-windows-installer.ps1 -BundleDirectory build/gcp-windows-test -OutputDirectory build/installer
 ./scripts/build-windows-upgrade-fixtures.ps1 -BundleDirectory build/gcp-windows-test -OutputDirectory build/installer-policy-fixtures
-./scripts/test-windows-installer.ps1 -Installer build/installer/GCP-0.1.0-alpha.1-windows-x64-setup.exe -BundleDirectory build/gcp-windows-test -FixtureDirectory build/installer-policy-fixtures -CommitSha $commit -OutputFile build/windows-installer-acceptance.json
+$previous = Get-Content packaging/windows/previous-alpha.json -Raw | ConvertFrom-Json
+Invoke-WebRequest -Uri $previous.installer_url -OutFile build/published-alpha-setup.exe
+# The acceptance script checks the pinned historical size/hash before execution.
+./scripts/test-windows-installer.ps1 -Installer build/installer/GCP-0.1.0-alpha.1-windows-x64-setup.exe -BundleDirectory build/gcp-windows-test -FixtureDirectory build/installer-policy-fixtures -SettingsProbe build/desktop/Release/gcp-installed-preferences-check.exe -PreviousInstaller build/published-alpha-setup.exe -CommitSha $commit -OutputFile build/windows-installer-acceptance.json
+python scripts/windows_pe_dependencies.py --bundle build/gcp-windows-test --commit $commit --output build/windows-pe-imports.json
 ```
 
 The installer test changes the current user's actual uninstall registration and
@@ -56,7 +66,8 @@ Qt is deployed without patching DLL bytes; `qt.conf` supplies relocation. Only
 the explicitly inventoried app-local CRT is included, not a global redist setup.
 
 CI uploads `gcp-windows-distribution-acceptance` containing the build inventory
-and successful installer-policy record. That record is written only after the
+and successful installer-policy record, plus staged/extracted PE import reports.
+That record is written only after the
 checks and cleanup finish. The normal portable ZIP, unsigned installer and
 signature inventory remain separate artifacts from the same run and source head.
 The published `v0.1.0-alpha.1` is an older build; it is not updated by this work.
@@ -75,7 +86,8 @@ For a refused upgrade or intentional rollback, explicitly uninstall the old
 version, retain a backup of preferences, then install the chosen verified build.
 Uninstall removes its own registered files and shortcuts; preferences and
 unrelated files remain. Automatic rollback, interrupted-install recovery and
-migration from the actual published alpha are not qualified by the fixture test.
+historical cross-version migration are not qualified. The separately pinned
+historical same-version refresh has its own evidence field.
 Never turn a failed or missing test into a successful acceptance record.
 
 ## Owner signing
@@ -114,6 +126,9 @@ nor approves vendor DLL licensing, SmartScreen reputation, physical media or
 product acceptance. Keep refreshed checksums, observations and source identity
 with the actual files shared. Rebuild on app-local CRT security updates; no
 automatic updater is implemented.
+The current verifier covers the three apps and Setup. It does not qualify the
+generated uninstaller's signing; configuring Inno's signed-uninstaller support
+and checking that installed file remain part of a future owner signing run.
 
 ## Private test handoff and remaining gates
 
@@ -131,6 +146,9 @@ automatic updater is implemented.
 4. Reconcile exact Qt/transitive, LiveKit FFI/WebRTC/codecs and Microsoft payload
    attributions, upstream source/build material and the chosen Qt licensing route.
    Available SBOMs/notices and file origins are evidence inputs, not approval.
+   The pinned Rust resampler build compiles libsoxr statically; its source header
+   identifies LGPL v2.1. Include that component's corresponding-source/relinking
+   review explicitly instead of relying on the SDK's top-level Apache notice.
 5. Test actual historical-version upgrade/uninstall/reinstall, settings recovery,
    interrupted installation, expected signing identity and consumer-PC outcomes.
 

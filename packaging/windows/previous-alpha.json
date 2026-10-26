@@ -1,0 +1,9 @@
+{
+  "tag": "v0.1.0-alpha.1",
+  "source_commit": "753a28358eaacbc1d8c63198b5fab2221fe4603d",
+  "installer_url": "https://github.com/justinangeloperez327/gaming-communication-platform/releases/download/v0.1.0-alpha.1/GCP-0.1.0-alpha.1-windows-x64-setup.exe",
+  "installer_sha256": "04d27a4009959df5f4e107e1b1c6251d734fd68a969d3b77a1d1936cee4c0b8d",
+  "installer_bytes": 31873003,
+  "manifest_sha256": "aad0205dc68d32880952da21933fe69ec2db4a8dfc9f4de985daf355af435d1e",
+  "portable_sha256": "5bc3b54df220b071c315b00ed07cfac581c2323b7c0fe042aa2a44aa80385387"
+}

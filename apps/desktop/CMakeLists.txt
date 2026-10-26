@@ -183,6 +183,9 @@ if(BUILD_TESTING)
 endif()
 
 if(BUILD_TESTING)
+    qt_add_executable(gcp-installed-preferences-check
+        src/installed_preferences_check.cpp src/DesktopSettings.cpp src/DesktopSettings.h)
+    target_link_libraries(gcp-installed-preferences-check PRIVATE Qt6::Core Qt6::Network)
     qt_add_executable(gcp-desktop-settings-tests
         src/settings_tests.cpp src/DesktopSettings.cpp src/DesktopSettings.h
         src/ServerProbe.cpp src/ServerProbe.h src/AccountSession.cpp src/AccountSession.h

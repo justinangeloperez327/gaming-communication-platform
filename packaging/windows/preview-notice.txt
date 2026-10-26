@@ -16,3 +16,5 @@ select a channel and explicitly grant the relevant microphone/share/watch consen
 Close GCP and both native processes before replacing a version. Downgrades and
 upgrades that remove old payload files require uninstalling the old build first;
 preferences and unrelated user files are preserved.
+
+Saved audio choices and an optional server address never restore login or media consent.
