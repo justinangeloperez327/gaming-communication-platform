@@ -1,10 +1,11 @@
-# Current stabilization audit — Group 9
+# Current stabilization audit — Group 10
 
 GCP remains an experimental private Windows communication application. Groups
 1–5 are merged; [Group 6 / #84](https://github.com/justinangeloperez327/gaming-communication-platform/pull/84),
 [Group 7 / #85](https://github.com/justinangeloperez327/gaming-communication-platform/pull/85),
-[Group 8 / #86](https://github.com/justinangeloperez327/gaming-communication-platform/pull/86)
-and [Group 9 / #87](https://github.com/justinangeloperez327/gaming-communication-platform/pull/87)
+[Group 8 / #86](https://github.com/justinangeloperez327/gaming-communication-platform/pull/86),
+[Group 9 / #87](https://github.com/justinangeloperez327/gaming-communication-platform/pull/87)
+and [Group 10 / #88](https://github.com/justinangeloperez327/gaming-communication-platform/pull/88)
 form the current stack. Merge prerequisites before their dependent PRs. This
 work merges none of them. Groups 8/9 implement the source picker/publisher and
 explicit desktop viewer; actual physical media acceptance remains pending. The existing unsigned alpha
@@ -27,11 +28,12 @@ new installer implementation is included.
 | Screen publisher | Exact Windows picker item retained in native child, Qt source/channel confirmation, GPU hardware H.264, renewable leases and bounded local stop | PR #86; Qt/QML/HTTP/process policy and real Qt→Rust→PostgreSQL lease acceptance; actual OS/GPU capture and physical quality unverified |
 | Capture lifecycle | Serviced asynchronous encoder output during static input waits, elapsed-time capture timestamps, bounded input/event backlog and synchronized capture teardown | Compiled Windows path; GPU behavior and resource savings still need physical acceptance |
 | Screen viewer | Explicit authenticated discovery/Watch, backend exact-SID subscription, native receive-only process, Qt SceneGraph, credit-bounded frames and terminal interruption/visibility cleanup | PR #87; rendered synthetic pixels with a protocol child, real Rust track authorization and separate real SDK/SFU production receiver core; physical end-to-end remains unverified |
+| Settings/recovery | Atomic bounded audio IDs/PTT preferences, opt-in server origin, explicit missing-device/Default handling, readiness/session checks and safe relogin | PR #88; Windows/Linux file/network/QML and real Qt→Rust readiness/rotation checks; no credential or consent persistence and no physical device verification |
 | Resources | Virtualized/capped text models, bounded requests, frames, queues, HTTP/socket replies and timeouts; two screen leases per login | Explicit limits/regressions; no measured gaming resource reduction or exhaustive leak-free claim |
 | Distribution | Required Qt WebSockets and native voice/screen payloads, ZIP integrity and extracted/installed startup, signing inventory and existing alpha installer lifecycle | Hosted Windows checks; full attribution, owner signing, consumer-PC/version-upgrade qualification pending |
 
 The C++20/Qt, Rust/Axum/PostgreSQL and native LiveKit architecture remains.
-Groups 7–9 add no third-party runtime dependency, SDK update or broker. Group 7's explicit
+Groups 7–10 add no third-party runtime dependency, SDK update or broker. Group 7's explicit
 migration adds screen leases. Separate screen rooms prevent voice subscriptions
 from silently receiving screen tracks; voice JWTs remain microphone-only.
 Group 8 reuses the existing GPU capture/converter/hardware encoder through an
@@ -49,6 +51,7 @@ No software encoder, CPU raw-pixel path, system audio or HDR tone mapping is add
 | Screen authorization | Real PostgreSQL/API signatures, consent/role/access/ownership/expiry/stop tests; real SDK/SFU source rejection, synthetic decode, room isolation and selected publisher removal in a separate execution | Physical OS capture, remote quality and GPU/driver acceptance |
 | Screen publisher | Shipped Qt/QML plus real subprocess and HTTP failure fixtures; real Rust-issued lease create/renew/stop/access removal with a protocol-only native peer | Windows picker permissions/content, actual GPU encoder publishing, physical receiver and real SDK/network interruptions |
 | Windows distribution | Hosted staged/extracted/installed runtime and dependency-integrity checks | Consumer Windows PC, upgrades, complete transitive licensing/source obligations and owner publisher signing |
+| Desktop recovery | Real settings files, bounded Qt readiness/probe faults, missing-device/process fixtures and real Rust session rotation | Actual consumer-profile persistence, USB/Bluetooth/privacy permissions and network failure acceptance |
 | Performance | Telemetry/export tools and fixture validation | Matched actual gaming CPU/GPU/RAM/frame-time measurements; no measured budgets yet |
 
 ## Security and consent boundaries
@@ -90,7 +93,7 @@ a baseline, not complete attribution. No stable-distribution approval is implied
 
 ## Checks and evidence
 
-The [PR #87 checks](https://github.com/justinangeloperez327/gaming-communication-platform/pull/87/checks)
+The [PR #88 checks](https://github.com/justinangeloperez327/gaming-communication-platform/pull/88/checks)
 record the exact tested head and each required result. The PR description is the
 checked-head audit record, including run links, counts and any failures fixed;
 this maintained guide records capability and acceptance boundaries. The editing host has no
@@ -124,8 +127,18 @@ navigation evidence, not runtime proof.
 
 An alpha installer already exists from the owner's earlier request. Group 8
 retains its lifecycle checks and updates the shared payload with the screen
-process. A stable installer still needs physical qualification of both publisher/viewer, everyday
-settings/recovery, deployed physical two-PC media acceptance and measured gaming
-qualification. It also needs complete dependency attribution, owner code signing,
+process. A stable installer still needs consumer-PC settings/recovery checks,
+physical publisher/viewer and deployed two-PC media acceptance, and measured
+gaming qualification. It also needs complete dependency attribution, owner code signing,
 clean consumer-PC startup and version-upgrade evidence. Neither another release
 nor a deployment is included in this group. See the [completion roadmap](completion-roadmap.md).
+
+
+Group 10’s [settings/recovery guide](desktop-settings-recovery.md) records the
+non-secret preference schema, optional address storage and explicit device
+fallback policy. Missing IDs are retained and block affected joins, never
+silently replaced. Recurring idle scans are removed; returning devices do not
+rejoin media. Manual session checks rotate once and fail closed on uncertain
+replies; they add no password-reset/email recovery or persistent login.
+The next roadmap stage is Group 11 actual gaming qualification, followed by
+Group 12 signing/attribution/consumer-PC distribution qualification.

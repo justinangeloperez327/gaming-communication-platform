@@ -1,4 +1,5 @@
 #include "AccountSession.h"
+#include "ServerProbe.h"
 #include "ChannelDirectory.h"
 #include "ChatSession.h"
 #include "FriendsDirectory.h"
@@ -58,6 +59,8 @@ int main(int argc, char **argv) {
         const auto origin = qEnvironmentVariable("GCP_CHAT_ORIGIN");
         const auto password = qEnvironmentVariable("GCP_CHAT_PASSWORD");
         require(!origin.isEmpty() && !password.isEmpty(), "disposable acceptance environment required");
+        ServerProbe probe; probe.check(origin);
+        require(waitFor([&] { return !probe.busy(); }) && probe.result() == "ready", "actual Rust/PostgreSQL readiness through production Qt probe");
         AccountSession owner, friendAccount;
         ChannelDirectory ownerRooms(&owner), friendRooms(&friendAccount);
         FriendsDirectory ownerFriends(&owner), peerFriends(&friendAccount);
@@ -66,6 +69,9 @@ int main(int argc, char **argv) {
         owner.signIn(origin, "chat-owner@example.test", password);
         require(waitFor([&]() { return owner.signedIn() && !owner.busy() && !ownerRooms.busy() &&
             !owner.invitationBusy() && !owner.invitationStatus().isEmpty(); }) && owner.serverOwner(), "real owner login and initial invitation list");
+        const auto initialAccess = owner.accessToken(); owner.refreshSession();
+        require(waitFor([&] { return !owner.busy(); }) && owner.signedIn() && owner.accessToken() != initialAccess,
+                "explicit desktop session check rotates real Rust credentials without changing principal");
         owner.inviteFriend("chat-friend@example.test");
         require(waitFor([&]() { return !owner.invitationBusy(); }) && !owner.invitationCode().isEmpty(), "owner account invitation");
         friendAccount.createAccount(origin, "chat_friend", "Chat Friend", "chat-friend@example.test", password, owner.invitationCode());

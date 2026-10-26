@@ -1,5 +1,7 @@
 #pragma once
 #include <QObject>
+#include <QPointer>
+class DesktopSettings;
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QTimer>
@@ -12,6 +14,7 @@ class AccountSession final : public QObject {
     Q_PROPERTY(bool signedIn READ signedIn NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
+    Q_PROPERTY(bool reauthenticationRequired READ reauthenticationRequired NOTIFY changed)
     Q_PROPERTY(QString displayName READ displayName NOTIFY changed)
     Q_PROPERTY(QString userId READ userId NOTIFY changed)
     Q_PROPERTY(QString handle READ handle NOTIFY changed)
@@ -22,8 +25,10 @@ class AccountSession final : public QObject {
     Q_PROPERTY(QString invitationEmail READ invitationEmail NOTIFY changed)
     Q_PROPERTY(QVariantList invitations READ invitations NOTIFY changed)
 public:
-    explicit AccountSession(QObject *parent = nullptr);
+    explicit AccountSession(QObject *parent = nullptr, DesktopSettings *preferences = nullptr);
     ~AccountSession() override;
+    bool reauthenticationRequired() const { return reauthenticationRequired_; }
+    Q_INVOKABLE void refreshSession();
     bool signedIn() const { return !access_.isEmpty(); }
     bool busy() const { return pending_ != nullptr; }
     QString status() const { return status_; }
@@ -58,6 +63,8 @@ private:
     void sendAuth(const QString &path, const QByteArray &payload, AuthOperation operation);
     void sendInvitation(InvitationOperation operation, const QByteArray &payload = {}, const QString &targetId = {});
     bool applyResponse(const QByteArray &bytes, bool isRefresh);
+    QPointer<DesktopSettings> preferences_;
+    bool reauthenticationRequired_ = false;
     QNetworkAccessManager network_;
     QNetworkReply *pending_ = nullptr;
     QNetworkReply *invitationPending_ = nullptr;

@@ -170,11 +170,13 @@ ApplicationWindow {
                         spacing: 1
                         Text {
                             text: accountSession.signedIn ? accountSession.displayName : "Signed out"
+                            textFormat: Text.PlainText
                             color: root.textTone
                             font.pixelSize: 12
                         }
                         Text {
                             text: accountSession.status
+                            textFormat: Text.PlainText
                             color: root.mutedTone
                             font.pixelSize: 11
                         }
@@ -252,8 +254,17 @@ ApplicationWindow {
                     AccountPanel {
                         Layout.fillWidth: true
                         account: accountSession
+                        preferences: desktopSettings
+                        probe: serverProbe
                         textTone: root.textTone
                         mutedTone: root.mutedTone
+                    }
+                    SettingsPanel {
+                        Layout.fillWidth: true
+                        preferences: desktopSettings
+                        voice: voiceSession
+                        account: accountSession
+                        directory: channelDirectory
                     }
                     FriendsPanel {
                         Layout.fillWidth: true

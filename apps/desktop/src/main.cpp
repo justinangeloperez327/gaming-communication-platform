@@ -1,4 +1,6 @@
 #include "VoiceSession.h"
+#include "DesktopSettings.h"
+#include "ServerProbe.h"
 #include "ScreenSession.h"
 #include "ScreenViewer.h"
 #include "ScreenVideoItem.h"
@@ -41,9 +43,11 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName(QStringLiteral("Gaming Communication Platform"));
     QCoreApplication::setOrganizationName(QStringLiteral("GCP"));
 
-    AccountSession account;
+    DesktopSettings preferences(smokeQml ? QString{} : DesktopSettings::defaultFileName());
+    ServerProbe probe;
+    AccountSession account(nullptr, &preferences);
     ChannelDirectory directory(&account);
-    VoiceSession voice(&account, &directory);
+    VoiceSession voice(&account, &directory, nullptr, {}, &preferences);
     ScreenSession screen(&account, &directory);
     ScreenViewer viewer(&account, &directory);
     qmlRegisterType<ScreenVideoItem>("Gcp.Media", 1, 0, "ScreenVideo");
@@ -51,6 +55,8 @@ int main(int argc, char *argv[])
     ChatSession chat(&account, &directory);
     ChatSession directChat(&account, &friends);
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("desktopSettings"), &preferences);
+    engine.rootContext()->setContextProperty(QStringLiteral("serverProbe"), &probe);
     engine.rootContext()->setContextProperty(QStringLiteral("voiceSession"), &voice);
     engine.rootContext()->setContextProperty(QStringLiteral("screenSession"), &screen);
     engine.rootContext()->setContextProperty(QStringLiteral("screenViewer"), &viewer);
