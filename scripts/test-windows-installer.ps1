@@ -69,7 +69,7 @@ function Check-Payload([string]$ExpectedBundle, [string]$Version) {
     if ((Get-ItemProperty -LiteralPath $registry).DisplayVersion -cne $Version) { throw 'Installed version registration mismatch' }
     if ((Get-FileHash -LiteralPath (Join-Path $appDir 'SHA256-MANIFEST.json') -Algorithm SHA256).Hash -cne
         (Get-FileHash -LiteralPath (Join-Path $ExpectedBundle 'SHA256-MANIFEST.json') -Algorithm SHA256).Hash) { throw 'Installed manifest does not match the selected installer payload' }
-    if ((Get-ItemProperty -LiteralPath $registry).GCPPayloadManifestSHA256 -ine (Get-FileHash -LiteralPath (Join-Path $appDir 'SHA256-MANIFEST.json') -Algorithm SHA256).Hash) { throw 'Installed manifest fingerprint registration mismatch' }
+    if ((Get-Item -LiteralPath $registry).GetValue('GCPPayloadManifestSHA256', $null) -ine (Get-FileHash -LiteralPath (Join-Path $appDir 'SHA256-MANIFEST.json') -Algorithm SHA256).Hash) { throw 'Installed manifest fingerprint registration mismatch' }
     $script:snapshotCount++
     $snapshot = Join-Path $testRoot "snapshot-$script:snapshotCount"
     New-Item -ItemType Directory -Path $snapshot | Out-Null
@@ -103,15 +103,24 @@ function Installed-State {
 function Reject-Unchanged([string]$Program, [string]$Directory = $appDir) {
     $state = Installed-State
     $version = (Get-ItemProperty -LiteralPath $registry).DisplayVersion
-    $fingerprint = (Get-ItemProperty -LiteralPath $registry).GCPPayloadManifestSHA256
+    $fingerprint = (Get-Item -LiteralPath $registry).GetValue('GCPPayloadManifestSHA256', $null)
     Install $Program $true $Directory
     if ((Installed-State) -cne $state -or (Get-ItemProperty -LiteralPath $registry).DisplayVersion -cne $version -or
-        (Get-ItemProperty -LiteralPath $registry).GCPPayloadManifestSHA256 -cne $fingerprint) { throw 'Rejected upgrade changed installed state' }
+        (Get-Item -LiteralPath $registry).GetValue('GCPPayloadManifestSHA256', $null) -cne $fingerprint) { throw 'Rejected upgrade changed installed state' }
     Check-Preservation
 }
 function Uninstall {
     $payload = @(Get-Content -LiteralPath (Join-Path $appDir 'SHA256-MANIFEST.json') -Raw | ConvertFrom-Json)
     Invoke-CheckedProcess (Join-Path $appDir 'unins000.exe') @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART')
+    # Inno's detached cleanup can outlive the process we waited for. Do not
+    # reinstall into this directory until its old uninstaller has disappeared:
+    # otherwise that cleanup can delete the newly installed unins000.exe.
+    $cleanupDeadline = [DateTime]::UtcNow.AddSeconds(20)
+    while ((Test-Path -LiteralPath (Join-Path $appDir 'unins000.exe')) -or
+           (Test-Path -LiteralPath (Join-Path $appDir 'unins000.dat'))) {
+        if ([DateTime]::UtcNow -ge $cleanupDeadline) { throw 'Uninstaller cleanup did not finish before reinstall' }
+        Start-Sleep -Milliseconds 100
+    }
     foreach ($name in @($payload.path) + @('SHA256-MANIFEST.json')) { if (Test-Path -LiteralPath (Join-Path $appDir $name)) { throw "Payload remains after uninstall: $name" } }
     if ((Test-Path -LiteralPath $registry) -or (Test-Path -LiteralPath $shortcut)) { throw 'Registration or shortcut remains after uninstall' }
     Check-Preservation
@@ -145,7 +154,7 @@ try {
     Check-Payload $BundleDirectory $label
     Reject-Unchanged $compatible
     Reject-Unchanged $installerPath (Join-Path $testRoot 'Different Location')
-    $savedFingerprint = (Get-ItemProperty -LiteralPath $registry).GCPPayloadManifestSHA256
+    $savedFingerprint = (Get-Item -LiteralPath $registry).GetValue('GCPPayloadManifestSHA256', $null)
     try {
         Remove-ItemProperty -LiteralPath $registry -Name GCPPayloadManifestSHA256
         Reject-Unchanged $installerPath
