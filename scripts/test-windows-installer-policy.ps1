@@ -73,6 +73,15 @@ function Reject-Unchanged([string]$Installer) {
 }
 function Uninstall {
     Invoke-SetupProcess (Join-Path $app 'unins000.exe') @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART')
+    # Inno's detached cleanup can outlive the process we waited for. Do not
+    # reinstall into this directory until its old uninstaller has disappeared:
+    # otherwise that cleanup can delete the newly installed unins000.exe.
+    $cleanupDeadline = [DateTime]::UtcNow.AddSeconds(20)
+    while ((Test-Path -LiteralPath (Join-Path $app 'unins000.exe')) -or
+           (Test-Path -LiteralPath (Join-Path $app 'unins000.dat'))) {
+        if ([DateTime]::UtcNow -ge $cleanupDeadline) { throw 'Uninstaller cleanup did not finish before reinstall' }
+        Start-Sleep -Milliseconds 100
+    }
     if ((Test-Path -LiteralPath $registry) -or (Test-Path -LiteralPath (Join-Path $app 'gcp-desktop.exe')) -or
         (Test-Path -LiteralPath (Join-Path $app 'SHA256-MANIFEST.json'))) { throw 'Uninstall did not remove registration/payload' }
     if ([IO.File]::ReadAllText($userFile) -cne 'preserve-user-data') { throw 'Uninstall changed user data' }
