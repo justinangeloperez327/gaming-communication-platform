@@ -65,6 +65,14 @@ account. Build/archive outputs also require new directories or filenames.
 The `-FixtureVersion` option accepts only the two reserved test versions; leave
 it unset for the actual alpha package.
 
+`scripts/test-windows-installer-policy.ps1` first compiles this same Setup script
+around small synthetic files on a disposable Windows runner. It checks post-install
+fingerprint registration/readback, repair, upgrade/rejection, preservation and
+uninstall before the full application build. The fingerprint is written after
+Setup has created its own uninstall record; an early `[Registry]` write can be
+overwritten by that registration. These fast fixtures never execute an app or
+qualify the runtime, media, signing or consumer hardware.
+
 For a custom build location, pass `-LiveKitArchive` pointing at the exact pinned
 SDK ZIP. Its SHA-256 must match both the notice catalog and the CMake SDK pin.
 Qt is deployed without patching DLL bytes; `qt.conf` supplies relocation. Only

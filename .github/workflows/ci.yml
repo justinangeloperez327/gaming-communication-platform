@@ -130,6 +130,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+      - name: Catch installer fingerprint and upgrade regressions before the application build
+        timeout-minutes: 5
+        shell: pwsh
+        run: ./scripts/test-windows-installer-policy.ps1
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:

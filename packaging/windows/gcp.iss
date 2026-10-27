@@ -57,13 +57,29 @@ Source: "{#BundleDir}\GCP-PAYLOAD-PATHS.txt"; Flags: dontcopy
 Name: "{group}\Gaming Communication Platform Alpha"; Filename: "{app}\gcp-desktop.exe"; WorkingDir: "{app}"
 Name: "{autodesktop}\Gaming Communication Platform Alpha"; Filename: "{app}\gcp-desktop.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
-[Registry]
-; Bind the installed manifest to the verified input compiled into this Setup.
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\{{F6CA3831-848C-4148-831E-804B1F6DC06B}_is1"; ValueType: string; ValueName: "GCPPayloadManifestSHA256"; ValueData: "{#PayloadManifestSha256}"; Flags: uninsdeletevalue
-
 [Code]
 const
   UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{F6CA3831-848C-4148-831E-804B1F6DC06B}_is1';
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var InstalledHash, RecordedHash, InstalledLabel: String;
+begin
+  if CurStep <> ssPostInstall then Exit;
+  // Setup writes its own uninstall record after processing [Registry]. Store
+  // custom metadata only after that registration has finished, then read it back.
+  if not RegQueryStringValue(HKCU, UninstallKey, 'DisplayVersion', InstalledLabel) or
+     (CompareText(InstalledLabel, '{#ReleaseVersion}') <> 0) then
+    RaiseException('Setup did not register the expected installed version.');
+  InstalledHash := GetSHA256OfFile(ExpandConstant('{app}\SHA256-MANIFEST.json'));
+  if CompareText(InstalledHash, '{#PayloadManifestSha256}') <> 0 then
+    RaiseException('Installed payload manifest differs from the compiled installer.');
+  if not RegWriteStringValue(HKCU, UninstallKey, 'GCPPayloadManifestSHA256', '{#PayloadManifestSha256}') then
+    RaiseException('Cannot record the installed payload manifest fingerprint.');
+  if not RegQueryStringValue(HKCU, UninstallKey, 'GCPPayloadManifestSHA256', RecordedHash) or
+     (CompareText(RecordedHash, '{#PayloadManifestSha256}') <> 0) then
+    RaiseException('Installed payload manifest fingerprint could not be verified.');
+  Log('GCP payload manifest fingerprint recorded after Setup registration.');
+end;
 
 function NumericRelease(Value: String; var Version: Int64): Boolean;
 var

@@ -30,3 +30,7 @@ jobs:
           if ($allErrors.Count) { $allErrors | Format-List; throw 'PowerShell parsing failed' }
           ./scripts/test-windows-test-bundle.ps1
           ./scripts/test-windows-distribution.ps1
+      - name: Actual installer fingerprint and upgrade policy (synthetic payload)
+        timeout-minutes: 5
+        shell: pwsh
+        run: ./scripts/test-windows-installer-policy.ps1
