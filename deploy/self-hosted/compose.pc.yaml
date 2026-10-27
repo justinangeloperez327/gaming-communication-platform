@@ -1,0 +1,22 @@
+# Local PC sample only. All host-published ports are restricted to IPv4 loopback.
+# Services share PostgreSQL's network namespace, preserving internal loopback
+# control URLs without relying on Docker Desktop's optional host networking.
+services:
+  postgres:
+    network_mode: bridge
+    ports:
+      - "127.0.0.1:${GCP_API_PORT}:${GCP_API_PORT}/tcp"
+      - "127.0.0.1:${GCP_SIGNAL_PORT}:${GCP_SIGNAL_PORT}/tcp"
+      - "127.0.0.1:${GCP_MEDIA_TCP_PORT}:${GCP_MEDIA_TCP_PORT}/tcp"
+      - "127.0.0.1:${GCP_UDP_START}-${GCP_UDP_END}:${GCP_UDP_START}-${GCP_UDP_END}/udp"
+  migrate:
+    network_mode: service:postgres
+  livekit:
+    network_mode: service:postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+  api:
+    network_mode: service:postgres
+    environment:
+      GCP_BIND_ADDRESS: "0.0.0.0:${GCP_API_PORT}"
