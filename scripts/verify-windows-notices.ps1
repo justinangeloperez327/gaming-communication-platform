@@ -25,4 +25,4 @@ if (-not (Test-Path -LiteralPath $readme -PathType Leaf) -or
     (Get-FileHash -LiteralPath (Join-Path $source 'README.md') -Algorithm SHA256).Hash) {
     throw 'Missing or changed third-party notice coverage statement'
 }
-Write-Host 'Pinned notice baseline verified; transitive attribution review remains pending.'
+Write-Host 'Pinned source notices verified; build-specific attribution and source-delivery review remain pending.'

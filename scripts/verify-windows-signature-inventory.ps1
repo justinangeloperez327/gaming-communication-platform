@@ -2,12 +2,13 @@
 param([Parameter(Mandatory=$true)][string]$BundleDirectory,
       [Parameter(Mandatory=$true)][string]$InventoryFile)
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'windows-distribution.psm1') -Force
 $root = [IO.Path]::GetFullPath($BundleDirectory)
 & (Join-Path $PSScriptRoot 'verify-windows-test-bundle.ps1') -BundleDirectory $root
 $inventory = Get-Content -LiteralPath $InventoryFile -Raw | ConvertFrom-Json
-if ($inventory.artifact_kind -cne 'unsigned_windows_test_bundle' -or
-    $inventory.production_qualified -cne $false) { throw 'Unexpected inventory qualification' }
-$files = @(Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object { $_.Extension -in @('.exe','.dll') })
+if ($inventory.schema_version -ne 2 -or $inventory.artifact_kind -cne 'unsigned_windows_test_bundle' -or
+    $inventory.production_qualified -isnot [bool] -or $inventory.production_qualified -ne $false) { throw 'Unexpected inventory qualification' }
+$files = @(Get-ChildItem -LiteralPath $root -Recurse -Force -File | Where-Object { $_.Extension -in @('.exe','.dll') })
 $entries = @($inventory.executables)
 if ($entries.Count -ne $files.Count -or [int]$inventory.executable_count -ne $files.Count) {
     throw 'Executable inventory count mismatch'
@@ -28,6 +29,11 @@ foreach ($item in $files) {
     if (-not $byPath.ContainsKey($relative)) { throw "Executable not inventoried: $relative" }
     $hash = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($hash -cne [string]$byPath[$relative].sha256) { throw "Executable digest mismatch: $relative" }
+    # A self-consistent JSON count is not evidence that a signature is valid.
+    $observed = Get-WindowsSigningObservation $item.FullName
+    foreach ($key in $observed.Keys) {
+        if ($byPath[$relative].$key -cne $observed[$key]) { throw "Signature observation mismatch: $relative ($key)" }
+    }
 }
 $unsigned = @($entries | Where-Object { $_.signature_status -ne 'Valid' }).Count
 if ($unsigned -ne [int]$inventory.executables_without_valid_signature) {

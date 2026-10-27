@@ -1,5 +1,10 @@
 # Group 40 — Reproducible gaming + voice benchmark
 
+This is the legacy native voice-only path. Group 11’s [desktop gaming measurement](desktop-gaming-qualification.md)
+adds whole desktop/native process scope, attributed GPU observations and aligned
+frame windows. Use that path for current product qualification; neither path
+authenticates physical media or automatically closes owner acceptance.
+
 Use the existing frame-time CSV exporter and Group 39 native voice JSON telemetry to compare gaming performance while GCP voice is active. The standard-library-only script `scripts/benchmark-gaming-voice.py` requires paired exported frame-time CSVs for an idle/no-voice baseline and GCP voice, plus one native voice diagnostic log per GCP run.
 
 Example (three paired runs; replace filenames with real captures):

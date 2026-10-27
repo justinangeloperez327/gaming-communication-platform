@@ -1,16 +1,25 @@
 # Package the verified unsigned desktop payload used by ZIP and alpha installer.
 param(
     [Parameter(Mandatory=$true)][string]$BuildDirectory,
-    [Parameter(Mandatory=$true)][string]$OutputDirectory
+    [Parameter(Mandatory=$true)][string]$OutputDirectory,
+    [string]$CommitSha,
+    [string]$LiveKitArchive
 )
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'windows-distribution.psm1') -Force
+if (-not $CommitSha) {
+    $CommitSha = & git -C (Join-Path $PSScriptRoot '..') rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Pass the full source CommitSha for an exported source tree' }
+}
+if ($CommitSha -cnotmatch '^[0-9a-f]{40}$') { throw 'Expected full source CommitSha' }
 $build = [IO.Path]::GetFullPath($BuildDirectory)
+if (-not $LiveKitArchive) { $LiveKitArchive = Join-Path (Split-Path $build -Parent) '_downloads/livekit-sdk-windows-x64-1.12.2.zip' }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 if ($output.StartsWith($build + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Output must be outside the build tree'
 }
 if (-not (Test-Path -LiteralPath $build -PathType Container)) { throw "Build directory missing" }
-$required = @('gcp-desktop.exe', 'gcp-livekit-voice.exe', 'livekit.dll', 'livekit_ffi.dll')
+$required = @('gcp-desktop.exe', 'gcp-livekit-voice.exe','gcp-livekit-screen.exe', 'livekit.dll', 'livekit_ffi.dll')
 foreach ($file in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $build $file) -PathType Leaf)) { throw "Missing bundle dependency: $file" }
 }
@@ -25,10 +34,14 @@ if ($Matches[1] -ne $catalog.qt_version) { throw 'Qt deployment version does not
 $sdkConfig = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../cmake/GcpLiveKit.cmake') -Raw
 if ($sdkConfig -notmatch 'set\(GCP_LIVEKIT_VERSION\s+"([^"]+)"\)' -or
     $Matches[1] -ne $catalog.livekit_sdk_version) { throw 'LiveKit SDK version does not match notice baseline' }
+if ($sdkConfig -notmatch 'set\(GCP_LIVEKIT_WINDOWS_X64_SHA256\s+"([0-9a-f]{64})"\)' -or
+    $Matches[1] -cne $catalog.livekit_windows_archive_sha256) { throw 'LiveKit archive pin does not match notice baseline' }
 if (Test-Path -LiteralPath $output) { throw 'Use a new, empty output directory (refusing overwrite)' }
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 foreach ($file in $required) { Copy-Item -LiteralPath (Join-Path $build $file) -Destination $output }
-& $deploy.Source --release --qmldir (Join-Path $PSScriptRoot '..\apps\desktop\qml') (Join-Path $output 'gcp-desktop.exe')
+# qt.conf defines relocation. Keep Qt DLL bytes identical to the installed SDK
+# and use only the explicitly inventoried app-local CRT, not a redist installer.
+& $deploy.Source --release --no-patchqt --no-compiler-runtime --qmldir (Join-Path $PSScriptRoot '..\apps\desktop\qml') (Join-Path $output 'gcp-desktop.exe')
 if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE" }
 # The regular Windows platform plugin is deployed by windeployqt. Our no-display
 # startup check also needs the offscreen plugin, without a developer Qt fallback.
@@ -63,12 +76,7 @@ Copy-Item -LiteralPath $noticeSource -Destination (Join-Path $output 'third-part
 foreach ($file in ($required + @('Qt6WebSockets.dll'))) {
     if (-not (Test-Path -LiteralPath (Join-Path $output $file) -PathType Leaf)) { throw "Bundle missing $file" }
 }
-$manifest = foreach ($item in Get-ChildItem -LiteralPath $output -Recurse -File) {
-    [pscustomobject]@{
-        path = [IO.Path]::GetRelativePath($output, $item.FullName).Replace('\','/')
-        sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-        bytes = $item.Length
-    }
-}
-@($manifest) | Sort-Object path | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'SHA256-MANIFEST.json') -Encoding utf8
+& (Join-Path $PSScriptRoot 'write-windows-distribution-inventory.ps1') -BundleDirectory $output -QtDirectory $qtRoot -CrtDirectory $crt -LiveKitArchive $LiveKitArchive -CommitSha $CommitSha
+Write-WindowsPayloadManifest $output
+& (Join-Path $PSScriptRoot 'verify-windows-distribution-inventory.ps1') -BundleDirectory $output -ExpectedCommit $CommitSha
 Write-Host "Unsigned test bundle prepared in $output. NOT production qualified."

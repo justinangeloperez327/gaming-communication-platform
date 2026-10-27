@@ -11,7 +11,9 @@ def execute(baseline, gcp, voice, column, warmup, limits, output_dir):
         raise ValueError("All conditions require equal, nonempty run counts")
     if len(baseline) < 3:
         raise ValueError("At least three paired runs are required")
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if output_dir.exists():
+        raise ValueError("Choose a new output directory; previous results are not overwritten")
+    output_dir.mkdir(parents=True, exist_ok=False)
     benchmark = output_dir / "benchmark.json"
     qualification = output_dir / "qualification.json"
     base = Path(__file__).resolve().parent

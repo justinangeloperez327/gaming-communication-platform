@@ -1,0 +1,710 @@
+{
+  "schema_version": 1,
+  "coverage": "pinned_source_notice_superset_not_build_complete",
+  "qt_components": [
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/util/gradientgen/qt_attribution.json",
+      "id": "webgradients",
+      "name": "WebGradients",
+      "version": null,
+      "license_expression": "MIT",
+      "usage": "Used in Qt GUI to provide presets for QGradient.",
+      "materials": [
+        "qt-sources/qtbase/util/gradientgen/WEBGRADIENTS_LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/dbus/qt_attribution.json",
+      "id": "libdbus-1-headers",
+      "name": "libdus-1 headers",
+      "version": "dbus-1.13.12",
+      "license_expression": "AFL-2.1 OR GPL-2.0-or-later",
+      "usage": "Qt D-Bus uses constants and typedefs from libdbus-1 headers.",
+      "materials": [
+        "qt-sources/qtbase/src/dbus/LIBDBUS-1-LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/gui/text/qt_attribution.json",
+      "id": "aglfn",
+      "name": "Adobe Glyph List For New Fonts",
+      "version": "1.7",
+      "license_expression": "BSD-3-Clause",
+      "usage": "Used by PDF generator to make it easier for reader applications to resolve  the original contents of rendered text.",
+      "materials": [
+        "qt-sources/qtbase/src/gui/text/AGLFN_LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/gui/vulkan/qt_attribution.json",
+      "id": "vulkan-xml-spec",
+      "name": "Vulkan API Registry",
+      "version": "1.3.223",
+      "license_expression": "Apache-2.0 OR MIT",
+      "usage": "Used to dynamically generate the sources for the QVulkan(Device)Functions classes.",
+      "materials": [
+        "qt-sources/qtbase/src/gui/vulkan/LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/gui/opengl/qt_attribution.json",
+      "id": "opengl-headers",
+      "name": "OpenGL Headers",
+      "version": "Revision 27684",
+      "license_expression": "MIT",
+      "usage": "Used on Windows and Linux in the OpenGL related headers of Qt GUI.",
+      "materials": [
+        "qt-sources/qtbase/src/gui/opengl/KHRONOS_LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/gui/opengl/qt_attribution.json",
+      "id": "opengl-es2-headers",
+      "name": "OpenGL ES 2 Headers",
+      "version": "Revision 27673",
+      "license_expression": "MIT",
+      "usage": "Used on Windows and Linux in the OpenGL related headers of Qt GUI.",
+      "materials": [
+        "qt-sources/qtbase/src/gui/opengl/KHRONOS_LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/gui/rhi/qt_attribution.json",
+      "id": "rhi-miniengine-d3d12-mipmap",
+      "name": "Mipmap generator for D3D12",
+      "version": "0aa79bad78992da0b6a8279ddb9002c1753cb849",
+      "license_expression": "MIT",
+      "usage": "Compute shader for mipmap generation with Direct 3D 12",
+      "materials": [
+        "qt-sources/qtbase/src/gui/rhi/MiniEngine_LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/gui/painting/qt_attribution.json",
+      "id": "grayraster",
+      "name": "Anti-aliasing rasterizer from FreeType 2",
+      "version": null,
+      "license_expression": "FTL OR GPL-2.0-only",
+      "usage": "Used in Qt GUI.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/freetype/LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/gui/painting/qt_attribution.json",
+      "id": "smooth-scaling-algorithm",
+      "name": "Smooth Scaling Algorithm",
+      "version": null,
+      "license_expression": "BSD-2-Clause AND Imlib2",
+      "usage": "Used in Qt Gui (QImage::transformed() functions).",
+      "materials": [
+        "qt-sources/qtbase/src/gui/painting/QIMAGETRANSFORM_LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/gui/painting/qt_attribution.json",
+      "id": "xserverhelper",
+      "name": "X Server helper",
+      "version": null,
+      "license_expression": "X11 AND HPND",
+      "usage": "Used in Qt GUI (QRegion).",
+      "materials": [
+        "qt-sources/qtbase/src/gui/painting/XCONSORTIUM_LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/corelib/text/qt_attribution.json",
+      "id": "unicode-character-database",
+      "name": "Unicode Character Database (UCD)",
+      "version": "34",
+      "license_expression": "Unicode-3.0",
+      "usage": "Qt Core uses data obtained from UCD files for working with characters and strings.",
+      "materials": [
+        "qt-sources/qtbase/src/corelib/text/qunicodetables_p.h"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/corelib/text/qt_attribution.json",
+      "id": "unicode-cldr",
+      "name": "Unicode Common Locale Data Repository (CLDR)",
+      "version": "v46.1",
+      "license_expression": "Unicode-3.0",
+      "usage": "Used in Qt Core (QTimeZone, QLocale).",
+      "materials": [
+        "qt-sources/qtbase/src/corelib/time/qtimezoneprivate_data_p.h",
+        "qt-sources/qtbase/src/corelib/time/qjalalicalendar_data_p.h",
+        "qt-sources/qtbase/util/locale_database/testlocales/localemodel.cpp"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/corelib/kernel/qt_attribution.json",
+      "id": "qeventdispatcher_cf",
+      "name": "QEventDispatcher on macOS",
+      "version": null,
+      "license_expression": "BSD-3-Clause",
+      "usage": "Used in Qt Core on macOS.",
+      "materials": [
+        "qt-sources/qtbase/src/corelib/kernel/QEVENTDISPATCHER_CF_LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/corelib/mimetypes/3rdparty/qt_attribution.json",
+      "id": "tika-mimetypes",
+      "name": "Apache Tika MimeType Definitions",
+      "version": "5101bc7fb090ed7deffe56837d7633c9485a1e5d",
+      "license_expression": "Apache-2.0",
+      "usage": "Qt Core uses a copy of the Apache Tika MimeType Definitions if shared-mime-info isn't installed on the system.",
+      "materials": []
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/siphash/qt_attribution.json",
+      "id": "siphash",
+      "name": "SipHash Algorithm",
+      "version": null,
+      "license_expression": "CC0-1.0",
+      "usage": "Used in Qt Core (QHash)",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/siphash/siphash.cpp"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/sqlite/qt_attribution.json",
+      "id": "sqlite",
+      "name": "SQLite",
+      "version": "3.49.1",
+      "license_expression": "blessing",
+      "usage": "Used in Qt SQL Lite plugin. Configure Qt with -system-sqlite or -no-sqlite to avoid.",
+      "materials": []
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/VulkanMemoryAllocator/qt_attribution.json",
+      "id": "vulkanmemoryallocator",
+      "name": "Vulkan Memory Allocator",
+      "version": "3.0.1",
+      "license_expression": "MIT",
+      "usage": "Memory management for the Vulkan backend of QRhi.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/VulkanMemoryAllocator/LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/zlib/qt_attribution.json",
+      "id": "zlib",
+      "name": "Data Compression Library (zlib)",
+      "version": "1.3.1",
+      "license_expression": "Zlib",
+      "usage": "Optionally used in Qt Core and development tools. Configure with -system-zlib to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/zlib/LICENSE"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/libpsl/qt_attribution.json",
+      "id": "psl-data",
+      "name": "The Public Suffix List",
+      "version": "47264b57765919188b9f4144de8d95cf77e1b6dc, fetched on 2025-01-22",
+      "license_expression": "MPL-2.0",
+      "usage": "Used in Qt Network to avoid setting \"supercookies\" in the cookie jar\nsupported by Qt (by the QNetworkCookieJar class).",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/libpsl/PSL-LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/libpsl/qt_attribution.json",
+      "id": "libpsl",
+      "name": "libpsl - C library to handle the Public Suffix List",
+      "version": "664f3dc85259ec65e30248a61fa1c45b7b0e4c3f",
+      "license_expression": "BSD-3-Clause",
+      "usage": "Used to compress the embedded copy of publicsuffix list and\nto lookup entries in it.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/libpsl/src/LICENSE.chromium"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/pcre2/qt_attribution.json",
+      "id": "pcre2",
+      "name": "PCRE2",
+      "version": "10.45",
+      "license_expression": "LicenseRef-BSD-3-Clause-with-PCRE2-Binary-Like-Packages-Exception",
+      "usage": "Optionally used in Qt Core (QRegularExpression). Configure with -system-pcre or -no-pcre to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/pcre2/LICENCE.md"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/pcre2/qt_attribution.json",
+      "id": "pcre2-sljit",
+      "name": "PCRE2 - Stack-less Just-In-Time Compiler",
+      "version": "10.45",
+      "license_expression": "BSD-2-Clause",
+      "usage": "Optionally used in Qt Core (QRegularExpression). Configure with -system-pcre or -no-pcre to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/pcre2/LICENCE-SLJIT"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/pixman/qt_attribution.json",
+      "id": "pixman",
+      "name": "Pixman",
+      "version": "0.17.12",
+      "license_expression": "MIT",
+      "usage": "Used in Qt GUI on ARM NEON.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/pixman/LICENSE"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/freetype/qt_attribution.json",
+      "id": "freetype",
+      "name": "Freetype 2",
+      "version": "2.13.3",
+      "license_expression": "FTL OR GPL-2.0-only",
+      "usage": "Optionally used in Qt GUI and platform plugins. Configure with -no-freetype, or -system-freetype to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/freetype/LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/freetype/qt_attribution.json",
+      "id": "freetype-zlib",
+      "name": "Freetype 2 - zlib",
+      "version": null,
+      "license_expression": "Zlib",
+      "usage": "Optionally used in Qt GUI and platform plugins. Configure with -no-freetype, or -system-freetype to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/freetype/ZLIB-LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/freetype/qt_attribution.json",
+      "id": "freetype-bdf",
+      "name": "Freetype 2 - Bitmap Distribution Format (BDF) support",
+      "version": null,
+      "license_expression": "MIT",
+      "usage": "Optionally used in Qt GUI and platform plugins. Configure with -no-freetype, or -system-freetype to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/freetype/BDF-LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/freetype/qt_attribution.json",
+      "id": "freetype-pcf",
+      "name": "Freetype 2 - Portable Compiled Format (PCF) support",
+      "version": null,
+      "license_expression": "MIT AND MIT-open-group",
+      "usage": "Optionally used in Qt GUI and platform plugins. Configure with -no-freetype, or -system-freetype to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/freetype/PCF-LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/icc/qt_attribution.json",
+      "id": "icc-srgb-color-profile",
+      "name": "sRGB color profile icc file",
+      "version": null,
+      "license_expression": "LicenseRef-ICC-License",
+      "usage": "Used in Qt Gui (Embedded into PDF/A-1b files generated by QPrinter/QPdfWriter).",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/icc/LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/forkfd/qt_attribution.json",
+      "id": "forkfd",
+      "name": "forkfd",
+      "version": null,
+      "license_expression": "MIT",
+      "usage": "Used on most Unix platforms in Qt Core.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/forkfd/LICENSE"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/tinycbor/qt_attribution.json",
+      "id": "tinycbor",
+      "name": "TinyCBOR",
+      "version": "0.6.1",
+      "license_expression": "MIT",
+      "usage": "Used for QCborStreamReader and QCborStreamWriter.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/tinycbor/LICENSE"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/harfbuzz-ng/qt_attribution.json",
+      "id": "harfbuzz-ng",
+      "name": "HarfBuzz-NG",
+      "version": "10.4.0",
+      "license_expression": "MIT",
+      "usage": "Optionally used in Qt GUI. Configure with -system-harfbuzz to force the use of the system library, or -qt-harfbuzz to link statically to the library that is bundled with your Qt version.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/harfbuzz-ng/COPYING"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/libpng/qt_attribution.json",
+      "id": "libpng",
+      "name": "LibPNG",
+      "version": "1.6.47",
+      "license_expression": "Libpng AND libpng-2.0",
+      "usage": "Used in the qpng image plugin. Configure with -system-libpng or -no-libpng to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/libpng/LICENSE"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/D3D12MemoryAllocator/qt_attribution.json",
+      "id": "d3d12memoryallocator",
+      "name": "D3D12 Memory Allocator",
+      "version": "f128d39b7a95b4235bd228d231646278dc6c24b2",
+      "license_expression": "MIT",
+      "usage": "Memory management for the D3D12 backend of QRhi.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/D3D12MemoryAllocator/LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/rfc6234/qt_attribution.json",
+      "id": "rfc6234",
+      "name": "Secure Hash Algorithms SHA-384 and SHA-512",
+      "version": null,
+      "license_expression": "BSD-3-Clause",
+      "usage": "Used in Qt Core (QCryptographicHash and QMessageAuthenticationCode)",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/rfc6234/LICENSE"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/libjpeg/qt_attribution.json",
+      "id": "libjpeg",
+      "name": "LibJPEG-turbo",
+      "version": "3.1.0",
+      "license_expression": "IJG AND BSD-3-Clause",
+      "usage": "Used in the qjpeg image plugin. Configure with -system-libjpeg or -no-libjpeg to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/libjpeg/LICENSE",
+        "qt-sources/qtbase/src/3rdparty/libjpeg/ijg-license.txt",
+        "qt-sources/qtbase/src/3rdparty/libjpeg/COPYRIGHT.txt"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/sha3/qt_attribution.json",
+      "id": "sha3_endian",
+      "name": "Secure Hash Algorithm SHA-3 - brg_endian",
+      "version": "4b9e13ead2c5b5e41ca27c65de4dd69ae0bac228",
+      "license_expression": "BSD-2-Clause",
+      "usage": "Used in Qt Core (QCryptographicHash).",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/sha3/BRG_ENDIAN_LICENSE"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/sha3/qt_attribution.json",
+      "id": "sha3_keccak",
+      "name": "Secure Hash Algorithm SHA-3 - Keccak",
+      "version": "3.2",
+      "license_expression": "CC0-1.0",
+      "usage": "Used in Qt Core (QCryptographicHash).",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/sha3/CC0_LICENSE"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/wintab/qt_attribution.json",
+      "id": "wintab",
+      "name": "Wintab API",
+      "version": null,
+      "license_expression": "LicenseRef-Lcs-Telegraphics",
+      "usage": "Used in the Qt platform plugin for Windows. Configure with -no-feature-tabletevent to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/wintab/pktdef.h",
+        "qt-sources/qtbase/src/3rdparty/wintab/wintab.h"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/md4/qt_attribution.json",
+      "id": "md4",
+      "name": "MD4",
+      "version": null,
+      "license_expression": "CC0-1.0",
+      "usage": "Used in Qt Core (QCryptographicHash).",
+      "materials": []
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/blake2/qt_attribution.json",
+      "id": "blake2",
+      "name": "BLAKE2 (reference implementation)",
+      "version": "ed1974ea83433eba7b2d95c5dcd9ac33cb847913",
+      "license_expression": "CC0-1.0 OR Apache-2.0",
+      "usage": "Used in Qt Core (QCryptographicHash).",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/blake2/COPYING"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/md4c/qt_attribution.json",
+      "id": "md4c",
+      "name": "MD4C",
+      "version": "0.5.2",
+      "license_expression": "MIT",
+      "usage": "Optionally used in QTextDocument if configured with textmarkdownreader.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/md4c/LICENSE.md"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/xcb/qt_attribution.json",
+      "id": "xcb-xinput",
+      "name": "XCB-XInput",
+      "version": null,
+      "license_expression": "MIT",
+      "usage": "Used in XCB platform plugin if xcb-xinput was not present on the system\n during Qt configuration or -bundled-xcb-xinput switch was used. To force using xcb-xinput from\n the system, pass -no-bundled-xcb-xinput.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/xcb/LICENSE"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/double-conversion/qt_attribution.json",
+      "id": "doubleconversion",
+      "name": "Efficient Binary-Decimal and Decimal-Binary Conversion Routines for IEEE Doubles",
+      "version": "3.3.0",
+      "license_expression": "BSD-3-Clause",
+      "usage": "Used in Qt Core. Configure with -system-doubleconversion or -no-doubleconversion to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/double-conversion/LICENSE"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/md5/qt_attribution.json",
+      "id": "md5",
+      "name": "MD5",
+      "version": null,
+      "license_expression": "CC0-1.0",
+      "usage": "Used in Qt Core (QCryptographicHash).",
+      "materials": []
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/easing/qt_attribution.json",
+      "id": "easing",
+      "name": "Easing Equations by Robert Penner",
+      "version": null,
+      "license_expression": "BSD-3-Clause",
+      "usage": "Used in Qt Core (QEasingCurve).",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/easing/LICENSE"
+      ]
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/sha1/qt_attribution.json",
+      "id": "sha1",
+      "name": "Secure Hash Algorithm SHA-1",
+      "version": null,
+      "license_expression": "LicenseRef-SHA1-Public-Domain",
+      "usage": "Used in Qt Core (QCryptographicHash).",
+      "materials": []
+    },
+    {
+      "module": "qtbase",
+      "module_commit": "c07c2d5a527a644d36e7853d55132ae38921682f",
+      "attribution_path": "qt-sources/qtbase/src/3rdparty/iaccessible2/qt_attribution.json",
+      "id": "iaccessible2",
+      "name": "IAccessible2 IDL Specification",
+      "version": "1.3.0",
+      "license_expression": "BSD-3-Clause",
+      "usage": "Optionally used in the Windows platform plugin. Configure with -no-accessibility to avoid.",
+      "materials": [
+        "qt-sources/qtbase/src/3rdparty/iaccessible2/LICENSE"
+      ]
+    },
+    {
+      "module": "qtdeclarative",
+      "module_commit": "2ec235a2235a119887683e55787b93f99dc5f12f",
+      "attribution_path": "qt-sources/qtdeclarative/src/3rdparty/masm/qt_attribution.json",
+      "id": "masm",
+      "name": "JavaScriptCore Macro Assembler",
+      "version": null,
+      "license_expression": "BSD-2-Clause",
+      "usage": "Used in Qt QML.",
+      "materials": [
+        "qt-sources/qtdeclarative/src/3rdparty/masm/LICENSE"
+      ]
+    },
+    {
+      "module": "qtdeclarative",
+      "module_commit": "2ec235a2235a119887683e55787b93f99dc5f12f",
+      "attribution_path": "qt-sources/qtdeclarative/src/quickcontrols/material/qt_attribution.json",
+      "id": "shadow_angular_material",
+      "name": "Shadow values from Angular Material",
+      "version": null,
+      "license_expression": "MIT",
+      "usage": "Used in the Material Style of Qt Quick Controls.",
+      "materials": [
+        "qt-sources/qtdeclarative/src/quickcontrols/material/LICENSE.ANGULARJS.txt"
+      ]
+    },
+    {
+      "module": "qtsvg",
+      "module_commit": "c75099a75e81df35e7347a65e301bbf1011831a5",
+      "attribution_path": "qt-sources/qtsvg/src/svg/qt_attribution.json",
+      "id": "xsvg",
+      "name": "XSVG",
+      "version": null,
+      "license_expression": "HPND-sell-variant",
+      "usage": "Used in the Qt SVG library.",
+      "materials": [
+        "qt-sources/qtsvg/src/svg/XSVG_LICENSE.txt"
+      ]
+    },
+    {
+      "module": "qtshadertools",
+      "module_commit": "75786914936b73212ae342f83c9a27ae4a69f406",
+      "attribution_path": "qt-sources/qtshadertools/src/3rdparty/SPIRV-Cross/qt_attribution.json",
+      "id": "spirvcross",
+      "name": "SPIRV-Cross",
+      "version": "2d990d355a296ae1e368585810f884ebadcc4773",
+      "license_expression": "Apache-2.0 AND LicenseRef-MIT-Khronos-old",
+      "usage": "Shader code generation.",
+      "materials": [
+        "qt-sources/qtshadertools/src/3rdparty/SPIRV-Cross/COPYRIGHT.txt"
+      ]
+    },
+    {
+      "module": "qtshadertools",
+      "module_commit": "75786914936b73212ae342f83c9a27ae4a69f406",
+      "attribution_path": "qt-sources/qtshadertools/src/3rdparty/glslang/qt_attribution.json",
+      "id": "glslang",
+      "name": "glslang",
+      "version": "14.2.0",
+      "license_expression": "BSD-3-Clause AND LicenseRef-MIT-Khronos-old AND Apache-2.0 AND GPL-3.0-or-later WITH Bison-exception-2.2 AND AML-glslang",
+      "usage": "Compile GLSL to SPIR-V.",
+      "materials": [
+        "qt-sources/qtshadertools/src/3rdparty/glslang/LICENSE.txt",
+        "qt-sources/qtshadertools/src/3rdparty/glslang/COPYRIGHT.txt"
+      ]
+    },
+    {
+      "module": "qtimageformats",
+      "module_commit": "3b6b1fb96041f1bc85a8f42593bef2ee7bcdca6c",
+      "attribution_path": "qt-sources/qtimageformats/src/3rdparty/libwebp/qt_attribution.json",
+      "id": "libwebp",
+      "name": "WebP (libwebp)",
+      "version": "1.5.0",
+      "license_expression": "BSD-3-Clause",
+      "usage": "Used in the qwebp image plugin if no system libwebp is found.",
+      "materials": [
+        "qt-sources/qtimageformats/src/3rdparty/libwebp/COPYING"
+      ]
+    },
+    {
+      "module": "qtimageformats",
+      "module_commit": "3b6b1fb96041f1bc85a8f42593bef2ee7bcdca6c",
+      "attribution_path": "qt-sources/qtimageformats/src/3rdparty/libtiff/qt_attribution.json",
+      "id": "libtiff",
+      "name": "TIFF Software Distribution (libtiff)",
+      "version": "4.7.0",
+      "license_expression": "libtiff",
+      "usage": "Used in the qtiff image plugin if no system libtiff is found.",
+      "materials": [
+        "qt-sources/qtimageformats/src/3rdparty/libtiff/COPYRIGHT"
+      ]
+    }
+  ],
+  "livekit_rust_commit": "a6f93a16fa71fe811d040de175e070e233d9b1fe",
+  "limitations": [
+    "Qt metadata includes conditional components; it is not proof of the deployed kit configuration.",
+    "The Rust lockfile includes workspace and build-only packages; it is not a resolved Windows FFI SBOM.",
+    "WebRTC/Rust crate and static C++ dependency completeness and source delivery remain open."
+  ]
+}

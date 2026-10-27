@@ -36,6 +36,7 @@ fn room(id: Uuid) -> String {
 #[derive(Default)]
 struct Mock {
     rooms: BTreeMap<String, Vec<String>>,
+    tracks: BTreeMap<String, Vec<Value>>,
     removed: Vec<(String, String)>,
     failure: Option<String>,
     invalid_json: bool,
@@ -43,6 +44,7 @@ struct Mock {
     redirect: bool,
     missing_response: bool,
     unexpected: usize,
+    subscriptions: Vec<Value>,
 }
 async fn rpc(
     State(state): State<Arc<Mutex<Mock>>>,
@@ -108,7 +110,12 @@ async fn rpc(
         .into_response(),
         "ListParticipants" => {
             let name = body["room"].as_str().expect("room");
-            Json(json!({"participants":mock.rooms.get(name).into_iter().flatten().map(|id| json!({"identity":id})).collect::<Vec<_>>()})).into_response()
+            Json(json!({"participants":mock.rooms.get(name).into_iter().flatten().map(|id| json!({"identity":id,"tracks":mock.tracks.get(id).cloned().unwrap_or_default()})).collect::<Vec<_>>()})).into_response()
+        }
+        "UpdateSubscriptions" => {
+            assert_eq!(body["subscribe"], true);
+            mock.subscriptions.push(body);
+            Json(json!({})).into_response()
         }
         "RemoveParticipant" => {
             let name = body["room"].as_str().expect("room").to_string();
@@ -193,6 +200,7 @@ async fn call(
         .await
         .expect("response");
     let status = response.status();
+    assert_eq!(response.headers()["cache-control"], "no-store");
     let bytes = axum::body::to_bytes(response.into_body(), 16384)
         .await
         .expect("body");
@@ -201,7 +209,13 @@ async fn call(
         if bytes.is_empty() {
             Value::Null
         } else {
-            serde_json::from_slice(&bytes).expect("JSON")
+            match serde_json::from_slice(&bytes) {
+                Ok(value) => value,
+                // Axum's typed JSON extractor returns a plain-text 422 for
+                // missing/unknown fields, before the handler can run.
+                Err(_) if status == StatusCode::UNPROCESSABLE_ENTITY => Value::Null,
+                Err(_) => panic!("expected JSON response for {status}"),
+            }
         },
     )
 }
@@ -545,6 +559,825 @@ async fn revoked_sessions_memberships_and_deleted_channels_are_evicted_and_retri
     );
     sqlx::query("DELETE FROM users WHERE id=ANY($1)")
         .bind(vec![owner, member])
+        .execute(&pool)
+        .await
+        .expect("cleanup");
+}
+
+fn screen_claims(grant: &Value, channel: Uuid, purpose: &str) -> String {
+    let id = grant["id"].as_str().expect("lease ID");
+    let expected_identity = format!("gcp-screen-{purpose}-{id}");
+    let expected_room = format!("gcp-screen-{channel}");
+    assert_eq!(grant["purpose"], purpose);
+    assert_eq!(grant["participant_identity"], expected_identity);
+    assert_eq!(grant["room"], expected_room);
+    let parts: Vec<_> = grant["participant_token"]
+        .as_str()
+        .expect("JWT")
+        .split('.')
+        .collect();
+    let mut mac = Hmac::<Sha256>::new_from_slice(SECRET.as_bytes()).expect("HMAC");
+    mac.update(format!("{}.{}", parts[0], parts[1]).as_bytes());
+    mac.verify_slice(&URL_SAFE_NO_PAD.decode(parts[2]).expect("signature"))
+        .expect("actual server signature");
+    let claims: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).expect("claims"))
+        .expect("JSON claims");
+    assert_eq!(claims["sub"], expected_identity);
+    assert_eq!(
+        claims["video"],
+        json!({"roomJoin":true,"room":expected_room,
+        "canPublish":purpose=="publish", "canPublishSources":if purpose=="publish" {json!(["screen_share"])} else {json!([])},
+        "canSubscribe":purpose=="view","canPublishData":false,"canUpdateOwnMetadata":false})
+    );
+    let expiry = claims["exp"].as_u64().expect("expiry");
+    assert!(expiry > now() && expiry <= now() + 60);
+    assert!(grant["expires_in"].as_u64().expect("lifetime") <= 60);
+    assert!(claims.get("email").is_none());
+    expected_identity
+}
+
+#[tokio::test]
+async fn screen_consent_leases_ownership_revocation_and_voice_coexistence() {
+    let Ok(url) = std::env::var("GCP_TEST_DATABASE_URL") else {
+        return;
+    };
+    let pool = PgPoolOptions::new()
+        .max_connections(6)
+        .connect(&url)
+        .await
+        .expect("PostgreSQL");
+    MIGRATOR.run(&pool).await.expect("migrations");
+    let sfu = SfuFixture::new().await;
+    let config = sfu.config();
+    let app = router_with_livekit(Some(pool.clone()), Some(config.clone()));
+    let owner = user(&pool).await;
+    let member = user(&pool).await;
+    let outsider = user(&pool).await;
+    let (_, owner_token, _) = session(&pool, owner).await;
+    let (login, token, refresh) = session(&pool, member).await;
+    let (_, other_login, _) = session(&pool, member).await;
+    let (_, outsider_token, _) = session(&pool, outsider).await;
+    let (status, community) = call(
+        &app,
+        "POST",
+        "/v1/communities",
+        Some(&owner_token),
+        Some(json!({"name":"Screen authorization"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let community = Uuid::parse_str(community["id"].as_str().expect("community")).expect("UUID");
+    sqlx::query(
+        "INSERT INTO community_memberships(community_id,user_id,role) VALUES($1,$2,'member')",
+    )
+    .bind(community)
+    .bind(member)
+    .execute(&pool)
+    .await
+    .expect("member");
+    let mut channels = Vec::new();
+    for kind in ["voice", "voice", "text"] {
+        let (_, channel) = call(&app,"POST",&format!("/v1/communities/{community}/channels"),
+            Some(&owner_token), Some(json!({"name":format!("screen-{}",channels.len()),"channel_kind":kind,"position":channels.len()}))).await;
+        channels.push(Uuid::parse_str(channel["id"].as_str().expect("channel")).expect("UUID"));
+    }
+    let channel = channels[0];
+    let path = format!("/v1/communities/{community}/channels/{channel}/screen-sessions");
+    let create = json!({"purpose":"publish","consent":true});
+    assert_eq!(
+        call(&app, "POST", &path, None, Some(create.clone()))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &path,
+            Some(&outsider_token),
+            Some(create.clone())
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    // Readiness blocks authorized creation; no lease persists before SFU health.
+    assert_eq!(
+        call(&app, "POST", &path, Some(&token), Some(create.clone()))
+            .await
+            .0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    config
+        .reconcile_voice_access(&pool)
+        .await
+        .expect("initial health");
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &path,
+            Some(&outsider_token),
+            Some(create.clone())
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    for invalid in [
+        json!({"purpose":"publish","consent":false}),
+        json!({"purpose":"publish"}),
+        json!({"purpose":"camera","consent":true}),
+        json!({"purpose":"publish","consent":true,"identity":"chosen"}),
+    ] {
+        assert!(matches!(
+            call(&app, "POST", &path, Some(&token), Some(invalid))
+                .await
+                .0
+                .as_u16(),
+            400 | 422
+        ));
+    }
+    for invalid_path in [
+        format!(
+            "/v1/communities/{community}/channels/{}/screen-sessions",
+            channels[2]
+        ),
+        format!("/v1/communities/{outsider}/channels/{channel}/screen-sessions"),
+    ] {
+        assert_eq!(
+            call(
+                &app,
+                "POST",
+                &invalid_path,
+                Some(&token),
+                Some(create.clone())
+            )
+            .await
+            .0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    // Simultaneous creates must yield exactly one lease, not identity takeover.
+    let (first, second) = tokio::join!(
+        call(&app, "POST", &path, Some(&token), Some(create.clone())),
+        call(&app, "POST", &path, Some(&token), Some(create.clone()))
+    );
+    let (grant, denied) = if first.0 == StatusCode::CREATED {
+        (first, second)
+    } else {
+        (second, first)
+    };
+    assert_eq!(grant.0, StatusCode::CREATED);
+    assert_eq!(denied.0, StatusCode::CONFLICT);
+    let publisher = screen_claims(&grant.1, channel, "publish");
+    let lease = grant.1["id"].as_str().expect("lease");
+    let lease_path = format!("{path}/{lease}");
+    let renew_path = format!("{lease_path}/renew");
+    let (_, viewer_grant) = call(
+        &app,
+        "POST",
+        &path,
+        Some(&token),
+        Some(json!({"purpose":"view","consent":true})),
+    )
+    .await;
+    let viewer = screen_claims(&viewer_grant, channel, "view");
+    assert_ne!(publisher, viewer);
+    let voice_path = format!("/v1/communities/{community}/channels/{channel}/livekit-token");
+    let (voice_status, voice_grant) = call(&app, "POST", &voice_path, Some(&token), None).await;
+    assert_eq!(voice_status, StatusCode::CREATED);
+    assert_eq!(voice_grant["room"], room(channel));
+    let voice_claims: Value = serde_json::from_slice(
+        &URL_SAFE_NO_PAD
+            .decode(
+                voice_grant["participant_token"]
+                    .as_str()
+                    .expect("voice JWT")
+                    .split('.')
+                    .nth(1)
+                    .expect("claims"),
+            )
+            .expect("base64"),
+    )
+    .expect("JSON");
+    assert_eq!(voice_claims["sub"], identity(login));
+    assert_eq!(
+        voice_claims["video"]["canPublishSources"],
+        json!(["microphone"])
+    );
+    let screen_room = format!("gcp-screen-{channel}");
+    {
+        let mut state = sfu.state.lock().await;
+        state
+            .rooms
+            .insert(room(channel), vec![identity(login), publisher.clone()]);
+        state.rooms.insert(
+            screen_room.clone(),
+            vec![
+                publisher.clone(),
+                viewer.clone(),
+                identity(login),
+                publisher.replace("-publish-", "-view-"),
+            ],
+        );
+        state.rooms.insert(
+            format!("gcp-screen-{}", channels[1]),
+            vec![publisher.clone()],
+        );
+        state.rooms.insert(
+            "operator-diagnostic-room".into(),
+            vec!["operator-peer".into()],
+        );
+    }
+    assert_eq!(
+        config
+            .reconcile_voice_access(&pool)
+            .await
+            .expect("scope and purpose isolation")
+            .removed,
+        4
+    );
+    {
+        let mut state = sfu.state.lock().await;
+        state.tracks.insert(
+            publisher.clone(),
+            vec![json!({"source":"SCREEN_SHARE","type":"VIDEO"})],
+        );
+    }
+    assert_eq!(
+        config
+            .reconcile_voice_access(&pool)
+            .await
+            .expect("valid owned screen track")
+            .removed,
+        0
+    );
+    {
+        let mut state = sfu.state.lock().await;
+        state
+            .tracks
+            .get_mut(&publisher)
+            .expect("track")
+            .push(json!({"source":3,"type":1}));
+        state
+            .tracks
+            .insert(viewer.clone(), vec![json!({"source":3,"type":1})]);
+    }
+    assert_eq!(
+        config
+            .reconcile_voice_access(&pool)
+            .await
+            .expect("publisher count and viewer track enforcement")
+            .removed,
+        2
+    );
+    {
+        let mut state = sfu.state.lock().await;
+        state.tracks.clear();
+        state
+            .rooms
+            .get_mut(&screen_room)
+            .expect("screen room")
+            .extend([publisher.clone(), viewer.clone()]);
+    }
+    let (listed_status, listed) = call(&app, "GET", &path, Some(&owner_token), None).await;
+    assert_eq!(listed_status, StatusCode::OK);
+    assert_eq!(listed.as_array().expect("publishers").len(), 1);
+    assert_eq!(listed[0]["user_id"], member.to_string());
+    assert_eq!(listed[0]["participant_identity"], publisher);
+    assert!(listed[0].get("participant_token").is_none());
+    assert!(listed[0].get("session_id").is_none());
+    assert_eq!(
+        call(&app, "GET", &path, Some(&outsider_token), None)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    // Same account on another login and community owner cannot renew/stop it.
+    for other in [&other_login, &owner_token, &outsider_token] {
+        assert_eq!(
+            call(
+                &app,
+                "POST",
+                &renew_path,
+                Some(other),
+                Some(json!({"consent":true}))
+            )
+            .await
+            .0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            call(&app, "DELETE", &lease_path, Some(other), None).await.0,
+            StatusCode::NO_CONTENT
+        );
+    }
+    assert!(sfu.state.lock().await.rooms[&screen_room].contains(&publisher));
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &renew_path,
+            Some(&token),
+            Some(json!({"consent":false}))
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (status, rotated) = call(
+        &app,
+        "POST",
+        "/v1/auth/refresh",
+        None,
+        Some(json!({"refresh_token":refresh})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let fresh = rotated["access_token"].as_str().expect("rotated token");
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &renew_path,
+            Some(&token),
+            Some(json!({"consent":true}))
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, renewed) = call(
+        &app,
+        "POST",
+        &renew_path,
+        Some(fresh),
+        Some(json!({"consent":true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(screen_claims(&renewed, channel, "publish"), publisher);
+    assert_ne!(renewed["participant_token"], grant.1["participant_token"]);
+    // Lost control plane cannot prevent durable Stop; next pass removes only it.
+    sfu.state.lock().await.failure = Some("RemoveParticipant".into());
+    assert_eq!(
+        call(&app, "DELETE", &lease_path, Some(fresh), None).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        call(&app, "POST", &path, Some(fresh), Some(create.clone()))
+            .await
+            .0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    sfu.state.lock().await.failure = None;
+    let restarted = sfu.config();
+    assert_eq!(
+        restarted
+            .reconcile_voice_access(&pool)
+            .await
+            .expect("restart/stop retry")
+            .removed,
+        1
+    );
+    assert_eq!(
+        sfu.state.lock().await.rooms[&room(channel)],
+        vec![identity(login)]
+    );
+    assert_eq!(
+        sfu.state.lock().await.rooms[&screen_room],
+        vec![viewer.clone()]
+    );
+    config
+        .reconcile_voice_access(&pool)
+        .await
+        .expect("health recovered");
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &renew_path,
+            Some(fresh),
+            Some(json!({"consent":true}))
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(&app, "DELETE", &lease_path, Some(fresh), None).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, replacement) = call(&app, "POST", &path, Some(fresh), Some(create.clone())).await;
+    let replacement_identity = screen_claims(&replacement, channel, "publish");
+    assert_ne!(replacement_identity, publisher);
+    // Expired leases cannot be renewed; a new explicit create gets a new ID.
+    sqlx::query("UPDATE screen_leases SET expires_at=clock_timestamp()-interval '1 second' WHERE session_id=$1")
+        .bind(login).execute(&pool).await.expect("expire leases");
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &format!("{path}/{}/renew", replacement["id"].as_str().expect("id")),
+            Some(fresh),
+            Some(json!({"consent":true}))
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    sfu.state
+        .lock()
+        .await
+        .rooms
+        .get_mut(&screen_room)
+        .expect("room")
+        .push(replacement_identity);
+    assert_eq!(
+        config
+            .reconcile_voice_access(&pool)
+            .await
+            .expect("expired publisher/viewer")
+            .removed,
+        2
+    );
+    let (_, renewed_publisher) = call(&app, "POST", &path, Some(fresh), Some(create.clone())).await;
+    let active = screen_claims(&renewed_publisher, channel, "publish");
+    sfu.state
+        .lock()
+        .await
+        .rooms
+        .get_mut(&screen_room)
+        .expect("room")
+        .push(active);
+    let (status, racing) = call(
+        &app,
+        "POST",
+        &path,
+        Some(&other_login),
+        Some(create.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let racing_path = format!("{path}/{}", racing["id"].as_str().expect("racing lease"));
+    let racing_renew = format!("{racing_path}/renew");
+    let (renewed, stopped) = tokio::join!(
+        call(
+            &app,
+            "POST",
+            &racing_renew,
+            Some(&other_login),
+            Some(json!({"consent":true}))
+        ),
+        call(&app, "DELETE", &racing_path, Some(&other_login), None)
+    );
+    assert!(matches!(renewed.0, StatusCode::OK | StatusCode::NOT_FOUND));
+    assert_eq!(stopped.0, StatusCode::NO_CONTENT);
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &racing_renew,
+            Some(&other_login),
+            Some(json!({"consent":true}))
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    // Membership removal revokes both scopes; Stop still works without membership.
+    assert_eq!(
+        call(
+            &app,
+            "DELETE",
+            &format!("/v1/communities/{community}/members/{member}"),
+            Some(&owner_token),
+            None
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &format!(
+                "{path}/{}/renew",
+                renewed_publisher["id"].as_str().expect("id")
+            ),
+            Some(fresh),
+            Some(json!({"consent":true}))
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        config
+            .reconcile_voice_access(&pool)
+            .await
+            .expect("membership revoked")
+            .removed,
+        2
+    );
+    assert_eq!(
+        call(
+            &app,
+            "DELETE",
+            &format!("{path}/{}", renewed_publisher["id"].as_str().expect("id")),
+            Some(fresh),
+            None
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        sfu.state.lock().await.rooms["operator-diagnostic-room"],
+        vec!["operator-peer"]
+    );
+    assert_eq!(
+        call(&app, "POST", &path, Some(fresh), Some(create)).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let (_, owner_share) = call(
+        &app,
+        "POST",
+        &path,
+        Some(&owner_token),
+        Some(json!({"purpose":"publish","consent":true})),
+    )
+    .await;
+    let owner_identity = screen_claims(&owner_share, channel, "publish");
+    sfu.state
+        .lock()
+        .await
+        .rooms
+        .get_mut(&screen_room)
+        .expect("screen room")
+        .push(owner_identity);
+    assert_eq!(
+        call(&app, "POST", "/v1/auth/logout", Some(&owner_token), None)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        config
+            .reconcile_voice_access(&pool)
+            .await
+            .expect("screen logout eviction")
+            .removed,
+        1
+    );
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &format!("{path}/{}/renew", owner_share["id"].as_str().expect("id")),
+            Some(&owner_token),
+            Some(json!({"consent":true}))
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    sqlx::query("DELETE FROM communities WHERE id=$1")
+        .bind(community)
+        .execute(&pool)
+        .await
+        .expect("cleanup community");
+    sqlx::query("DELETE FROM users WHERE id=ANY($1)")
+        .bind(vec![owner, member, outsider])
+        .execute(&pool)
+        .await
+        .expect("cleanup users");
+}
+
+#[tokio::test]
+async fn viewer_watch_resolves_exact_track_with_current_login_and_access() {
+    let Ok(url) = std::env::var("GCP_TEST_DATABASE_URL") else {
+        return;
+    };
+    let pool = PgPoolOptions::new()
+        .max_connections(6)
+        .connect(&url)
+        .await
+        .expect("PostgreSQL");
+    MIGRATOR.run(&pool).await.expect("migrations");
+    let sfu = SfuFixture::new().await;
+    let config = sfu.config();
+    let app = router_with_livekit(Some(pool.clone()), Some(config.clone()));
+    let owner = user(&pool).await;
+    let (_, publishing, _) = session(&pool, owner).await;
+    let (_, viewing, _) = session(&pool, owner).await;
+    let (_, community) = call(
+        &app,
+        "POST",
+        "/v1/communities",
+        Some(&publishing),
+        Some(json!({"name":"Viewer track control"})),
+    )
+    .await;
+    let community = community["id"].as_str().expect("community");
+    let (_, channel) = call(
+        &app,
+        "POST",
+        &format!("/v1/communities/{community}/channels"),
+        Some(&publishing),
+        Some(json!({"name":"voice", "channel_kind":"voice", "position":0})),
+    )
+    .await;
+    let channel = channel["id"].as_str().expect("channel");
+    config.reconcile_voice_access(&pool).await.expect("health");
+    let path = format!("/v1/communities/{community}/channels/{channel}/screen-sessions");
+    let (code, publisher) = call(
+        &app,
+        "POST",
+        &path,
+        Some(&publishing),
+        Some(json!({"purpose":"publish", "consent":true})),
+    )
+    .await;
+    assert_eq!(code, StatusCode::CREATED);
+    let (code, viewer) = call(
+        &app,
+        "POST",
+        &path,
+        Some(&viewing),
+        Some(json!({"purpose":"view", "consent":true})),
+    )
+    .await;
+    assert_eq!(code, StatusCode::CREATED);
+    let lease = viewer["id"].as_str().expect("viewer lease");
+    let watch_path = format!("{path}/{lease}/watch");
+    let request = json!({"consent":true,"publisher_id":publisher["id"]});
+    let pub_identity = publisher["participant_identity"]
+        .as_str()
+        .expect("publisher")
+        .to_string();
+    let screen_room = format!("gcp-screen-{channel}");
+    {
+        let mut state = sfu.state.lock().await;
+        state.rooms.insert(
+            screen_room.clone(),
+            vec![
+                pub_identity.clone(),
+                viewer["participant_identity"]
+                    .as_str()
+                    .expect("viewer")
+                    .to_string(),
+            ],
+        );
+        state.tracks.insert(
+            pub_identity.clone(),
+            vec![json!({"sid":"TR_exact", "source":3,"type":1})],
+        );
+    }
+    assert_eq!(
+        call(&app, "POST", &watch_path, None, Some(request.clone()))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &watch_path,
+            Some(&publishing),
+            Some(request.clone())
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &watch_path,
+            Some(&viewing),
+            Some(json!({"consent":false,"publisher_id":publisher["id"]}))
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &format!("{path}/{}/watch", publisher["id"].as_str().expect("lease")),
+            Some(&publishing),
+            Some(request.clone())
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let (code, selected) = call(
+        &app,
+        "POST",
+        &watch_path,
+        Some(&viewing),
+        Some(request.clone()),
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(
+        selected,
+        json!({"participant_identity":pub_identity,"track_sid":"TR_exact"})
+    );
+    {
+        let state = sfu.state.lock().await;
+        assert_eq!(state.subscriptions.len(), 1);
+        assert_eq!(
+            state.subscriptions[0],
+            json!({"room":screen_room,"identity":viewer["participant_identity"],"track_sids":["TR_exact"],"subscribe":true})
+        );
+    }
+    for tracks in [
+        vec![],
+        vec![json!({"sid":"TR_camera","source":1,"type":1})],
+        vec![json!({"sid":"TR_audio","source":3,"type":0})],
+        vec![json!({"sid":"TR_bad name","source":3,"type":1})],
+        vec![
+            json!({"sid":"TR_one","source":3,"type":1}),
+            json!({"sid":"TR_two","source":3,"type":1}),
+        ],
+    ] {
+        sfu.state
+            .lock()
+            .await
+            .tracks
+            .insert(pub_identity.clone(), tracks);
+        assert_eq!(
+            call(
+                &app,
+                "POST",
+                &watch_path,
+                Some(&viewing),
+                Some(request.clone())
+            )
+            .await
+            .0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+    assert_eq!(sfu.state.lock().await.subscriptions.len(), 1);
+    // A valid track under another participant cannot stand in for this publisher.
+    sfu.state
+        .lock()
+        .await
+        .rooms
+        .insert(screen_room, vec!["untrusted-publisher".into()]);
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &watch_path,
+            Some(&viewing),
+            Some(request.clone())
+        )
+        .await
+        .0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        call(
+            &app,
+            "DELETE",
+            &format!("{path}/{lease}"),
+            Some(&viewing),
+            None
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        call(&app, "POST", &watch_path, Some(&viewing), Some(request))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM screen_leases WHERE id=$1")
+        .bind(Uuid::parse_str(publisher["id"].as_str().expect("publisher lease")).expect("UUID"))
+        .fetch_one(&pool)
+        .await
+        .expect("publisher preserved");
+    assert_eq!(count, 1);
+    sqlx::query("DELETE FROM communities WHERE id=$1")
+        .bind(Uuid::parse_str(community).expect("UUID"))
+        .execute(&pool)
+        .await
+        .expect("cleanup");
+    sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(owner)
         .execute(&pool)
         .await
         .expect("cleanup");

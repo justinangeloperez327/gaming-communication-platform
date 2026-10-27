@@ -31,6 +31,7 @@ int main(int argc, char **argv) {
     picker->setProperty("devices", QVariantList{second, first});
     if (!selected(1, QStringLiteral("second"))) return 4;
     picker->setProperty("devices", QVariantList{first});
+    if (!selected(1, QStringLiteral("second")) || !picker->property("displayText").toString().contains("unavailable")) return 16;
     picker->setProperty("selectedDeviceId", QString{});
     if (!selected(0, {})) return 5;
     picker->setProperty("devices", QVariantList{first, second});

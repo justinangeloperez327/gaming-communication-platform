@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "evidence_kind": "operator_capture",
+  "build_commit": "RECORD_40_HEX_COMMIT",
+  "operator": "RECORD_OPERATOR",
+  "game_scene_settings": "RECORD_SCENE_RESOLUTION_PRESET_FPS_CAP_POWER_MODE",
+  "media_profile": "RECORD_VOICE_MODE_PEERS_DEVICES_AND_SCREEN_SOURCE_SIZE_FPS_BITRATE_VIEWER_SIZE",
+  "frame_capture_version": "RECORD_PRESENTMON_VERSION",
+  "warmup_seconds": 30,
+  "minimum_window_seconds": 60,
+  "limits": {
+    "max_fps_loss_pct": null,
+    "max_p99_increase_pct": null,
+    "max_cpu_pct": null,
+    "max_peak_private_mib": null,
+    "max_memory_growth_mib_per_minute": null,
+    "max_gpu_engine_pct": null
+  },
+  "operator_attestations": {
+    "same_scene_settings": false,
+    "media_quality_acceptable": false,
+    "two_pc_media_observed": false
+  },
+  "runs": [
+    {
+      "scenario": "voice",
+      "baseline": {
+        "resources": "voice/1/baseline.jsonl",
+        "frames": "voice/1/baseline.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      },
+      "gcp": {
+        "resources": "voice/1/gcp.jsonl",
+        "frames": "voice/1/gcp.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      }
+    },
+    {
+      "scenario": "voice",
+      "baseline": {
+        "resources": "voice/2/baseline.jsonl",
+        "frames": "voice/2/baseline.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      },
+      "gcp": {
+        "resources": "voice/2/gcp.jsonl",
+        "frames": "voice/2/gcp.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      }
+    },
+    {
+      "scenario": "voice",
+      "baseline": {
+        "resources": "voice/3/baseline.jsonl",
+        "frames": "voice/3/baseline.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      },
+      "gcp": {
+        "resources": "voice/3/gcp.jsonl",
+        "frames": "voice/3/gcp.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      }
+    },
+    {
+      "scenario": "voice_publish",
+      "baseline": {
+        "resources": "voice_publish/1/baseline.jsonl",
+        "frames": "voice_publish/1/baseline.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      },
+      "gcp": {
+        "resources": "voice_publish/1/gcp.jsonl",
+        "frames": "voice_publish/1/gcp.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      }
+    },
+    {
+      "scenario": "voice_publish",
+      "baseline": {
+        "resources": "voice_publish/2/baseline.jsonl",
+        "frames": "voice_publish/2/baseline.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      },
+      "gcp": {
+        "resources": "voice_publish/2/gcp.jsonl",
+        "frames": "voice_publish/2/gcp.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      }
+    },
+    {
+      "scenario": "voice_publish",
+      "baseline": {
+        "resources": "voice_publish/3/baseline.jsonl",
+        "frames": "voice_publish/3/baseline.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      },
+      "gcp": {
+        "resources": "voice_publish/3/gcp.jsonl",
+        "frames": "voice_publish/3/gcp.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      }
+    },
+    {
+      "scenario": "voice_view",
+      "baseline": {
+        "resources": "voice_view/1/baseline.jsonl",
+        "frames": "voice_view/1/baseline.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      },
+      "gcp": {
+        "resources": "voice_view/1/gcp.jsonl",
+        "frames": "voice_view/1/gcp.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      }
+    },
+    {
+      "scenario": "voice_view",
+      "baseline": {
+        "resources": "voice_view/2/baseline.jsonl",
+        "frames": "voice_view/2/baseline.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      },
+      "gcp": {
+        "resources": "voice_view/2/gcp.jsonl",
+        "frames": "voice_view/2/gcp.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      }
+    },
+    {
+      "scenario": "voice_view",
+      "baseline": {
+        "resources": "voice_view/3/baseline.jsonl",
+        "frames": "voice_view/3/baseline.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      },
+      "gcp": {
+        "resources": "voice_view/3/gcp.jsonl",
+        "frames": "voice_view/3/gcp.csv",
+        "swapchain": "RECORD_EXACT_SWAPCHAIN"
+      }
+    }
+  ]
+}

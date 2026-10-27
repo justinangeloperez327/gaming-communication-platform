@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_preview:
+        description: Explicitly publish the configured alpha preview after all checks
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -54,6 +59,10 @@ jobs:
           /tmp/gcp-parser-tests
           g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/voice_control_tests.cpp -o /tmp/gcp-voice-control-tests
           /tmp/gcp-voice-control-tests
+          g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/screen_control_tests.cpp -o /tmp/gcp-screen-control-tests
+          /tmp/gcp-screen-control-tests
+          g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/view_control_tests.cpp -o /tmp/gcp-view-control-tests
+          /tmp/gcp-view-control-tests
           g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I native/transport/src native/transport/tests/livekit_url_tests.cpp -o /tmp/gcp-livekit-url-tests
           /tmp/gcp-livekit-url-tests
       - name: Offline physical GPU evidence validator tests
@@ -62,8 +71,8 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
   desktop-chat-api:
-    name: Qt to Rust messaging acceptance
-    # Pin the SDK acceptance environment; no GUI/display or media stack needed.
+    name: Qt to Rust messaging and screen lease acceptance
+    # Pin the SDK acceptance environment; settings QML runs offscreen without devices.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -85,7 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install Qt Core, Network and WebSockets
+      - name: Install Qt desktop SDK
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
@@ -94,12 +103,14 @@ jobs:
           cache: true
       - name: Build Rust API
         run: cargo build --locked -p gaming-comms-server
-      - name: Build actual desktop controllers without the GUI/media stack
+      - name: Build actual desktop controllers and settings tests
         run: |
           cmake -S apps/desktop/tests/api -B build/chat-api -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DCMAKE_BUILD_TYPE=Release
           cmake --build build/chat-api --parallel 2
-      - name: Real desktop onboarding, channel/friends/DM delivery and revocation
-        run: python3 scripts/verify_desktop_chat.py --server target/debug/gaming-comms-server --client build/chat-api/gcp-chat-api-acceptance
+      - name: Desktop preference and recovery checks (no devices)
+        run: ctest --test-dir build/chat-api --output-on-failure
+      - name: Real desktop onboarding, messaging, screen leases and revocation
+        run: python3 scripts/verify_desktop_chat.py --server target/debug/gaming-comms-server --client build/chat-api/gcp-chat-api-acceptance --screen-fixture build/chat-api/gcp-screen-process-fixture --viewer-fixture build/chat-api/gcp-view-process-fixture
 
   server-stack:
     name: Self-hosted stack acceptance
@@ -115,9 +126,14 @@ jobs:
   desktop:
     name: Windows Qt, media and LiveKit builds
     runs-on: windows-2022
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+      - name: Catch installer fingerprint and upgrade regressions before the application build
+        timeout-minutes: 5
+        shell: pwsh
+        run: ./scripts/test-windows-installer-policy.ps1
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -134,41 +150,27 @@ jobs:
       - name: Smoke tests
         shell: pwsh
         run: ctest --test-dir build/desktop -C Release --output-on-failure
-      - name: Real LiveKit synthetic audio transport, mute, room isolation and active eviction
+      - name: Real LiveKit synthetic audio and screen authorization contracts
         timeout-minutes: 5
         shell: pwsh
-        run: python scripts/verify_voice_media.py --executable build/desktop/Release/gcp-livekit-media-contract.exe
+        run: python scripts/verify_voice_media.py --executable build/desktop/Release/gcp-livekit-media-contract.exe --screen-executable build/desktop/Release/gcp-livekit-screen-contract.exe
       - name: Exercise package integrity rejection fixtures
         shell: pwsh
-        run: ./scripts/test-windows-test-bundle.ps1
+        run: |
+          ./scripts/test-windows-test-bundle.ps1
+          ./scripts/test-windows-distribution.ps1
       - name: Stage unsigned Windows desktop test bundle
         shell: pwsh
         run: |
           $env:PATH = "$env:QT_ROOT_DIR\\bin;$env:PATH"
-          ./scripts/package-windows-test.ps1 -BuildDirectory build/desktop/Release -OutputDirectory build/gcp-windows-test
+          ./scripts/package-windows-test.ps1 -BuildDirectory build/desktop/Release -OutputDirectory build/gcp-windows-test -CommitSha "${{ github.event.pull_request.head.sha || github.sha }}"
           ./scripts/verify-windows-test-bundle.ps1 -BundleDirectory build/gcp-windows-test
+      - name: Inspect regular and delayed PE import closure without loading code
+        shell: pwsh
+        run: python scripts/windows_pe_dependencies.py --bundle build/gcp-windows-test --commit "${{ github.event.pull_request.head.sha || github.sha }}" --output build/windows-pe-imports.json
       - name: Test packaged Qt/QML runtime and native LiveKit startup
         shell: pwsh
-        run: |
-          $env:QT_QPA_PLATFORM = "offscreen"
-          # gcp-desktop.exe is a WIN32 GUI-subsystem binary. PowerShell's
-          # direct invocation does not reliably wait or set LASTEXITCODE.
-          $desktop = (Resolve-Path ./build/gcp-windows-test/gcp-desktop.exe).Path
-          $child = Start-Process -FilePath $desktop -ArgumentList '--smoke-qml' -WorkingDirectory (Split-Path $desktop) -PassThru
-          try {
-            $child | Wait-Process -Timeout 20 -ErrorAction Stop
-            $child.Refresh()
-            if ($null -eq $child.ExitCode -or $child.ExitCode -ne 0) {
-              throw "Packaged Qt/QML smoke test failed: $($child.ExitCode)"
-            }
-          } finally {
-            if (-not $child.HasExited) {
-              Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue
-            }
-            $child.Dispose()
-          }
-          & ./build/gcp-windows-test/gcp-livekit-voice.exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Packaged LiveKit voice self-test failed: $LASTEXITCODE" }
+        run: ./scripts/test-windows-runtime.ps1 -BundleDirectory build/gcp-windows-test -CheckMissingTlsRejection
       - name: Record CI-only Windows bundle acceptance
         shell: pwsh
         run: |
@@ -206,22 +208,10 @@ jobs:
           $unpacked = Join-Path $env:RUNNER_TEMP 'gcp-zip-verification'
           Expand-Archive -LiteralPath build/gcp-private-windows-x64.zip -DestinationPath $unpacked
           ./scripts/verify-windows-test-bundle.ps1 -BundleDirectory $unpacked
-          # Test the extracted ZIP, not only the original staging directory.
-          $env:QT_QPA_PLATFORM = "offscreen"
-          $desktop = (Resolve-Path (Join-Path $unpacked 'gcp-desktop.exe')).Path
-          $child = Start-Process -FilePath $desktop -ArgumentList '--smoke-qml' -WorkingDirectory $unpacked -PassThru
-          try {
-            $child | Wait-Process -Timeout 20 -ErrorAction Stop
-            $child.Refresh()
-            if ($null -eq $child.ExitCode -or $child.ExitCode -ne 0) {
-              throw "Extracted ZIP Qt/QML startup failed: $($child.ExitCode)"
-            }
-          } finally {
-            if (-not $child.HasExited) { Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue }
-            $child.Dispose()
-          }
-          & (Join-Path $unpacked 'gcp-livekit-voice.exe') --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Extracted ZIP LiveKit self-test failed: $LASTEXITCODE" }
+          ./scripts/verify-windows-distribution-inventory.ps1 -BundleDirectory $unpacked -ExpectedCommit "${{ github.event.pull_request.head.sha || github.sha }}"
+          python scripts/windows_pe_dependencies.py --bundle $unpacked --commit "${{ github.event.pull_request.head.sha || github.sha }}" --output build/windows-pe-imports-extracted.json
+          if ($LASTEXITCODE -ne 0) { throw 'Extracted PE import inspection failed' }
+          ./scripts/test-windows-runtime.ps1 -BundleDirectory $unpacked
           $zipSha = (Get-FileHash -LiteralPath build/gcp-private-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
           $zipSha | Set-Content -LiteralPath build/gcp-private-windows-x64.sha256 -Encoding ascii
           $savedSha = (Get-Content -LiteralPath build/gcp-private-windows-x64.sha256 -Raw).Trim()
@@ -238,12 +228,34 @@ jobs:
       - name: Build unsigned per-user preview installer
         shell: pwsh
         run: ./scripts/package-windows-installer.ps1 -BundleDirectory build/gcp-windows-test -OutputDirectory build/installer
-      - name: Exercise installed application and uninstall
+      - name: Build older-version upgrade policy fixtures (never release assets)
+        shell: pwsh
+        run: ./scripts/build-windows-upgrade-fixtures.ps1 -BundleDirectory build/gcp-windows-test -OutputDirectory build/installer-policy-fixtures
+      - name: Download the checksum-pinned published alpha for historical refresh testing
+        shell: pwsh
+        run: |
+          $previous = Get-Content packaging/windows/previous-alpha.json -Raw | ConvertFrom-Json
+          New-Item -ItemType Directory -Path build/historical-alpha | Out-Null
+          $path = Join-Path (Resolve-Path build/historical-alpha).Path 'published-alpha-setup.exe'
+          Invoke-WebRequest -Uri $previous.installer_url -OutFile $path
+          if ((Get-Item -LiteralPath $path).Length -ne $previous.installer_bytes -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $previous.installer_sha256) { throw 'Historical installer bytes differ from pin' }
+      - name: Exercise installed application, guarded upgrades and uninstall
         shell: pwsh
         run: |
           $installer = @(Get-ChildItem -LiteralPath build/installer -Filter '*-setup.exe')
           if ($installer.Count -ne 1) { throw 'Expected exactly one installer' }
-          ./scripts/test-windows-installer.ps1 -Installer $installer[0].FullName
+          ./scripts/test-windows-installer.ps1 -Installer $installer[0].FullName -BundleDirectory build/gcp-windows-test -FixtureDirectory build/installer-policy-fixtures -SettingsProbe build/desktop/Release/gcp-installed-preferences-check.exe -PreviousInstaller build/historical-alpha/published-alpha-setup.exe -CommitSha "${{ github.event.pull_request.head.sha || github.sha }}" -OutputFile build/windows-installer-acceptance.json
+      - name: Upload distribution inventory and installer policy evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: gcp-windows-distribution-acceptance
+          path: |
+            build/gcp-windows-test/DISTRIBUTION-INVENTORY.json
+            build/windows-installer-acceptance.json
+            build/windows-pe-imports.json
+            build/windows-pe-imports-extracted.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload verified preview installer
         uses: actions/upload-artifact@v6
         with:
@@ -306,7 +318,7 @@ jobs:
   preview-release:
     name: Publish requested alpha preview
     needs: [rust, desktop, server-stack, desktop-chat-api]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_preview
     runs-on: ubuntu-latest
     permissions:
       contents: write

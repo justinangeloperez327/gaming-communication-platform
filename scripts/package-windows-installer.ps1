@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$BundleDirectory,
-    [Parameter(Mandatory=$true)][string]$OutputDirectory
+    [Parameter(Mandatory=$true)][string]$OutputDirectory,
+    [ValidateSet('0.0.0','0.0.1')][string]$FixtureVersion
 )
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath($BundleDirectory)
@@ -10,7 +11,8 @@ if ($output -eq $root -or $output.StartsWith($root + [IO.Path]::DirectorySeparat
 }
 & (Join-Path $PSScriptRoot 'verify-windows-test-bundle.ps1') -BundleDirectory $root
 $config = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../packaging/windows/version.json') -Raw | ConvertFrom-Json
-if ($config.version -notmatch '^\d+\.\d+\.\d+$' -or $config.tag -cne "v$($config.version)-alpha.1") {
+if ($config.version -notmatch '^\d+\.\d+\.\d+$' -or $config.tag -cne "v$($config.version)-alpha.1" -or
+    @($config.version.Split('.') | Where-Object { [long]$_ -gt 65535 }).Count -ne 0) {
     throw 'Invalid alpha release version'
 }
 if (Test-Path -LiteralPath $output) { throw 'Installer output must be a new directory' }
@@ -18,7 +20,12 @@ $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
 if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) { throw 'Inno Setup 6 compiler is required' }
 New-Item -ItemType Directory -Path $output | Out-Null
 $label = $config.tag.Substring(1)
-& $compiler "/DBundleDir=$root" "/DOutputDirPath=$output" "/DReleaseVersion=$label" "/DNumericVersion=$($config.version)" (Join-Path $PSScriptRoot '../packaging/windows/gcp.iss')
+$numeric = $config.version
+if ($FixtureVersion) { $numeric = $FixtureVersion; $label = "$FixtureVersion-qualification-fixture" }
+$manifestHash = (Get-FileHash -LiteralPath (Join-Path $root 'SHA256-MANIFEST.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+$legacy = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../packaging/windows/previous-alpha.json') -Raw | ConvertFrom-Json
+if ($legacy.manifest_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $legacy.tag -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.1$') { throw 'Invalid pinned legacy manifest identity' }
+& $compiler "/DBundleDir=$root" "/DOutputDirPath=$output" "/DReleaseVersion=$label" "/DNumericVersion=$numeric" "/DPayloadManifestSha256=$manifestHash" "/DLegacyManifestSha256=$($legacy.manifest_sha256)" "/DLegacyReleaseLabel=$($legacy.tag.Substring(1))" (Join-Path $PSScriptRoot '../packaging/windows/gcp.iss')
 if ($LASTEXITCODE -ne 0) { throw "Installer compiler failed: $LASTEXITCODE" }
 $installer = Join-Path $output "GCP-$label-windows-x64-setup.exe"
 if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'Installer missing' }

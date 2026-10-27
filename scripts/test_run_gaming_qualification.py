@@ -35,6 +35,14 @@ class PipelineTests(unittest.TestCase):
                 self.assertTrue((out / artifact).is_file())
             self.assertIn("PASS", (out / "summary.md").read_text())
 
+    def test_existing_pass_outputs_are_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); baseline,gcp,voice=self.make_captures(root)
+            out=root/"results";out.mkdir();(out/"summary.md").write_text("previous report")
+            with self.assertRaises(ValueError):
+                runner.execute(baseline,gcp,voice,"frame_ms",0,(10,2,200,10),out)
+            self.assertEqual((out/"summary.md").read_text(),"previous report")
+
     def test_regression_exit_code(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

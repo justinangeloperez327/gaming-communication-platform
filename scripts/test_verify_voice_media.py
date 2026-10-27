@@ -35,6 +35,25 @@ class MediaRunnerGuards(unittest.TestCase):
                                      "LIVEKIT_TOKEN": "stale", "PATH": "runtime"}, clear=True):
             self.assertEqual(media.clean_environment(), {"PATH": "runtime"})
 
+    def test_screen_fixture_grants_separate_publisher_and_viewer(self):
+        env = media.screen_environment({"PATH": "runtime"}, "disposable-screen-secret", "gcp-screen-fixture")
+        self.assertEqual(env["PATH"], "runtime")
+        for name in ("PUBLISHER", "OTHER", "VIEWER"):
+            jwt = env[f"GCP_MEDIA_SCREEN_{name}_TOKEN"]
+            head, body, signature = jwt.split(".")
+            claims = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+            publish = name != "VIEWER"
+            self.assertEqual(claims["video"]["room"], "gcp-screen-fixture")
+            self.assertEqual(claims["video"]["canPublish"], publish)
+            self.assertEqual(claims["video"]["canPublishSources"], ["screen_share"] if publish else [])
+            self.assertEqual(claims["video"]["canSubscribe"], not publish)
+            self.assertFalse(claims["video"]["canPublishData"])
+            self.assertNotIn("roomAdmin", claims["video"])
+            self.assertEqual(claims["exp"] - claims["iat"], 60)
+            self.assertTrue(hmac.compare_digest(
+                hmac.new(b"disposable-screen-secret", (head + "." + body).encode(), hashlib.sha256).digest(),
+                base64.urlsafe_b64decode(signature + "=" * (-len(signature) % 4))))
+
     def test_extraction_ignores_traversal_and_only_extracts_exact_executable(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

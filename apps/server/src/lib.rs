@@ -8,6 +8,7 @@ pub mod livekit_tokens;
 mod messages;
 pub mod onboarding;
 mod realtime;
+mod screen_sessions;
 
 use axum::{
     Json, Router,
@@ -156,6 +157,22 @@ pub fn router_with_livekit(
         .route(
             "/v1/communities/{community_id}/channels/{channel_id}/livekit-token",
             post(livekit_tokens::issue),
+        )
+        .route(
+            "/v1/communities/{community_id}/channels/{channel_id}/screen-sessions",
+            get(screen_sessions::publishers).post(screen_sessions::create),
+        )
+        .route(
+            "/v1/communities/{community_id}/channels/{channel_id}/screen-sessions/{lease_id}/watch",
+            post(screen_sessions::watch),
+        )
+        .route(
+            "/v1/communities/{community_id}/channels/{channel_id}/screen-sessions/{lease_id}/renew",
+            post(screen_sessions::renew),
+        )
+        .route(
+            "/v1/communities/{community_id}/channels/{channel_id}/screen-sessions/{lease_id}",
+            axum::routing::delete(screen_sessions::stop),
         )
         .route("/v1/friends", get(friends::list_friends))
         .route(

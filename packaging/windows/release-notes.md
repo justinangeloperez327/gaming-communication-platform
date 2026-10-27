@@ -1,3 +1,7 @@
+These are the historical notes for the already published `v0.1.0-alpha.1`.
+Later source changes and CI artifacts are described in
+[the current distribution guide](../../docs/distribution-qualification.md).
+
 First unsigned Windows x64 alpha preview for private testing with friends.
 
 Download the `setup.exe` to install for your Windows user, or the portable ZIP

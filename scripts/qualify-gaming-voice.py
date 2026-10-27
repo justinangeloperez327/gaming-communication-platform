@@ -12,12 +12,23 @@ def qualify(report, max_fps_loss_pct, max_cpu_pct, max_peak_mib, max_p99_increas
         if isinstance(limit, bool) or not isinstance(limit, (int, float)) or not math.isfinite(limit) or limit < 0:
             raise ValueError(f"Invalid limit: {name}")
     if report.get("measurement") != "exported_frame_time_csv" or report.get("condition") != "gaming_with_gcp_voice":
-        raise ValueError("Expected real frame-time GCP voice report")
-    if report.get("runs_per_condition", 0) < 3:
+        raise ValueError("Expected frame-time GCP voice analysis (origin is not authenticated)")
+    runs = report.get("runs_per_condition")
+    if isinstance(runs, bool) or not isinstance(runs, int) or runs < 3:
         raise ValueError("At least three paired runs required")
     voice = report.get("voice_process", {})
     if "median_peak_private_bytes_sampled" not in voice:
         raise ValueError("Missing voice memory metric")
+    for condition in ("baseline", "streaming"):
+        value = report.get(condition, {}).get("p99_frame_time_ms")
+        if isinstance(value, bool) or not isinstance(value, (int,float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError("Invalid p99 frame time")
+    for key in ("median_cpu_percent_total_machine", "median_peak_private_bytes_sampled"):
+        value = voice.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int,float)) or not math.isfinite(value) or value < 0:
+            raise ValueError("Invalid voice resource metric")
+    if voice["median_cpu_percent_total_machine"] > 100 or voice["median_peak_private_bytes_sampled"] <= 0:
+        raise ValueError("Impossible voice resource metric")
     metrics = {
         "average_fps_change_percent": report.get("average_fps_change_percent"),
         "one_percent_low_fps_change_percent": report.get("one_percent_low_fps_change_percent"),

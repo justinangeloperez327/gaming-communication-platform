@@ -1,4 +1,10 @@
 #include "VoiceSession.h"
+#include "DesktopSettings.h"
+#include "ServerProbe.h"
+#include "ScreenSession.h"
+#include "ScreenViewer.h"
+#include "ScreenVideoItem.h"
+#include <qqml.h>
 #include "AccountSession.h"
 #include "ChannelDirectory.h"
 #include "ChatSession.h"
@@ -9,6 +15,7 @@
 #include <QQmlContext>
 #include <QtGlobal>
 #include <QTimer>
+#include <QSslSocket>
 
 #include <cstdlib>
 #include <cstdio>
@@ -36,15 +43,38 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Gaming Communication Platform"));
     QCoreApplication::setOrganizationName(QStringLiteral("GCP"));
+    if (smokeQml) {
+        // Loading QML alone does not establish that a relocated package can use
+        // HTTPS/WSS. Inspect the real TLS provider without opening a connection.
+        if (!QSslSocket::supportsSsl()) {
+            std::fprintf(stderr, "GCP Qt TLS backend unavailable\n");
+            return EXIT_FAILURE;
+        }
+        const auto backend = QSslSocket::activeBackend().toUtf8();
+        std::fprintf(stderr, "GCP Qt TLS backend: %s\n", backend.constData());
+    }
 
-    AccountSession account;
+    DesktopSettings preferences(smokeQml ? QString{} : DesktopSettings::defaultFileName());
+    ServerProbe probe;
+    AccountSession account(nullptr, &preferences);
     ChannelDirectory directory(&account);
-    VoiceSession voice(&account, &directory);
+    VoiceSession voice(&account, &directory, nullptr, {}, &preferences);
+    ScreenSession screen(&account, &directory);
+    ScreenViewer viewer(&account, &directory);
+    qmlRegisterType<ScreenVideoItem>("Gcp.Media", 1, 0, "ScreenVideo");
     FriendsDirectory friends(&account);
     ChatSession chat(&account, &directory);
     ChatSession directChat(&account, &friends);
+    bool qmlWarnings = false;
     QQmlApplicationEngine engine;
+    if (smokeQml) {
+        QObject::connect(&engine, &QQmlEngine::warnings, &app, [&qmlWarnings](const auto&) { qmlWarnings = true; });
+    }
+    engine.rootContext()->setContextProperty(QStringLiteral("desktopSettings"), &preferences);
+    engine.rootContext()->setContextProperty(QStringLiteral("serverProbe"), &probe);
     engine.rootContext()->setContextProperty(QStringLiteral("voiceSession"), &voice);
+    engine.rootContext()->setContextProperty(QStringLiteral("screenSession"), &screen);
+    engine.rootContext()->setContextProperty(QStringLiteral("screenViewer"), &viewer);
     engine.rootContext()->setContextProperty(QStringLiteral("accountSession"), &account);
     engine.rootContext()->setContextProperty(QStringLiteral("channelDirectory"), &directory);
     engine.rootContext()->setContextProperty(QStringLiteral("chatSession"), &chat);
@@ -57,14 +87,16 @@ int main(int argc, char *argv[])
         []() { QCoreApplication::exit(EXIT_FAILURE); },
         Qt::QueuedConnection
     );
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &viewer, &ScreenViewer::stop);
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &screen, &ScreenSession::stop);
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &voice, &VoiceSession::leave);
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &account, &AccountSession::signOut);
     engine.loadFromModule("Gcp.Desktop", "Main");
     if (smokeQml) {
         // Exercise actual QML module and plugin loading, unlike --self-test.
         // A missing module triggers objectCreationFailed and exits nonzero.
-        QTimer::singleShot(2500, &app, [&app, &engine]() {
-            app.exit(engine.rootObjects().isEmpty() ? EXIT_FAILURE : EXIT_SUCCESS);
+        QTimer::singleShot(2500, &app, [&app, &engine, &qmlWarnings]() {
+            app.exit(engine.rootObjects().isEmpty() || qmlWarnings ? EXIT_FAILURE : EXIT_SUCCESS);
         });
     }
     return app.exec();

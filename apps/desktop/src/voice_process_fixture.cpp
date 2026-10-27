@@ -9,7 +9,7 @@
 int main(int argc, char **argv) {
     if (std::getenv("GCP_FIXTURE_VALIDATE_ENV")) {
         for (const auto *name : {"DATABASE_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET",
-                                 "GCP_ACCESS_TOKEN", "GCP_REFRESH_TOKEN"}) {
+                                 "GCP_ACCESS_TOKEN", "GCP_REFRESH_TOKEN", "GCP_MEDIA_SECRET", "GCP_POSTGRES_ADMIN_PASSWORD"}) {
             if (std::getenv(name)) return 10;
         }
         const auto *runtime = std::getenv("GCP_FIXTURE_RUNTIME_VALUE");
@@ -37,8 +37,9 @@ int main(int argc, char **argv) {
             for (int index = 0; index < 1024; ++index) std::cerr << chunk;
         }
         const bool recovered = mode && std::string_view{mode} == "stderr";
-        std::cout << "input [0] " << (recovered ? "Recovered microphone" : "Fixture microphone")
-                  << " | id=fixture-input\noutput [0] Fixture speaker | id=fixture-output\n";
+        if (!mode || std::string_view{mode} != "input-missing") std::cout << "input [0] " << (recovered ? "Recovered microphone" : "Fixture microphone")
+                  << " | id=fixture-input\n";
+        std::cout << "output [0] Fixture speaker | id=fixture-output\n";
         return 0;
     }
     bool managed = false, unlimited = false, microphone = false;
@@ -77,6 +78,9 @@ int main(int argc, char **argv) {
         if (command == "mute" || command == "mode_ptt" || command == "mode_open")
             std::cout << "GCP_VOICE_EVENT:muted" << std::endl;
         else if (command == "unmute" && microphone) {
+            if (outputMode && std::string_view{outputMode} == "device-lost") {
+                std::cout << "GCP_VOICE_EVENT:device_lost" << std::endl; return 1;
+            }
             std::cout << "GCP_VOICE_EVENT:unmuted" << std::endl;
             if (outputMode && std::string_view{outputMode} == "reconnect" && !interrupted) {
                 interrupted = true;
