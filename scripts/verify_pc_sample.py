@@ -15,7 +15,7 @@ from verify_server_stack import request, wait_status
 def main():
     with tempfile.TemporaryDirectory() as folder:
         config = Path(folder) / 'sample'
-        initialize_sample(config)
+        initialize_sample(config, project="gcp-pc-sample-" + secrets.token_hex(8))
         stack = Sample(config)
         if stack.run('ps', '--all', '-q', capture_output=True, text=True).stdout.strip():
             raise RuntimeError('Refusing to use an existing PC sample project')

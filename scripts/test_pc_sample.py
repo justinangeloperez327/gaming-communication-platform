@@ -29,6 +29,15 @@ class SampleTests(unittest.TestCase):
         self.assertNotIn('--profile', stack.command)
         self.assertNotIn(stack.values['GCP_POSTGRES_ADMIN_PASSWORD'], stack.command)
 
+    def test_disposable_acceptance_uses_a_separate_project(self):
+        initialize_sample(self.config, project="gcp-pc-sample-0123456789abcdef")
+        self.assertEqual(Sample(self.config).values["GCP_STACK_PROJECT"],
+                         "gcp-pc-sample-0123456789abcdef")
+        other = Path(self.tmp.name) / "invalid"
+        with self.assertRaises(ValueError):
+            initialize_sample(other, project="existing-user-stack")
+        self.assertFalse(other.exists())
+
     def test_existing_credentials_cannot_be_overwritten(self):
         initialize_sample(self.config)
         before = (self.config / 'api.env').read_bytes()

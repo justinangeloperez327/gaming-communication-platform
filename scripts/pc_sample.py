@@ -5,6 +5,7 @@ import getpass
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import warnings
 
@@ -14,9 +15,11 @@ DEFAULT_CONFIG = ROOT / "deploy/self-hosted/.pc-local"
 OVERRIDE = ROOT / "deploy/self-hosted/compose.pc.yaml"
 
 
-def initialize_sample(config):
+def initialize_sample(config, *, project="gcp-pc-sample"):
+    if not re.fullmatch(r"gcp-pc-sample(?:-[a-f0-9]{16})?", project):
+        raise ValueError("Expected an isolated PC sample project name")
     # Fixed separate project and ports: never reuse the regular host stack.
-    initialize(config, project="gcp-pc-sample", api_port=18080, db_port=15432,
+    initialize(config, project=project, api_port=18080, db_port=15432,
                signal_port=17880, media_tcp_port=17881, udp_start=17900, udp_end=17920)
     with (config / "stack.env").open("a", encoding="utf-8") as output:
         output.write("GCP_SIGNAL_PORT=17880\nGCP_MEDIA_TCP_PORT=17881\n"
@@ -34,7 +37,7 @@ class Sample(Stack):
         super().__init__(config)
         if (json.loads((self.config / "pc-sample.json").read_text()) != {"version": 1}
                 or self.values["GCP_ENABLE_TLS"] != "0"
-                or self.values["GCP_STACK_PROJECT"] != "gcp-pc-sample"):
+                or not re.fullmatch(r"gcp-pc-sample(?:-[a-f0-9]{16})?", self.values["GCP_STACK_PROJECT"])):
             raise ValueError("Expected a local PC sample configuration")
         self.command += ["-f", str(OVERRIDE)]
 
