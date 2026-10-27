@@ -60,8 +60,16 @@ function Reject-Unchanged([string]$Installer) {
     $version = (Get-ItemProperty -LiteralPath $registry).DisplayVersion
     $fingerprint = Fingerprint
     Install $Installer $true
-    if ((Snapshot) -cne $before -or (Get-ItemProperty -LiteralPath $registry).DisplayVersion -cne $version -or
-        (Fingerprint) -cne $fingerprint) { throw 'Rejected Setup changed installed state' }
+    $after = Snapshot
+    $afterVersion = (Get-ItemProperty -LiteralPath $registry).DisplayVersion
+    $afterFingerprint = Fingerprint
+    if ($after -cne $before -or $afterVersion -cne $version -or $afterFingerprint -cne $fingerprint) {
+        Write-Host "Rejected installer: $Installer"
+        Write-Host "Version before=[$version] after=[$afterVersion]; fingerprint before=[$fingerprint] after=[$afterFingerprint]"
+        Compare-Object ($before -split "`n") ($after -split "`n") | Format-Table -AutoSize | Out-Host
+        Get-ChildItem -LiteralPath $root -Filter 'setup-*.log' -File | Sort-Object LastWriteTime | Select-Object -Last 1 | ForEach-Object { Get-Content -LiteralPath $_.FullName -Tail 60 | Write-Host }
+        throw 'Rejected Setup changed installed state'
+    }
 }
 function Uninstall {
     Invoke-SetupProcess (Join-Path $app 'unins000.exe') @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART')
