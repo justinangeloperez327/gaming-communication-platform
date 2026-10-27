@@ -12,6 +12,10 @@ actual host. New accounts require email-bound invitations from the locally
 configured owner; see [private onboarding](account-onboarding.md). The remote
 template also restricts requests to the friends' explicitly supplied IP ranges.
 
+For a same-PC Windows Docker Desktop sample, use the separate
+[Windows PC sample guide](windows-pc-sample.md). It publishes localhost-only
+ports with a bridge layout; it does not qualify remote friends or physical media.
+
 ## Local bring-up
 
 Use a Linux x64 host with Git, Python 3.10+, Docker Engine and Docker Compose

@@ -40,3 +40,4 @@ __pycache__/
 # Operator gameplay captures and generated performance reports (keep local)
 /runs/
 /performance-evidence/
+/deploy/self-hosted/.pc-local/
